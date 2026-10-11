@@ -35,6 +35,7 @@ typedef struct {
   int button;      // 0 left, 1 middle, 2 right
   int width, height, scale;
   bool maximized, activated, focused, repeat;
+  bool transparent;  // window can show see-through (rounded) corners
   int mods;
   char key[64];    // xkb keysym name, e.g. "Return", "a", "BackSpace"
   char text[32];   // UTF-8 produced by the key (after compose / dead keys)

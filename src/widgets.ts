@@ -414,7 +414,7 @@ export function Window(
     direction: "column", background: theme.window.background, borderWidth: 1, borderColor: theme.window.border, clip: true,
     padding: 1, // keep children (e.g. the titlebar divider) off the border
   } satisfies Style);
-  createEffect(() => node.set("radius", windowState.maximized() ? 0 : theme.window.radius));
+  createEffect(() => node.set("radius", windowState.maximized() || !windowState.transparent() ? 0 : theme.window.radius));
 
   const bar = new UINode("Titlebar");
   Object.assign(bar.style, {

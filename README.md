@@ -16,8 +16,11 @@ bun test               # testes headless (sem janela)
 bun run typecheck      # tsc 7 (compilador nativo em Go), só checagem
 ```
 
-Requisitos do sistema: sessão Wayland, headers de wayland-client/egl/cursor, EGL, GLESv2,
-xkbcommon, freetype2, harfbuzz e fontconfig.
+Requisitos do sistema: sessão Wayland ou X11, headers de wayland-client/egl/cursor,
+libX11/Xcursor/Xrandr, EGL, GLESv2, xkbcommon, freetype2, harfbuzz e fontconfig.
+
+O backend é escolhido sozinho (Wayland, senão X11). Para forçar: `NB_BACKEND=x11` ou
+`NB_BACKEND=wayland`. `NB_DEBUG=1` mostra qual foi usado.
 
 ## Arquitetura
 
@@ -33,7 +36,7 @@ src/widgets.ts      Window (decoração própria), Box/Row/Column, Text, Button,
 src/app.ts          loop de eventos: hover, clique, foco, teclado, scroll, resize/move da janela
 native/include/     nb.h (API portável) + nb_platform.h (contrato por SO)
 native/core/        núcleo C portável: addon.c (N-API), text.c, render_gles2.c
-native/platform/    backends por SO; hoje só linux/ (Wayland, EGL, xkb, fontconfig)
+native/platform/    backends por SO; hoje linux/ (Wayland e X11, EGL, fontconfig)
 ```
 
 O addon não usa libuv (o Bun não implementa): o backend do SO avisa que há eventos

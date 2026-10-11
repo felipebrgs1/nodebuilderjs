@@ -82,6 +82,7 @@ static napi_value event_to_js(napi_env env, const nb_event *e) {
       set_num(env, o, "scale", e->scale);
       set_bool(env, o, "maximized", e->maximized);
       set_bool(env, o, "activated", e->activated);
+      set_bool(env, o, "transparent", e->transparent);
       break;
     case NB_EV_POINTER_MOVE:
     case NB_EV_POINTER_DOWN:

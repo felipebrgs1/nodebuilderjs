@@ -26,7 +26,8 @@ muito bem, então o máximo possível do framework fica em TS, e o C fica pequen
 4. **Linux/Wayland primeiro, arquitetura pronta para outros SOs.** Código nativo é dividido
    em núcleo portável (`native/core/`) e backend por SO (`native/platform/<os>/`), ligados
    só pelo contrato `native/include/nb_platform.h`. Nada específico de SO entra no núcleo
-   (hoje o núcleo só inclui Node-API, GLES2, FreeType e HarfBuzz). Sem X11 por enquanto.
+   (hoje o núcleo só inclui Node-API, GLES2, FreeType e HarfBuzz). No Linux, **Wayland e
+   X11** são suportados, escolhidos em tempo de execução.
 5. **TypeScript 7** (compilador nativo em Go) apenas para checagem: `bun run typecheck`.
 6. **Teto de 120 fps** por padrão. Acima disso é desnecessário (decisão do projeto).
 
@@ -71,10 +72,12 @@ native/
     text.c              HarfBuzz + FreeType + atlas de glifos
     render_gles2.c      renderer GLES2: um shader, um formato de vértice, batch único
   platform/linux/       backend Linux
-    window.c            Wayland (xdg-shell), EGL, ponteiro, teclado (xkb + compose), cursor
-    pump.c              thread de poll() (display, timerfd de repetição, eventfd de saída)
+    linux.h             vtable nb_linux_backend (interno ao Linux)
+    linux.c             implementa nb_platform_* escolhendo Wayland ou X11 em runtime
+    wayland.c           Wayland (xdg-shell), EGL, ponteiro, teclado (xkb + compose), cursor
+    x11.c               X11 (Xlib + EWMH), EGL, XIM (teclas mortas), Xcursor, XRandR
+    pump.c              thread de poll() sobre os fds do backend ativo + eventfd de saída
     fonts.c             descoberta de fontes via fontconfig
-    linux.h             API interna entre window.c e pump.c
     build.sh            compilação do backend (chamado por scripts/build-native.sh)
     protocols/          xdg-shell.xml (vendorizado; wayland-protocols não está instalado)
   build/<platform>-<arch>/  saída (nomes de process.platform/arch: linux-x64, ...)
@@ -128,8 +131,17 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
   (Wayland, poll/eventfd/pthread, fontconfig...) vai em `platform/<os>/` e é exposta ao
   núcleo só por funções `nb_platform_*`. Precisa de algo novo do SO? Adicione ao contrato
   em `nb_platform.h`, documente a thread em que roda e implemente em cada backend.
-- Funções internas de um backend usam prefixo próprio (`nb_wl_*` no Linux) e ficam em
-  um header privado (`platform/linux/linux.h`), nunca em `include/`.
+- **Linux tem dois backends de janela** atrás do vtable `nb_linux_backend` (`linux.h`):
+  `nb_wayland_backend` (wayland.c) e `nb_x11_backend` (x11.c). Funções dos backends são
+  `static`; só o vtable é exportado. `linux.c` escolhe: `NB_BACKEND=wayland|x11` força;
+  senão Wayland se `WAYLAND_DISPLAY`, depois X11 se `DISPLAY`. `open()` que falha não
+  pode deixar nada aberto (o seletor chama `close()` e tenta o próximo).
+- O pump do Linux faz `poll()` nos fds que `backend->fds()` devolve (fd *i* = bit *i* de
+  `ready`) e chama `backend->process(ready)` na thread do JS.
+- Cada backend usa `eglGetPlatformDisplay` com a plataforma explícita
+  (`EGL_PLATFORM_WAYLAND_KHR` / `EGL_PLATFORM_X11_KHR`); nunca `eglGetDisplay`, que
+  obriga o Mesa a adivinhar o tipo do ponteiro.
+- Funcionalidade nova de janela no Linux = implementar nos **dois** backends.
 - **Novo SO:** criar `native/platform/<os>/` com a implementação completa de
   `nb_platform.h` + `build.sh`, e adicionar o `case` em `scripts/build-native.sh`.
   O renderer é GLES2 (no Windows/macOS: ANGLE, ou um novo `core/render_<api>.c` com a
@@ -142,8 +154,12 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
   `nb_wl_dispatch()` nunca bloqueia (prepare_read/read_events/cancel_read).
 - Depois de chamadas que possam receber eventos (ex.: `eglSwapBuffers`), o núcleo chama
   `nb_platform_flush()` e pede uma entrega (`request_delivery()`).
-- Coordenadas: o JS trabalha em **px lógicos**; o C multiplica pelo `scale` (no Linux,
-  buffer scale inteiro do `wl_surface.preferred_buffer_scale`).
+- Coordenadas: o JS trabalha em **px lógicos**; o C multiplica pelo `scale` inteiro
+  (Wayland: `wl_surface.preferred_buffer_scale`; X11: `Xft.dpi / 96`, ou `NB_SCALE`).
+- X11 específicos: sem decoração do WM (`_MOTIF_WM_HINTS`), mover/redimensionar via
+  `_NET_WM_MOVERESIZE`, maximizar via `_NET_WM_STATE`, visual ARGB de 32 bits só quando
+  há compositor (`_NET_WM_CM_Sn`); sem compositor, `transparent=false` e a `Window` usa
+  raio 0. X11 não tem frame callback: o ritmo vem de um timerfd na taxa do XRandR.
 - Renderer em **alpha pré-multiplicado** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`). A borda é
   composta *sobre* o fundo (semântica CSS). Misturar em alpha "reto" gera artefatos
   escuros nos cantos (bug já corrigido; não regredir).
@@ -187,8 +203,9 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
 
 - `NB_STATS=1` imprime por segundo: fps, ms/frame (state+layout, paint, native), nós,
   tamanho do command buffer, heap e RSS.
-- Teto de fps: `run(app, { maxFps })` ou `NB_MAX_FPS`; padrão 120. O frame continua
-  alinhado ao vsync: pulamos vblanks com `native.requestFrame()` (commit sem desenho).
+- Teto de fps: `run(app, { maxFps })` ou `NB_MAX_FPS`; padrão 120. No Wayland o frame
+  continua alinhado ao vsync: pulamos vblanks com `native.requestFrame()` (commit sem
+  desenho). No X11 o ritmo é por timer (não alinhado ao vsync; ver limitações).
   Tolerância de 1,5 ms para 144 Hz não cair para 72.
 - `requestAnimationFrame(cb)` existe (app.ts) e é ritmado pelo compositor.
 - **Referências medidas (2026-10-11, i7-12700H, Intel Iris Xe, KWin, monitor 240 Hz, teto 120):**
@@ -221,6 +238,9 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
   (text-input-v3), DnD, escala fracionária real (KDE 125% renderiza em 2x e reduz).
 - Janela sempre com decoração própria (CSD): barra de título, mover, maximizar,
   redimensionar pelas bordas (6 px). `xdg-decoration` (SSD no KDE) ainda não.
+- X11: frames por timer (sem extensão Present, então pode haver tearing sem compositor
+  e ~5–10% menos fps que no Wayland); escala só inteira; testado apenas via XWayland
+  (KDE). Sessão X11 pura e o caminho sem compositor ainda não foram testados.
 
 ## Armadilhas já encontradas
 
@@ -236,3 +256,5 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
 - `Object.keys(native)` retorna `[]` (propriedades não enumeráveis); não é erro.
 - Depois de `bun run build:native`, o binário fica em `native/build/linux-x64/`; o caminho
   antigo `native/build/nodebuilder.node` não existe mais.
+- Para testar o X11 numa sessão Wayland: `NB_BACKEND=x11` (usa o XWayland, `DISPLAY=:0`).
+  `NB_DEBUG=1` mostra o backend escolhido, escala, Hz, visual e o `GL_RENDERER`.

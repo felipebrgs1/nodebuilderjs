@@ -1,9 +1,10 @@
-// Linux backend: Wayland window (xdg-shell), EGL surface and input
-// (pointer + keyboard with xkb/compose). Implements the window part of nb_platform.h.
+// Wayland backend: xdg-shell window, EGL surface and input (pointer + keyboard
+// with xkb/compose, key repeat via timerfd). Exposed as nb_wayland_backend.
 #define _GNU_SOURCE
 #include "linux.h"
 
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <linux/input-event-codes.h>
 #include <locale.h>
 #include <stdio.h>
@@ -74,7 +75,8 @@ static void emit_configure(void) {
                 .height = S.height,
                 .scale = S.scale,
                 .maximized = S.maximized,
-                .activated = S.activated};
+                .activated = S.activated,
+                .transparent = true};
   nb_push_event(&e);
 }
 
@@ -118,7 +120,7 @@ static void apply_cursor(void) {
   wl_surface_commit(S.cursor_surface);
 }
 
-void nb_platform_set_cursor(const char *name) {
+static void wl_set_cursor(const char *name) {
   if (!strcmp(name, S.cursor_name)) return;
   snprintf(S.cursor_name, sizeof S.cursor_name, "%s", name);
   apply_cursor();
@@ -238,9 +240,7 @@ static void stop_repeat(void) {
   S.repeat_key = 0;
 }
 
-int nb_wl_repeat_fd(void) { return S.repeat_fd; }
-
-void nb_wl_repeat_tick(void) {
+static void repeat_tick(void) {
   uint64_t expirations;
   if (read(S.repeat_fd, &expirations, sizeof expirations) != sizeof expirations) return;
   if (S.repeat_key) emit_key(S.repeat_key, true, true);
@@ -414,7 +414,7 @@ static const struct wl_callback_listener frame_listener = {.done = frame_done};
 // ---- public API -------------------------------------------------------------
 
 static bool init_egl(void) {
-  S.egl_display = eglGetDisplay((EGLNativeDisplayType)S.display);
+  S.egl_display = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, S.display, NULL);
   if (S.egl_display == EGL_NO_DISPLAY || !eglInitialize(S.egl_display, NULL, NULL)) return false;
   eglBindAPI(EGL_OPENGL_ES_API);
 
@@ -431,7 +431,7 @@ static bool init_egl(void) {
   S.buffer_w = S.width * S.scale;
   S.buffer_h = S.height * S.scale;
   S.egl_window = wl_egl_window_create(S.surface, S.buffer_w, S.buffer_h);
-  S.egl_surface = eglCreateWindowSurface(S.egl_display, config, (EGLNativeWindowType)S.egl_window, NULL);
+  S.egl_surface = eglCreatePlatformWindowSurface(S.egl_display, config, S.egl_window, NULL);
   if (S.egl_surface == EGL_NO_SURFACE) return false;
   if (!eglMakeCurrent(S.egl_display, S.egl_surface, S.egl_surface, S.egl_context)) return false;
   // We pace frames ourselves with wl_surface.frame; never block inside eglSwapBuffers.
@@ -439,7 +439,7 @@ static bool init_egl(void) {
   return true;
 }
 
-bool nb_platform_open(const nb_window_options *options) {
+static bool wl_open(const nb_window_options *options) {
   const char *title = options->title, *app_id = options->app_id;
   S.scale = 1;
   S.width = options->width;
@@ -448,7 +448,7 @@ bool nb_platform_open(const nb_window_options *options) {
 
   S.display = wl_display_connect(NULL);
   if (!S.display) {
-    fprintf(stderr, "nodebuilder: could not connect to a Wayland display\n");
+    if (getenv("NB_DEBUG")) fprintf(stderr, "nodebuilder: no Wayland display\n");
     return false;
   }
 
@@ -493,7 +493,7 @@ bool nb_platform_open(const nb_window_options *options) {
   return true;
 }
 
-void nb_platform_close(void) {
+static void wl_close(void) {
   stop_repeat();
   if (S.repeat_fd > 0) close(S.repeat_fd);
   if (S.egl_display) {
@@ -516,10 +516,9 @@ void nb_platform_close(void) {
   memset(&S, 0, sizeof S);
 }
 
-int nb_wl_fd(void) { return wl_display_get_fd(S.display); }
 // Never blocks: reads only what is already on the socket. Other readers (Mesa's
 // EGL queue) may have consumed the data that woke the pump thread.
-int nb_wl_dispatch(void) {
+static int dispatch(void) {
   while (wl_display_prepare_read(S.display) != 0)
     if (wl_display_dispatch_pending(S.display) < 0) return -1;
   wl_display_flush(S.display);
@@ -533,15 +532,15 @@ int nb_wl_dispatch(void) {
   return wl_display_dispatch_pending(S.display);
 }
 
-void nb_platform_flush(void) {
+static void wl_flush(void) {
   if (!S.display) return;
   wl_display_dispatch_pending(S.display);
   wl_display_flush(S.display);
 }
 
-int nb_platform_scale(void) { return S.scale ? S.scale : 1; }
+static int wl_scale(void) { return S.scale ? S.scale : 1; }
 
-void nb_platform_begin_frame(int *bw, int *bh, int *scale) {
+static void wl_begin_frame(int *bw, int *bh, int *scale) {
   int w = S.width * S.scale, h = S.height * S.scale;
   if (w != S.buffer_w || h != S.buffer_h) {
     wl_egl_window_resize(S.egl_window, w, h, 0, 0);
@@ -555,7 +554,7 @@ void nb_platform_begin_frame(int *bw, int *bh, int *scale) {
   *scale = S.scale;
 }
 
-void nb_platform_end_frame(void) {
+static void wl_end_frame(void) {
   if (!S.frame_cb) {
     S.frame_cb = wl_surface_frame(S.surface);
     wl_callback_add_listener(S.frame_cb, &frame_listener, NULL);
@@ -563,7 +562,7 @@ void nb_platform_end_frame(void) {
   eglSwapBuffers(S.egl_display, S.egl_surface);
 }
 
-void nb_platform_request_frame(void) {
+static void wl_request_frame(void) {
   if (S.frame_cb || !S.surface) return;
   S.frame_cb = wl_surface_frame(S.surface);
   wl_callback_add_listener(S.frame_cb, &frame_listener, NULL);
@@ -571,13 +570,48 @@ void nb_platform_request_frame(void) {
   wl_display_flush(S.display);
 }
 
-void nb_platform_set_title(const char *title) { if (S.toplevel) xdg_toplevel_set_title(S.toplevel, title); }
-void nb_platform_move(void) { if (S.toplevel && S.seat) xdg_toplevel_move(S.toplevel, S.seat, S.last_serial); }
-void nb_platform_resize(uint32_t edges) { if (S.toplevel && S.seat) xdg_toplevel_resize(S.toplevel, S.seat, S.last_serial, edges); }
-void nb_platform_minimize(void) { if (S.toplevel) xdg_toplevel_set_minimized(S.toplevel); }
+static void wl_set_title(const char *title) { if (S.toplevel) xdg_toplevel_set_title(S.toplevel, title); }
+static void wl_move(void) { if (S.toplevel && S.seat) xdg_toplevel_move(S.toplevel, S.seat, S.last_serial); }
+static void wl_resize(uint32_t edges) { if (S.toplevel && S.seat) xdg_toplevel_resize(S.toplevel, S.seat, S.last_serial, edges); }
+static void wl_minimize(void) { if (S.toplevel) xdg_toplevel_set_minimized(S.toplevel); }
 
-void nb_platform_set_maximized(bool maximized) {
+static void wl_set_maximized(bool maximized) {
   if (!S.toplevel) return;
   if (maximized) xdg_toplevel_set_maximized(S.toplevel);
   else xdg_toplevel_unset_maximized(S.toplevel);
 }
+
+// ---- backend vtable ---------------------------------------------------------
+
+enum { FD_DISPLAY = 1, FD_REPEAT = 2 };
+
+static int wl_fds(int *out, int max) {
+  out[0] = wl_display_get_fd(S.display);
+  out[1] = S.repeat_fd;
+  return 2;
+}
+
+static int wl_process(int ready) {
+  if (ready & FD_REPEAT) repeat_tick();
+  if ((ready & FD_DISPLAY) && dispatch() < 0) return -1;
+  return 0;
+}
+
+const nb_linux_backend nb_wayland_backend = {
+    .name = "wayland",
+    .open = wl_open,
+    .close = wl_close,
+    .begin_frame = wl_begin_frame,
+    .end_frame = wl_end_frame,
+    .request_frame = wl_request_frame,
+    .scale = wl_scale,
+    .set_cursor = wl_set_cursor,
+    .set_title = wl_set_title,
+    .move = wl_move,
+    .resize = wl_resize,
+    .set_maximized = wl_set_maximized,
+    .minimize = wl_minimize,
+    .fds = wl_fds,
+    .process = wl_process,
+    .flush = wl_flush,
+};

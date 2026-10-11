@@ -29,11 +29,13 @@ const [width, setWidth] = createSignal(0);
 const [height, setHeight] = createSignal(0);
 const [maximized, setMaximized] = createSignal(false);
 const [activated, setActivated] = createSignal(true);
+const [transparent, setTransparent] = createSignal(true);
 
 let native: Native | null = null;
 let closeRequest: () => void = () => {};
 
-export const windowState = { width, height, maximized, activated };
+/** `transparent` is false when corners can't be see-through (e.g. X11 without a compositor). */
+export const windowState = { width, height, maximized, activated, transparent };
 
 export const windowControls = {
   close: () => closeRequest(),
@@ -310,6 +312,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
         setHeight(ev.height);
         setMaximized(ev.maximized);
         setActivated(ev.activated);
+        setTransparent(ev.transparent);
         if (ev.scale !== currentScale) {
           currentScale = ev.scale;
           metrics.clear();

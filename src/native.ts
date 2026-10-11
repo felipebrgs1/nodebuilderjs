@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 export type NativeKeyEvent = { type: "keydown" | "keyup"; key: string; text: string; repeat: boolean; ctrl: boolean; shift: boolean; alt: boolean; super: boolean };
 
 export type NativeEvent =
-  | { type: "configure"; width: number; height: number; scale: number; maximized: boolean; activated: boolean }
+  | { type: "configure"; width: number; height: number; scale: number; maximized: boolean; activated: boolean; transparent: boolean }
   | { type: "close" | "frame" | "pointerleave" }
   | { type: "pointermove" | "pointerdown" | "pointerup"; x: number; y: number; button: number }
   | { type: "scroll"; x: number; y: number; dx: number; dy: number }
