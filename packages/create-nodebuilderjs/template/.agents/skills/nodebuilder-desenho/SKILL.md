@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-desenho
-description: Desenho livre no nodebuilder com o widget Canvas (linhas, polígonos, arcos, medidores, sparklines, anotações, visualizações sob medida). Use para formas que não são retângulos e gráficos que @nodebuilderjs/charts não cobre, no lugar do <canvas> do navegador ou D3. Para gráficos de linha, área, barra e pizza comuns, use a skill nodebuilder-graficos.
+description: Desenho livre no nodebuilder com o widget Canvas (linhas, polígonos, arcos, medidores, sparklines, anotações, visualizações sob medida). Use para formas que não são retângulos e gráficos que @nodebuilderjs/core/charts não cobre, no lugar do <canvas> do navegador ou D3. Para gráficos de linha, área, barra e pizza comuns, use a skill nodebuilder-graficos.
 ---
 
 # Desenho com `<Canvas>`

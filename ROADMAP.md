@@ -120,9 +120,10 @@ Em andamento, nesta ordem:
    repintar sem mudança de dados custa só o deslocamento da geometria gravada. Linhas
    grossas com antialiasing calculado no shader, polígonos triangulados com franja de
    antialiasing e arcos; base para gráficos e para widgets desenhados à mão.
-3. ~~**`@nodebuilderjs/charts`:**~~ **primeira versão feita** (2026-10-11): linha, área, barra,
+3. ~~**Gráficos (`@nodebuilderjs/core/charts`):**~~ **primeira versão feita** (2026-10-11): linha, área, barra,
    composto e pizza/rosca, com eixos, grade e legenda, curvas `monotone` e dados em signals.
-   API no formato do Recharts; pacote separado, com versão própria. O que falta está nos
+   API no formato do Recharts; no core, num subcaminho (o tree-shaking tira o que não é
+   usado; começou como pacote separado e foi trazido para o core). O que falta está nos
    itens 4 e 5.
 4. **Entrega de eventos testável e `onPointerMove`:** tirar de dentro do `run()`
    (`runtime/app.ts`) o hit test, o hover, o foco, o clique e a rolagem, para um módulo que

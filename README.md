@@ -121,13 +121,9 @@ si mesmo não é desenhado, e em linhas com cor translúcida as junções ficam 
 
 ### Gráficos
 
-```sh
-bun add @nodebuilderjs/charts
-```
-
 ```tsx
 import { LineChart, Line, Area, AreaChart, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Legend } from "@nodebuilderjs/charts";
+  XAxis, YAxis, CartesianGrid, Legend } from "@nodebuilderjs/core/charts";
 
 <LineChart data={vendas} height={240}>        {/* data pode ser um signal: o gráfico acompanha */}
   <CartesianGrid vertical={false} />
@@ -142,7 +138,9 @@ import { LineChart, Line, Area, AreaChart, BarChart, Bar, PieChart, Pie, Cell,
 A API segue o formato do Recharts: `LineChart`, `AreaChart`, `BarChart`, `ComposedChart` e
 `PieChart`, com `Line`, `Area`, `Bar`, `Pie`/`Cell`, `XAxis`, `YAxis`, `CartesianGrid` e
 `Legend` como filhos. Os eixos têm passos redondos (como o d3), o eixo y inclui o zero, e
-`type="monotone"` suaviza a curva. Tudo é desenhado com o `<Canvas>`, pela GPU. Ainda não há
+`type="monotone"` suaviza a curva. Tudo é desenhado com o `<Canvas>`, pela GPU, e vem no
+próprio core: quem não importa `@nodebuilderjs/core/charts` não leva nada no executável
+(quem usa, ~11 KB). Ainda não há
 tooltip ao passar o mouse (`<Tooltip>` é aceito e ignorado), barras/áreas empilhadas,
 linhas tracejadas nem rótulos nas fatias.
 

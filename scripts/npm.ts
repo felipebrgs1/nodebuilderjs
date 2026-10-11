@@ -8,7 +8,7 @@
 //   bun run npm:publish --skip-build --otp 123456   # publish dist/npm as is (2FA codes last ~30 s)
 import { $ } from "bun";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { buildNative, minGlibc } from "../cli/package/native.js";
 
@@ -30,16 +30,14 @@ const target = `${process.platform}-${process.arch}`;
 const platformDir = join(ROOT, "packages", target);
 
 const out = join(ROOT, "dist/npm");
-// Order matters for publishing: core's optional dependency before core, core before charts.
-const packages = [platformDir, ROOT, join(ROOT, "packages/charts"), join(ROOT, "packages/create-nodebuilderjs")];
+// Order matters for publishing: core's optional dependency must exist before core.
+const packages = [platformDir, ROOT, join(ROOT, "packages/create-nodebuilderjs")];
 
 /**
  * JS (Bun.Transpiler) and declarations (tsc) of a TypeScript source folder, mirroring its
  * subfolders. Hand-written .d.ts (src/assets.d.ts) stay in src/, which is published.
- * `@nodebuilderjs/core` resolves to the core's generated declarations (`coreLib`), as for
- * someone who installed it, so charts' declarations do not pull core sources in.
  */
-async function buildLib(srcDir: string, libDir: string, coreLib = join(ROOT, "lib")): Promise<number> {
+async function buildLib(srcDir: string, libDir: string): Promise<number> {
   rmSync(libDir, { recursive: true, force: true });
   mkdirSync(libDir, { recursive: true });
   const transpiler = new Bun.Transpiler({ loader: "ts", target: "node" });
@@ -54,7 +52,6 @@ async function buildLib(srcDir: string, libDir: string, coreLib = join(ROOT, "li
       declaration: true, emitDeclarationOnly: true, rootDir: srcDir, outDir: libDir, target: "esnext", module: "preserve",
       moduleResolution: "bundler", strict: true, skipLibCheck: true, types: ["bun"],
       typeRoots: [join(ROOT, "node_modules/@types")],
-      paths: { "@nodebuilderjs/core": [join(coreLib, "index.d.ts")], "@nodebuilderjs/core/*": [join(coreLib, "*.d.ts")] },
     },
     files: sources.map((f) => join(srcDir, f)),
   });
@@ -82,10 +79,7 @@ if (opts["skip-build"]) {
   console.log(`• versão ${version} em todos os pacotes`);
 
   // ---- lib/: JS + declarations for Node (Bun uses src/ through the "bun" export condition) ----
-  for (const [pkg, src] of [[ROOT, "src"], [join(ROOT, "packages/charts"), "src"]] as const) {
-    const count = await buildLib(join(pkg, src), join(pkg, "lib"));
-    console.log(`• ${relative(ROOT, join(pkg, "lib")) || "lib"}/: ${count} módulos (JS + .d.ts)`);
-  }
+  console.log(`• lib/: ${await buildLib(join(ROOT, "src"), join(ROOT, "lib"))} módulos (JS + .d.ts)`);
 
   // ---- prebuilt addon --------------------------------------------------------------
   const addon = await buildNative(ROOT, opts.native as "docker" | "local");

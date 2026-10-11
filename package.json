@@ -46,6 +46,11 @@
       "bun": "./src/testing.ts",
       "default": "./lib/testing.js"
     },
+    "./charts": {
+      "types": "./lib/charts/index.d.ts",
+      "bun": "./src/charts/index.ts",
+      "default": "./lib/charts/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

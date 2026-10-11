@@ -1,19 +1,17 @@
 ---
 name: nodebuilder-graficos
-description: Gráficos de linha, área, barra, composto e pizza/rosca no nodebuilder com @nodebuilderjs/charts, que usa a mesma API do Recharts. Use ao criar dashboards, relatórios, séries temporais, comparações por categoria ou participação (pizza), e sempre que pensaria em usar Recharts, Chart.js ou Victory.
+description: Gráficos de linha, área, barra, composto e pizza/rosca no nodebuilder com @nodebuilderjs/core/charts, que usa a mesma API do Recharts. Use ao criar dashboards, relatórios, séries temporais, comparações por categoria ou participação (pizza), e sempre que pensaria em usar Recharts, Chart.js ou Victory.
 ---
 
-# Gráficos com `@nodebuilderjs/charts`
+# Gráficos com `@nodebuilderjs/core/charts`
 
-```sh
-bun add @nodebuilderjs/charts
-```
+Já vem no `@nodebuilderjs/core` (não instale nada); só entra no app se for importado.
 
 ```tsx
 import { createSignal, theme } from "@nodebuilderjs/core";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, XAxis, YAxis,
-} from "@nodebuilderjs/charts";
+} from "@nodebuilderjs/core/charts";
 
 const [vendas] = createSignal([
   { mes: "jan", receita: 120, meta: 100 },

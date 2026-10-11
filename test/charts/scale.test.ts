@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { niceScale } from "../../packages/charts/src/scale.js";
+import { niceScale } from "../../src/charts/scale.js";
 
 describe("niceScale", () => {
   test("round bounds and steps of 1, 2 or 5 times a power of ten", () => {

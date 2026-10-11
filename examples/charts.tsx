@@ -1,8 +1,8 @@
-// @nodebuilderjs/charts: the Recharts API shape, drawn by nodebuilder. LIVE=0 freezes the data.
+// @nodebuilderjs/core/charts: the Recharts API shape, drawn by nodebuilder. LIVE=0 freezes the data.
 import { Card, Column, Row, Scroll, Text, Window, createSignal, requestAnimationFrame, run } from "@nodebuilderjs/core";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, Tooltip, XAxis, YAxis,
-} from "@nodebuilderjs/charts";
+} from "@nodebuilderjs/core/charts";
 
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 let seed = 11;

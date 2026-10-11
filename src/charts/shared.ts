@@ -1,7 +1,7 @@
 // Pieces shared by the chart types: reading the configuration children, values and colors.
 
-import { theme } from "@nodebuilderjs/core";
-import { type ElementDesc, isElement } from "@nodebuilderjs/core/jsx-runtime";
+import { type ElementDesc, isElement } from "../jsx-runtime.js";
+import { theme } from "../theme.js";
 import type { DataKey, Row } from "./components.js";
 
 /** Default series colors, in order. */

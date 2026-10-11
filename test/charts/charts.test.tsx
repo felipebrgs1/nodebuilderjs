@@ -3,7 +3,7 @@ import { Column, UINode, createRoot, createSignal, layout, setTextMeasurer, them
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, Tooltip, XAxis, YAxis,
-} from "@nodebuilderjs/charts";
+} from "@nodebuilderjs/core/charts";
 import { parseColor } from "../../src/render/paint.js";
 import { type DrawCommand, drawCommands } from "../helpers.js";
 

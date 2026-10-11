@@ -3,4 +3,3 @@ native/build/
 dist/
 packages/*/nodebuilder.node
 /lib/
-/packages/charts/lib/

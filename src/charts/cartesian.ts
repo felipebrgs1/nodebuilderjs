@@ -1,8 +1,11 @@
 // Line, area and bar charts: one <Canvas> with a y scale from the data (always including
 // zero, like Recharts), categories along x, then grid, series, axes and legend.
 
-import { Canvas, type DrawContext, type MaybeAccessor, type StyleProps, read, theme } from "@nodebuilderjs/core";
-import type { Child, ElementDesc } from "@nodebuilderjs/core/jsx-runtime";
+import type { Child, ElementDesc } from "../jsx-runtime.js";
+import { type MaybeAccessor, read } from "../reactive/signals.js";
+import { theme } from "../theme.js";
+import { Canvas, type DrawContext } from "../widgets/canvas.js";
+import type { StyleProps } from "../widgets/props.js";
 import {
   Area, type AreaProps, Bar, type BarProps, CartesianGrid, type CartesianGridProps, type Curve, Legend, Line, type LineProps, type Row,
   XAxis, type XAxisProps, YAxis, type YAxisProps,

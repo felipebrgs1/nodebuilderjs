@@ -1,7 +1,8 @@
 // Pie and donut charts: slices clockwise from the top, sized by value.
 
-import { Canvas, type StyleProps } from "@nodebuilderjs/core";
-import type { Child } from "@nodebuilderjs/core/jsx-runtime";
+import type { Child } from "../jsx-runtime.js";
+import { Canvas } from "../widgets/canvas.js";
+import type { StyleProps } from "../widgets/props.js";
 import { Cell, type CellProps, Legend, Pie, type PieProps } from "./components.js";
 import { legend } from "./cartesian.js";
 import { LEGEND_HEIGHT, configs, number, palette, radius, value } from "./shared.js";

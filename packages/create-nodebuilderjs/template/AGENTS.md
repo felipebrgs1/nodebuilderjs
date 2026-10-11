@@ -27,7 +27,7 @@ que suportam skills as carregam sozinhos; os outros devem ler a skill do assunto
 | `nodebuilder-sem-react` | antes de instalar bibliotecas ou portar código React/web |
 | `nodebuilder-imagens` | imagens (PNG, JPEG, WebP, AVIF), arquivos no app |
 | `nodebuilder-icones` | ícones (Lucide, Phosphor) e SVG com `Icon` |
-| `nodebuilder-graficos` | gráficos prontos (`@nodebuilderjs/charts`, API do Recharts) |
+| `nodebuilder-graficos` | gráficos prontos (`@nodebuilderjs/core/charts`, API do Recharts) |
 | `nodebuilder-desenho` | desenho livre com `Canvas` |
 | `nodebuilder-testes` | testes sem janela (`mount`, `findByText`, `click`) |
 | `nodebuilder-empacotar` | AppImage/.deb/.rpm, arquivos embutidos, ícone e app id |

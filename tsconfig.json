@@ -9,11 +9,11 @@
     "jsxImportSource": "@nodebuilderjs/core",
     "paths": {
       "@nodebuilderjs/core": ["./src/index.ts"],
-      "@nodebuilderjs/core/*": ["./src/*.ts"],
-      "@nodebuilderjs/charts": ["./packages/charts/src/index.ts"]
+      "@nodebuilderjs/core/charts": ["./src/charts/index.ts"],
+      "@nodebuilderjs/core/*": ["./src/*.ts"]
     },
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["src", "examples", "test", "scripts", "cli", "packages/charts/src"]
+  "include": ["src", "examples", "test", "scripts", "cli"]
 }
