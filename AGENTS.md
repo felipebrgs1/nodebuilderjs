@@ -41,6 +41,8 @@ bun test                 # testes headless, sem janela
 bun run counter | todo   # exemplos (Bun executa .tsx direto)
 bun run dev              # todo com --watch
 bun run bench            # stress test com NB_STATS=1 (env: N=1000 MODE=one|all|static)
+bun run bench:dashboard  # app realista com abas (env: TAB=overview|table|logs|settings
+                         #   ROWS=500 LIVE=0 CYCLE=<frames por troca de aba>)
 scripts/measure.sh <rótulo> <arquivo.tsx> [s]          # CPU/RAM de um processo
 scripts/compare.sh <rótulo> <warm> <s> -- <comando...>  # CPU/RAM da árvore de processos
 ```
@@ -81,9 +83,9 @@ native/
     build.sh            compilação do backend (chamado por scripts/build-native.sh)
     protocols/          xdg-shell.xml (vendorizado; wayland-protocols não está instalado)
   build/<platform>-<arch>/  saída (nomes de process.platform/arch: linux-x64, ...)
-examples/        counter.tsx, todo.tsx, bench.tsx
+examples/        counter.tsx, todo.tsx, bench.tsx, dashboard.tsx
 test/            core.test.tsx (bun:test)
-compare/electron mesma cena do bench em Electron + DOM puro (baseline de comparação)
+compare/electron bench e dashboard em Electron + DOM puro (baseline; SCENE=dashboard)
 scripts/         build-native.sh, measure.sh, compare.sh
 ```
 
@@ -216,6 +218,20 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
 | 1000 células, 1 texto muda | 116 fps · 66% · 326 MB | 106 fps · 39% · 148 MB |
 | 1000 células, todas mudam | 111 fps · 237% · 439 MB | 104 fps · 65% · 192 MB |
 | 3000 células, todas mudam | 49 fps · 176% · 461 MB | 49 fps · 94% · 244 MB |
+
+- **Dashboard** (`examples/dashboard.tsx`, 500 serviços, ao vivo; mesmo hardware e data).
+  Electron: `SCENE=dashboard TAB=<aba> scripts/compare.sh <rótulo> 3 5 -- compare/electron/node_modules/.bin/electron --ozone-platform=wayland compare/electron`
+
+| Aba | Electron 44 (DOM puro) | nodebuilder |
+|---|---|---|
+| Visão geral (~190 nós) | 117 fps · 69% · 362 MB | 105 fps · 37% · 99 MB |
+| Serviços (~6000 nós, 500 linhas) | 116 fps · 82% · 376 MB | **81 fps** · 83% · 173 MB |
+| Logs (~1700 nós, 2 linhas/frame) | 102 fps · 153% · 452 MB | 108 fps · 70% · 180 MB |
+| Configurações (~130 nós) | 115 fps · 60% · 306 MB | 108 fps · 23% · 91 MB |
+| `CYCLE=30` (troca de aba a cada 30 frames) | 110 fps · 97% · 411 MB | 97 fps · 59% · 149 MB |
+
+  A aba Serviços é onde perdemos: ~470 linhas fora da tela entram no layout, na pintura
+  e no shaping todo frame (gargalos 1–3 abaixo); o Chromium só trabalha no que é visível.
 
 - Quebra da RAM do nodebuilder: Bun vazio 15 MB, + texto 26 MB, + janela GL 108 MB;
   o framework em si ~15 MB. O resto é driver.

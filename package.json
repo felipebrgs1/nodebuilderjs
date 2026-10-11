@@ -17,6 +17,7 @@
     "todo": "bun examples/todo.tsx",
     "dev": "bun --watch examples/todo.tsx",
     "bench": "NB_STATS=1 bun examples/bench.tsx",
+    "bench:dashboard": "NB_STATS=1 bun examples/dashboard.tsx",
     "measure": "sh scripts/measure.sh"
   },
   "engines": {
