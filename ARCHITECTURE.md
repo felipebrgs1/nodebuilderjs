@@ -169,6 +169,12 @@ borda suave. Tudo isso entra no mesmo lote dos retângulos e textos. O `<Canvas>
 chamadas de `draw` quando um signal lido muda (ou o tamanho e a escala mudam), já
 convertidas em segmentos e triângulos; pintar só desloca essa gravação.
 
+Gráficos (`packages/charts`, publicado como `@nodebuilderjs/charts`): `<LineChart>` e os
+outros são um `<Canvas>`. Os filhos (`<Line>`, `<XAxis>`...) não renderizam nada: como o
+`jsx()` só cria descrições (`ElementDesc`), o gráfico lê o tipo e as props de cada filho
+para saber o que desenhar, sem instanciá-los. Os passos dos eixos seguem o algoritmo do d3
+(1, 2 ou 5 vezes uma potência de 10). O pacote só usa a API pública do core.
+
 Coordenadas: o TypeScript trabalha em pixels lógicos; o C multiplica pela escala inteira da
 tela (Wayland: `preferred_buffer_scale`; X11: `Xft.dpi / 96`).
 

@@ -61,8 +61,7 @@ export function polyline(p: Pick<Painter, "line">, points: ArrayLike<number>, wi
 export function fillPolygon(p: Pick<Painter, "triangles">, points: ArrayLike<number>, color: Color, scale = 1) {
   const pts = distinct(points);
   const n = pts.length / 2;
-  const tris = n >= 3 ? triangulate(pts) : null;
-  if (!tris?.length) return;
+  if (n < 3 || !triangulate(pts)?.length) return;
   let signed = 0;
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
@@ -95,11 +94,16 @@ export function fillPolygon(p: Pick<Painter, "triangles">, points: ArrayLike<num
   }
 
   const verts: number[] = [], cover: number[] = [];
-  const add = (from: Float64Array, i: number, c: number) => {
+  const add = (from: ArrayLike<number>, i: number, c: number) => {
     verts.push(from[i * 2]!, from[i * 2 + 1]!);
     cover.push(c);
   };
-  for (const v of tris) add(inner, v, 1);
+  // Triangulate the inset ring itself: triangles of the original shape, moved inward, would
+  // flip where they are thinner than the inset (dense curves) and cover pixels twice. If the
+  // inset crosses itself (details under a pixel), fall back to the original points.
+  const insetTris = triangulate(inner);
+  const interior = insetTris?.length ? insetTris : triangulate(pts)!;
+  for (const v of interior) add(insetTris?.length ? inner : pts, v, 1);
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
     add(inner, i, 1); add(inner, j, 1); add(outer, j, 0);

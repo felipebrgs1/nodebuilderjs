@@ -8,7 +8,7 @@
 //   bun run npm:publish --skip-build --otp 123456   # publish dist/npm as is (2FA codes last ~30 s)
 import { $ } from "bun";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { buildNative, minGlibc } from "../cli/package/native.js";
 
@@ -30,8 +30,38 @@ const target = `${process.platform}-${process.arch}`;
 const platformDir = join(ROOT, "packages", target);
 
 const out = join(ROOT, "dist/npm");
-// Order matters for publishing: core's optional dependency must exist before core.
-const packages = [platformDir, ROOT, join(ROOT, "packages/create-nodebuilderjs")];
+// Order matters for publishing: core's optional dependency before core, core before charts.
+const packages = [platformDir, ROOT, join(ROOT, "packages/charts"), join(ROOT, "packages/create-nodebuilderjs")];
+
+/**
+ * JS (Bun.Transpiler) and declarations (tsc) of a TypeScript source folder, mirroring its
+ * subfolders. Hand-written .d.ts (src/assets.d.ts) stay in src/, which is published.
+ * `@nodebuilderjs/core` resolves to the core's generated declarations (`coreLib`), as for
+ * someone who installed it, so charts' declarations do not pull core sources in.
+ */
+async function buildLib(srcDir: string, libDir: string, coreLib = join(ROOT, "lib")): Promise<number> {
+  rmSync(libDir, { recursive: true, force: true });
+  mkdirSync(libDir, { recursive: true });
+  const transpiler = new Bun.Transpiler({ loader: "ts", target: "node" });
+  const sources = (readdirSync(srcDir, { recursive: true }) as string[]).filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"));
+  for (const file of sources) {
+    mkdirSync(dirname(join(libDir, file)), { recursive: true });
+    writeFileSync(join(libDir, file.replace(/\.ts$/, ".js")), transpiler.transformSync(readFileSync(join(srcDir, file), "utf8")));
+  }
+  const config = join(libDir, "tsconfig.lib.json");
+  writeJson(config, {
+    compilerOptions: {
+      declaration: true, emitDeclarationOnly: true, rootDir: srcDir, outDir: libDir, target: "esnext", module: "preserve",
+      moduleResolution: "bundler", strict: true, skipLibCheck: true, types: ["bun"],
+      typeRoots: [join(ROOT, "node_modules/@types")],
+      paths: { "@nodebuilderjs/core": [join(coreLib, "index.d.ts")], "@nodebuilderjs/core/*": [join(coreLib, "*.d.ts")] },
+    },
+    files: sources.map((f) => join(srcDir, f)),
+  });
+  await $`${join(ROOT, "node_modules/.bin/tsc")} -p ${config}`;
+  rmSync(config);
+  return sources.length;
+}
 const tarballOf = (dir: string) => {
   const name = readJson(join(dir, "package.json")).name as string;
   return join(out, `${name.replace("@", "").replace("/", "-")}-${version}.tgz`);
@@ -52,19 +82,10 @@ if (opts["skip-build"]) {
   console.log(`• versão ${version} em todos os pacotes`);
 
   // ---- lib/: JS + declarations for Node (Bun uses src/ through the "bun" export condition) ----
-  rmSync(join(ROOT, "lib"), { recursive: true, force: true });
-  mkdirSync(join(ROOT, "lib"));
-  const transpiler = new Bun.Transpiler({ loader: "ts", target: "node" });
-  // Hand-written declarations (src/assets.d.ts) stay in src/, which is published; index.d.ts points there.
-  // src/ has module folders (image/, widgets/...); lib/ mirrors them.
-  const sources = (readdirSync(join(ROOT, "src"), { recursive: true }) as string[]).filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"));
-  for (const file of sources) {
-    const code = transpiler.transformSync(readFileSync(join(ROOT, "src", file), "utf8"));
-    mkdirSync(dirname(join(ROOT, "lib", file)), { recursive: true });
-    writeFileSync(join(ROOT, "lib", file.replace(/\.ts$/, ".js")), code);
+  for (const [pkg, src] of [[ROOT, "src"], [join(ROOT, "packages/charts"), "src"]] as const) {
+    const count = await buildLib(join(pkg, src), join(pkg, "lib"));
+    console.log(`• ${relative(ROOT, join(pkg, "lib")) || "lib"}/: ${count} módulos (JS + .d.ts)`);
   }
-  await $`${join(ROOT, "node_modules/.bin/tsc")} ${sources.map((f) => join(ROOT, "src", f))} --ignoreConfig --declaration --emitDeclarationOnly --rootDir ${join(ROOT, "src")} --outDir ${join(ROOT, "lib")} --target esnext --module preserve --moduleResolution bundler --strict --skipLibCheck --types bun`;
-  console.log(`• lib/: ${sources.length} módulos (JS + .d.ts)`);
 
   // ---- prebuilt addon --------------------------------------------------------------
   const addon = await buildNative(ROOT, opts.native as "docker" | "local");

@@ -13,6 +13,16 @@
         "@nodebuilderjs/linux-x64": "workspace:*",
       },
     },
+    "packages/charts": {
+      "name": "@nodebuilderjs/charts",
+      "version": "0.1.1",
+      "peerDependencies": {
+        "@nodebuilderjs/core": "^0.1.1",
+      },
+      "optionalPeers": [
+        "@nodebuilderjs/core",
+      ],
+    },
     "packages/create-nodebuilderjs": {
       "name": "create-nodebuilderjs",
       "version": "0.1.1",
@@ -26,6 +36,8 @@
     },
   },
   "packages": {
+    "@nodebuilderjs/charts": ["@nodebuilderjs/charts@workspace:packages/charts"],
+
     "@nodebuilderjs/linux-x64": ["@nodebuilderjs/linux-x64@workspace:packages/linux-x64"],
 
     "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],

@@ -48,7 +48,7 @@ bun run build:native        # compila native/build/<platform>-<arch>/nodebuilder
 bun run typecheck           # tsc 7 --noEmit (~0,1 s)
 bun test                    # todos os testes, sem janela (~0,1 s)
 bun test test/svg.test.tsx  # um arquivo; -t "padrão" filtra pelo nome do teste
-bun run counter | todo | images | icons   # exemplos (Bun executa .tsx direto)
+bun run counter | todo | images | icons | drawing | charts   # exemplos (Bun executa .tsx direto)
 bun run dev                 # todo com --watch
 bun run bench               # stress test com NB_STATS=1 (env: N=1000 MODE=one|all|static)
 bun run bench:dashboard     # app realista (env: TAB=overview|table|logs|settings ROWS=500
@@ -173,12 +173,16 @@ native/
   build/<platform>-<arch>/  saída (nomes de process.platform/arch: linux-x64, ...)
 test/            um arquivo por módulo (bun:test; bunfig.toml limita o bun test a test/)
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> comandos com nome
+  charts/        testes do @nodebuilderjs/charts (escalas e cada tipo de gráfico)
   fixtures/      entradas e saídas de referência (.raw, .pnm do djpeg, PNG do librsvg...)
-examples/        counter, todo, images, icons, drawing, bench, dashboard (.tsx) + assets/
+examples/        counter, todo, images, icons, drawing, charts, bench, dashboard (.tsx) + assets/
 cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.ts
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces publicados junto com o core (veja "Publicação no npm")
   linux-x64/     @nodebuilderjs/linux-x64: só o addon pré-compilado (gerado, fora do git)
+  charts/        @nodebuilderjs/charts: gráficos com API no formato do Recharts, sobre o <Canvas>
+    src/         scale.ts (passos do d3), components.ts (filhos de configuração), cartesian.ts,
+                 pie.ts, shared.ts; só importa a API pública do core
   create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/ (AGENTS.md e
                          .agents/skills/; index.js cria os links em .claude/skills/)
 lib/             JS + .d.ts para o Node (gerado por scripts/npm.ts, fora do git)
@@ -366,6 +370,7 @@ todos com a versão do `package.json` da raiz:
 |---|---|
 | `@nodebuilderjs/core` | este repo: `src/` (Bun, condição `bun`), `lib/` (Node + tipos), `cli/` (bin `nodebuilder`) |
 | `@nodebuilderjs/linux-x64` | só `nodebuilder.node` portável, com `os`/`cpu`/`libc` |
+| `@nodebuilderjs/charts` | `packages/charts`: `src/` (Bun) e `lib/` (Node); core como peer dependency opcional |
 | `create-nodebuilderjs` | `bun create nodebuilderjs meu-app` (`npm create` também funciona) |
 
 - O binário vai como `optionalDependencies` do core (`workspace:*` no repo; o pack troca
@@ -373,7 +378,8 @@ todos com a versão do `package.json` da raiz:
 - `src/runtime/native.ts` tenta, nesta ordem: build local (`../../native/build/...`, só
   existe no repo) e o pacote `@nodebuilderjs/<plataforma>`. "Não encontrado" passa para o
   próximo; um addon encontrado que falha ao carregar (lib do sistema, glibc) é o erro.
-- `bun run npm:build`: sincroniza versões, gera `lib/` (espelhando as pastas de `src/`),
+- `bun run npm:build`: sincroniza versões, gera `lib/` do core e do charts (espelhando as
+  pastas de `src/`; os `.d.ts` do charts apontam para os do core),
   compila o addon portável (Docker) em `packages/linux-x64/` e empacota em `dist/npm/`.
   `bun run npm:publish` faz o mesmo e roda `bun publish` em cada tarball (binário antes do
   core). Precisa de login no npm e da org `@nodebuilderjs` criada.
@@ -452,6 +458,13 @@ todos com a versão do `package.json` da raiz:
   poucas funções usadas: assim não viram dependência de build nem de instalação. Só vale
   para APIs de handles e funções; se a API expõe structs que mudam entre versões, o layout
   quebra entre distros.
+
+- Uma peer dependency obrigatória faz o `bun install` baixar o pacote publicado do npm
+  (o charts pedia o core 0.1.1), criando uma segunda cópia do core no repositório. Por
+  isso a peer do charts é opcional (`peerDependenciesMeta`): no repositório, o core vem
+  dos `paths` do tsconfig; num app, já está instalado.
+- No teste ponta a ponta com o Node, instale cópias dos pacotes em `node_modules`, não
+  links simbólicos: o Node segue o link até o caminho real e não acha as dependências.
 
 ### Fixtures
 - O `PNG8:` do ImageMagick reduz o alfa da paleta a 0/255; por isso as fixtures de paleta

@@ -113,6 +113,25 @@ describe("fillPolygon", () => {
     expect(Math.min(...xs)).toBeCloseTo(-0.25, 3);
   });
 
+  test("dense curves: no interior triangle flips when pulled in by the fringe", () => {
+    // The area under a sampled curve has many slivers thinner than the half-pixel inset.
+    const pts = [0, 180];
+    for (let i = 0; i <= 1200; i++) pts.push(i * 0.4, 100 - Math.sin(i / 60) * 40);
+    pts.push(480, 180);
+    const [t] = fill(pts);
+    // Signed area of the interior triangles: the flipped ones cover pixels twice. (Slivers
+    // near zero area can flip from the 1e-3 rounding of decode(); they cover no pixel.)
+    let flipped = 0, total = 0;
+    for (let i = 0; i < t!.coverage.length; i += 3) {
+      if (t!.coverage[i] !== 1 || t!.coverage[i + 1] !== 1 || t!.coverage[i + 2] !== 1) continue;
+      const [ax, ay, bx, by, cx, cy] = t!.points.slice(i * 2, i * 2 + 6) as [number, number, number, number, number, number];
+      const a = ((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2;
+      total += a;
+      if (Math.sign(a) !== Math.sign(total) && Math.abs(a) > 1e-3) flipped += Math.abs(a);
+    }
+    expect(flipped).toBeLessThan(0.01); // was 25 px² before triangulating the inset ring
+  });
+
   test("self-intersecting or empty shapes draw nothing", () => {
     expect(fill([0, 0, 10, 10, 10, 0, 0, 10])).toEqual([]);
     expect(fill([0, 0, 10, 10])).toEqual([]);

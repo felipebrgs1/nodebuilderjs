@@ -55,7 +55,7 @@ código como o Claude Code.
   para listas e condições.
 
 Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens, ícones,
-desenho livre e um painel
+desenho livre, gráficos e um painel
 com abas, tabela e gráfico.
 
 ### Imagens
@@ -118,6 +118,33 @@ redondas, retas ou quadradas, polígonos preenchidos (côncavos inclusive), cír
 dão o tamanho. Os signals lidos em `draw` são rastreados: mudar um deles redesenha. A
 geometria é calculada quando os dados mudam, não a cada frame. Limites: polígono que cruza a
 si mesmo não é desenhado, e em linhas com cor translúcida as junções ficam mais escuras.
+
+### Gráficos
+
+```sh
+bun add @nodebuilderjs/charts
+```
+
+```tsx
+import { LineChart, Line, Area, AreaChart, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Legend } from "@nodebuilderjs/charts";
+
+<LineChart data={vendas} height={240}>        {/* data pode ser um signal: o gráfico acompanha */}
+  <CartesianGrid vertical={false} />
+  <XAxis dataKey="mes" />
+  <YAxis tickFormatter={(v) => `R$ ${v}`} />
+  <Line dataKey="receita" name="Receita" />
+  <Line dataKey="meta" stroke="#e5a50a" type="monotone" dot={false} />
+  <Legend />
+</LineChart>
+```
+
+A API segue o formato do Recharts: `LineChart`, `AreaChart`, `BarChart`, `ComposedChart` e
+`PieChart`, com `Line`, `Area`, `Bar`, `Pie`/`Cell`, `XAxis`, `YAxis`, `CartesianGrid` e
+`Legend` como filhos. Os eixos têm passos redondos (como o d3), o eixo y inclui o zero, e
+`type="monotone"` suaviza a curva. Tudo é desenhado com o `<Canvas>`, pela GPU. Ainda não há
+tooltip ao passar o mouse (`<Tooltip>` é aceito e ignorado), barras/áreas empilhadas,
+linhas tracejadas nem rótulos nas fatias.
 
 ## Distribuir
 

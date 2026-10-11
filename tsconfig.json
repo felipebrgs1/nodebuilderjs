@@ -7,9 +7,13 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "jsxImportSource": "@nodebuilderjs/core",
-    "paths": { "@nodebuilderjs/core": ["./src/index.ts"], "@nodebuilderjs/core/*": ["./src/*.ts"] },
+    "paths": {
+      "@nodebuilderjs/core": ["./src/index.ts"],
+      "@nodebuilderjs/core/*": ["./src/*.ts"],
+      "@nodebuilderjs/charts": ["./packages/charts/src/index.ts"]
+    },
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["src", "examples", "test", "scripts", "cli"]
+  "include": ["src", "examples", "test", "scripts", "cli", "packages/charts/src"]
 }

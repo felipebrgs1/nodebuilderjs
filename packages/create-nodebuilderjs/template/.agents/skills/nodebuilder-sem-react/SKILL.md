@@ -35,8 +35,9 @@ nem Solid**. O JSX parece o de sempre, mas os elementos são os widgets do
 - **Não funcionam:** tudo que renderiza React/Solid/Vue ou mexe no DOM: `lucide-react`,
   `lucide-solid`, `@phosphor-icons/react`, MUI, Chakra, shadcn/ui, Radix, Tailwind,
   styled-components, react-router, bibliotecas de gráficos em canvas/SVG do navegador.
-- Gráficos: desenhe com `<Canvas>` (linhas, áreas, pizza, rosca; skill
-  `nodebuilder-desenho`) em vez de Chart.js/Recharts/D3 (que precisam do DOM).
+- Gráficos: use `@nodebuilderjs/charts` (mesma API do Recharts; skill
+  `nodebuilder-graficos`) ou desenhe com `<Canvas>` (skill `nodebuilder-desenho`). Recharts,
+  Chart.js e D3 precisam do DOM e não funcionam.
 - Na dúvida: se o pacote importa `react`, `react-dom`, `solid-js/web` ou usa `document`,
   ele não serve aqui.
 
