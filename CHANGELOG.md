@@ -18,8 +18,9 @@
   nó), e arrastar continua chegando ao nó onde o clique começou.
 - **Testes de apps:** `interact(root)` em `@nodebuilderjs/core/testing` simula mouse e
   teclado sem janela (`hover`, `press`, `drag`, `scroll`, `key`, `type`).
-- **Apps criados com `bun create nodebuilderjs`** vêm com skills para agentes
-  (`.agents/skills/`, com links em `.claude/skills/`).
+- **Apps criados com `bun create nodebuilderjs`** vêm com um exemplo maior (contador, lista
+  de tarefas, gráfico ao vivo, ícones, estado num módulo e testes com `interact()`) e com
+  skills para agentes (`.agents/skills/`, com links em `.claude/skills/`).
 
 ### Desempenho
 - Culling: o que está fora da área visível de um `Scroll` não é posicionado, pintado nem

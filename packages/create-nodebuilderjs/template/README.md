@@ -11,4 +11,22 @@ bun run typecheck  # TypeScript 7
 bun run package    # AppImage, .deb, .rpm e .tar.gz em dist/
 ```
 
+## Estrutura
+
+```
+src/
+  main.tsx             abre a janela: run(() => <App />)
+  App.tsx              layout da tela; cria o estado e o passa aos componentes
+  estado.ts            signals e ações do app (contador, tarefas, histórico)
+  icones.ts            ícones SVG usados pelo app
+  componentes/
+    Contador.tsx       botões e texto reativo
+    Tarefas.tsx        campo de texto, lista com For/Checkbox, Show
+    Atividade.tsx      gráfico (@nodebuilderjs/core/charts) que acompanha o estado
+test/
+  App.test.tsx         testes sem janela: mount + interact (clicar, digitar)
+```
+
+Para apagar o exemplo e começar do zero, deixe só a `<Window>` em `App.tsx`.
+
 Requisitos: Linux com Wayland ou X11, [Bun](https://bun.sh) 1.4+.
