@@ -1,68 +1,120 @@
 # nodebuilder
 
-Protótipo de framework de UI nativa para Linux em TypeScript, rodando no Bun (também funciona no Node).
-Sem DOM, sem Electron, sem GTK/Qt: componentes TSX com reatividade estilo SolidJS,
-renderizados por um núcleo nativo próprio (Wayland + GLES2 + FreeType/HarfBuzz).
+Apps desktop **nativos para Linux** escritos em TypeScript e TSX.
 
-## Rodar
+Sem DOM, sem Electron, sem GTK/Qt: seus componentes são desenhados por um núcleo nativo
+pequeno (Wayland/X11 + OpenGL ES), com reatividade no estilo SolidJS. O resultado abre
+rápido, usa **entre um quarto e metade da memória** de um app Electron equivalente e vira um
+AppImage, `.deb` ou `.rpm` com um comando.
 
-```sh
-bun install            # dev: typescript 7 (tsgo), @types/bun, node-api-headers
-bun run build:native   # compila native/build/<platform>-<arch>/nodebuilder.node
-bun run counter        # exemplo contador (Bun executa o .tsx direto, sem build)
-bun run todo           # exemplo lista de tarefas
-bun run dev            # todo com --watch
-bun test               # testes headless (sem janela)
-bun run typecheck      # tsc 7 (compilador nativo em Go), só checagem
+```tsx
+import { Button, Column, Text, Window, createSignal, run } from "@nodebuilderjs/core";
+
+function App() {
+  const [count, setCount] = createSignal(0);
+  return (
+    <Window title="Contador" width={400} height={300}>
+      <Column grow={1} align="center" justify="center" gap={16}>
+        <Text fontSize={40} bold>{count}</Text>
+        <Button label="+1" variant="primary" onClick={() => setCount((c) => c + 1)} />
+      </Column>
+    </Window>
+  );
+}
+
+run(() => <App />);
 ```
 
-## Começar um app
+> **Estado:** versão 0.1, experimental. A API ainda pode mudar. Veja o [roadmap](ROADMAP.md).
+
+## Começar
+
+Requisitos: Linux com Wayland ou X11 e [Bun](https://bun.sh) 1.4+.
 
 ```sh
 bun create nodebuilderjs meu-app
 cd meu-app
 bun run dev        # abre a janela e reinicia ao salvar
-bun test           # testes sem janela
-bun run package    # AppImage, .deb, .rpm e .tar.gz em dist/
 ```
 
-O app depende de `@nodebuilderjs/core`, que traz o núcleo nativo pré-compilado
-(`@nodebuilderjs/linux-x64`, glibc 2.34+: Ubuntu 22.04+, Debian 12+, Fedora, RHEL 9+).
+O projeto já vem com um teste de exemplo (`bun test`, sem abrir janela), TypeScript
+configurado (`bun run typecheck`) e um `AGENTS.md` que explica o framework para agentes de
+código como o Claude Code.
+
+## Como funciona, em 30 segundos
+
+- **Componentes rodam uma vez.** Não há re-render nem virtual DOM. Estado é `createSignal`,
+  valores derivados são `createMemo`.
+- **Só funções são reativas.** `<Text>{count}</Text>` atualiza sozinho;
+  `<Text>{count()}</Text>` lê o valor uma vez. Vale para estilo também:
+  `background={() => (ativo() ? "#3584e4" : "#ffffff")}`.
+- **Estilo são props, não CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
+  `radius`, `color`, `fontSize`... O layout é flexbox.
+- **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Button`, `TextField`,
+  `Checkbox`, `Card`, `Divider`, `Spacer`, além de `<For>` e `<Show>` para listas e condições.
+
+Exemplos completos em [`examples/`](examples): contador, lista de tarefas e um painel com
+abas, tabela e gráfico.
 
 ## Distribuir
 
-`nodebuilder package <entrada.tsx>` gera um executável único (Bun + app + núcleo nativo) e o
-empacota como AppImage, `.deb`, `.rpm` e `.tar.gz`. Neste repositório:
-`bun run package examples/dashboard.tsx --name painel --title "Painel"`. Detalhes em AGENTS.md.
-
-Requisitos do sistema: sessão Wayland ou X11, headers de wayland-client/egl/cursor,
-libX11/Xcursor/Xrandr, EGL, GLESv2, xkbcommon, freetype2, harfbuzz e fontconfig.
-
-O backend é escolhido sozinho (Wayland, senão X11). Para forçar: `NB_BACKEND=x11` ou
-`NB_BACKEND=wayland`. `NB_DEBUG=1` mostra qual foi usado.
-
-## Arquitetura
-
-```
-examples/*.tsx      app do usuário (TSX + signals)
-src/reactive.ts     createSignal / createEffect / createMemo / createRoot / onCleanup
-src/jsx-runtime.ts  runtime JSX próprio (jsxImportSource: "@nodebuilderjs/core")
-src/control.ts      <Show>, <For> (keyed)
-src/node.ts         árvore retida (UINode); mutações agendam um frame
-src/layout.ts       flexbox simplificado (row/column, gap, padding, grow, align, justify, scroll)
-src/paint.ts        árvore -> buffer de comandos (Float32Array)
-src/widgets.ts      Window (decoração própria), Box/Row/Column, Text, Button, TextField, Checkbox, Card, Scroll
-src/app.ts          loop de eventos: hover, clique, foco, teclado, scroll, resize/move da janela
-native/include/     nb.h (API portável) + nb_platform.h (contrato por SO)
-native/core/        núcleo C portável: addon.c (N-API), text.c, render_gles2.c
-native/platform/    backends por SO; hoje linux/ (Wayland e X11, EGL, fontconfig)
+```sh
+bun run package
 ```
 
-O addon não usa libuv (o Bun não implementa): o backend do SO avisa que há eventos
-(no Linux, uma thread que só faz `poll()`), e o núcleo acorda o JS via
-`napi_threadsafe_function`. Toda leitura/dispatch acontece na thread do JS.
-Para portar a outro SO: implementar `native/include/nb_platform.h` em
-`native/platform/<os>/` (veja AGENTS.md).
+Gera em `dist/` um **AppImage**, um **`.deb`**, um **`.rpm`** e um **`.tar.gz`**, cada um com
+um executável único (Bun + seu app + núcleo nativo), atalho no menu e ícone. Funciona em
+Ubuntu 22.04+, Debian 12+, Fedora, RHEL 9+ e derivados.
 
-Componentes executam **uma vez**. Só props passadas como função (`text={() => ...}`,
-`{count}`) são reativas, e atualizam o nó diretamente, sem virtual DOM.
+## Benchmarks
+
+Mesma cena feita em nodebuilder e em Electron 44 com DOM puro (sem framework), na mesma
+máquina: i7-12700H, Intel Iris Xe, KDE Plasma (Wayland), teto de 120 fps.
+
+**App realista** ([`examples/dashboard.tsx`](examples/dashboard.tsx): barra lateral, abas,
+gráfico, tabela de 500 linhas e logs ao vivo):
+
+| Aba | Electron | nodebuilder |
+|---|---|---|
+| Visão geral | 117 fps · 69% CPU · 362 MB | 105 fps · **37% CPU · 99 MB** |
+| Tabela com 500 linhas | 116 fps · 82% CPU · 376 MB | 81 fps · 83% CPU · **173 MB** |
+| Logs ao vivo | 102 fps · 153% CPU · 452 MB | 108 fps · **70% CPU · 180 MB** |
+| Configurações | 115 fps · 60% CPU · 306 MB | 108 fps · **23% CPU · 91 MB** |
+
+**Teste de estresse** ([`examples/bench.tsx`](examples/bench.tsx): grade de células de texto):
+
+| Cenário | Electron | nodebuilder |
+|---|---|---|
+| 1000 células, parado | 0,2% CPU · 323 MB | 0,3% CPU · **122 MB** |
+| 1000 células, todas mudando | 111 fps · 237% CPU · 439 MB | 104 fps · **65% CPU · 192 MB** |
+| 3000 células, todas mudando | 49 fps · 176% CPU · 461 MB | 49 fps · **94% CPU · 244 MB** |
+
+Memória é PSS somado de todos os processos; CPU de 100% equivale a um núcleo inteiro.
+
+Onde ainda perdemos: listas longas. Hoje o nodebuilder calcula e desenha também o que está
+fora da tela, e é a primeira coisa no [roadmap](ROADMAP.md). Para reproduzir as medições,
+veja [ARCHITECTURE.md](ARCHITECTURE.md#medindo-desempenho).
+
+## Limitações atuais
+
+- Só Linux x64 (arm64, Windows e macOS estão no roadmap).
+- Texto sem quebra de linha e com uma fonte só (emojis não aparecem).
+- Campo de texto sem seleção, área de transferência e desfazer.
+- Sem imagens, animações, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).
+
+## Contribuir
+
+```sh
+git clone https://github.com/felipebrgs1/nodebuilderjs && cd nodebuilderjs
+bun install
+bun run build:native     # compila o núcleo em C (precisa dos headers de Wayland, X11, EGL...)
+bun run counter          # roda um exemplo
+bun test && bun run typecheck
+```
+
+[ARCHITECTURE.md](ARCHITECTURE.md) explica como o framework é organizado por dentro, e o
+[AGENTS.md](AGENTS.md) traz as regras e convenções do projeto.
+
+## Licença
+
+[MIT](LICENSE)

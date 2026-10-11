@@ -11,6 +11,11 @@ FreeType/HarfBuzz, em C via N-API). Sem DOM, sem Electron, sem GTK/Qt.
 Motivação: um "Flutter para o ecossistema JS". TypeScript porque LLMs escrevem TS/JSX
 muito bem, então o máximo possível do framework fica em TS, e o C fica pequeno e estável.
 
+Documentos: `README.md` é para quem usa o framework (também é o README do pacote no npm),
+`ARCHITECTURE.md` explica o funcionamento interno e `ROADMAP.md` lista as prioridades.
+Mudou algo que eles descrevem (API pública, benchmarks, arquitetura, uma limitação
+resolvida)? Atualize-os junto.
+
 ## Regras inegociáveis
 
 1. **Zero dependências de terceiros em runtime.** Só o próprio código + bibliotecas do
