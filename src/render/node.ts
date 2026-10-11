@@ -43,8 +43,13 @@ export interface Style {
 }
 
 export interface PointerEvent {
+  /** Window coordinates (logical px). */
   x: number;
   y: number;
+  /** Position relative to the node handling the event (its top-left corner). */
+  localX: number;
+  localY: number;
+  /** 0 left, 1 middle, 2 right; on moves, the held button or -1. */
   button: number;
   /** Number of quick successive clicks (2 = double click). */
   clicks: number;
@@ -73,6 +78,8 @@ export interface Handlers {
   onPointerUp?: (e: PointerEvent) => void;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
+  /** The pointer moved over this node, or anywhere while a press that started here is held. */
+  onPointerMove?: (e: PointerEvent) => void;
   onScroll?: (e: ScrollEvent) => void;
   onKeyDown?: (e: KeyEvent) => void;
   onFocus?: () => void;

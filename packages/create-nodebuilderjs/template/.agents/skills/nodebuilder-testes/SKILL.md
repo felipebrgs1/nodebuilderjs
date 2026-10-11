@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-testes
-description: Escrever e depurar testes de apps nodebuilder com bun test, sem abrir janela (mount, findByText, click, layout, debugTree). Use ao criar testes, ao verificar uma mudança de comportamento ou layout, ou quando um teste de componente falha.
+description: Escrever e depurar testes de apps nodebuilder com bun test, sem abrir janela (mount, findByText, click, interact para mouse e teclado, layout, debugTree). Use ao criar testes, ao verificar uma mudança de comportamento ou layout, ou quando um teste de componente falha.
 ---
 
 # Testes sem janela
@@ -32,14 +32,25 @@ test("adiciona uma tarefa", () => {
   chame `relayout()` antes de checar `x`, `y`, `width`, `height` depois de mudar estado.
 - `findByText(root, "texto" | /regex/)`: primeiro `Text` cujo conteúdo inteiro bate.
 - `findAll(root, (n) => ...)`: busca livre; `n.label` é `"Text \"...\""`, `"Button"`, `"Row"`...
-- `click(node)`: dispara o `onClick` do nó ou do ancestral mais próximo.
+- `click(node)`: dispara o `onClick` do nó ou do ancestral mais próximo (atalho rápido).
+- `interact(root)`: mouse e teclado entregues como no app de verdade (hover, foco, captura
+  ao arrastar, Tab): `hover(n)`, `press(n)`, `release(n)`, `drag(n, dx, dy)`, `move(x, y)`,
+  `scroll(n, dy)`, `key("Return")`, `type("texto")` e `focused`.
+
+```tsx
+const ui = interact(root);
+ui.press(campo);            // foca o TextField
+ui.type("Ana");             // digita no campo focado
+ui.key("Return");           // dispara o onSubmit
+ui.drag(slider, 80, 0);     // arrasta 80 px para a direita
+```
 - `debugTree(node)` (de `@nodebuilderjs/core`): árvore com posições, ótimo para ver o layout.
 
 ## Dicas
 
 - Estado muda na hora (signals são síncronos); não há `await` nem `act()`.
-- Digitação: não há helper para digitar no `TextField`; mude o signal que ele usa
-  (ex.: `setNome("Ana")`, exportado ou passado por props) e teste o efeito.
+- Prefira `interact` a chamar handlers à mão: ele testa também foco, hover e propagação.
+  Depois de mudanças que movem nós, chame `relayout()` antes de interagir de novo.
 - Teste cálculos de layout com tamanhos fixos (`width`, `height`) para não depender das
   métricas falsas.
 - Antes de concluir uma tarefa: `bun run typecheck && bun test`.

@@ -1,0 +1,53 @@
+import { expect, test } from "bun:test";
+import { Box, Button, Column, Scroll, Text, TextField, createSignal } from "@nodebuilderjs/core";
+import type { PointerEvent } from "@nodebuilderjs/core";
+import { findByText, interact, mount } from "@nodebuilderjs/core/testing";
+
+test("interact: hover, press and release go through the real event delivery", () => {
+  const log: string[] = [];
+  const { root } = mount(() => (
+    <Column align="start">
+      <Button label="Salvar" onClick={() => log.push("click")} />
+    </Column>
+  ));
+  const ui = interact(root);
+  const label = findByText(root, "Salvar")!;
+  ui.hover(label);
+  ui.press(label);
+  ui.release(label);
+  expect(log).toEqual(["click"]);
+});
+
+test("interact: type into the focused text field, with keys like BackSpace", () => {
+  const [name, setName] = createSignal("");
+  const { root } = mount(() => <Column><TextField value={name} onInput={setName} placeholder="Nome" /></Column>);
+  const ui = interact(root);
+  ui.press(root.children[0]!.children[0]!); // focus the field
+  ui.type("Anaa");
+  ui.key("BackSpace");
+  expect(name()).toBe("Ana");
+});
+
+test("interact: drag delivers moves with local positions while pressed", () => {
+  const seen: number[] = [];
+  const { root } = mount(() => (
+    <Column align="start">
+      <Box width={200} height={20} onPointerMove={(e: PointerEvent) => seen.push(Math.round(e.localX))} />
+    </Column>
+  ));
+  const track = root.children[0]!.children[0]!;
+  interact(root).drag(track, 150, 0); // from the center (100) to 250, past the end
+  expect(seen[0]).toBe(100);
+  expect(seen[seen.length - 1]).toBe(250);
+});
+
+test("interact: scroll over a node", () => {
+  const { root } = mount(() => (
+    <Scroll height={100}>
+      <Box height={500} />
+      <Text>fim</Text>
+    </Scroll>
+  ));
+  interact(root).scroll(root.children[0]!, 60);
+  expect(root.children[0]!.scrollY).toBe(60);
+});

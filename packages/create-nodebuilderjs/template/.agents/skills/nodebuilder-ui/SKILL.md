@@ -42,8 +42,11 @@ const [nome, setNome] = createSignal("");
 - Visual: `background`, `radius`, `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}`.
 - Texto (herdados pelos filhos): `color`, `fontSize`, `bold`. Cursor: `cursor="pointer"`.
 - Cores são strings hex (`"#3584e4"`, `"#00000010"` com alfa) ou `"transparent"`.
-- Eventos em qualquer contêiner: `onClick`, `onPointerDown/Up/Enter/Leave`, `onScroll`,
-  `onKeyDown`, `onFocus`, `onBlur`. `onKeyDown` só chega pelo caminho do elemento focado.
+- Eventos em qualquer contêiner: `onClick`, `onPointerDown/Up/Enter/Leave`,
+  `onPointerMove`, `onScroll`, `onKeyDown`, `onFocus`, `onBlur`. Eventos de ponteiro trazem
+  `x`/`y` (janela) e `localX`/`localY` (relativos ao nó); enquanto o botão está pressionado,
+  `onPointerMove` continua chegando ao nó onde o clique começou, mesmo fora dele (arrastar,
+  sliders). `onKeyDown` só chega pelo caminho do elemento focado.
 - Qualquer prop aceita valor fixo ou função: `background={() => (sel() ? a : b)}`.
 
 ## Regras do layout (flexbox simplificado)

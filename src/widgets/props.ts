@@ -13,7 +13,7 @@ const STYLE_KEYS: (keyof Style)[] = [
   "shadow", "color", "fontSize", "bold", "cursor",
 ];
 const HANDLER_KEYS: (keyof Handlers)[] = [
-  "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onScroll", "onKeyDown", "onFocus", "onBlur",
+  "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur",
 ];
 
 /** Binds style props (static or reactive) and event handlers onto a node. */

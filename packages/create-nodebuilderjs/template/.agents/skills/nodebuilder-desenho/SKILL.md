@@ -49,5 +49,6 @@ const [dados, setDados] = createSignal([12, 40, 33, 70, 55, 90]);
   (`- 0.03` na varredura) separa as fatias visualmente.
 - Cores translúcidas em `polyline` escurecem nas junções: prefira cores opacas para linhas
   e translúcidas para áreas.
-- Interação (tooltip, clique num ponto): use os eventos do próprio `Canvas`
-  (`onPointerMove` ainda não existe; `onClick` dá `e.x`/`e.y` em coordenadas da janela).
+- Interação (tooltip, clique num ponto, arrastar): use `onPointerMove`/`onClick` no próprio
+  `Canvas`; `e.localX`/`e.localY` estão nas mesmas coordenadas do desenho (o `padding`
+  desloca: subtraia-o).

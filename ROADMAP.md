@@ -125,11 +125,11 @@ Em andamento, nesta ordem:
    API no formato do Recharts; no core, num subcaminho (o tree-shaking tira o que não é
    usado; começou como pacote separado e foi trazido para o core). O que falta está nos
    itens 4 e 5.
-4. **Entrega de eventos testável e `onPointerMove`:** tirar de dentro do `run()`
-   (`runtime/app.ts`) o hit test, o hover, o foco, o clique e a rolagem, para um módulo que
-   recebe eventos e uma árvore, e testá-lo sem janela (hoje só dá para testar `onClick`
-   pelo helper `click`). Com isso, adicionar `onPointerMove` (com a posição local ao nó),
-   base para tooltips, arrastar e sliders.
+4. ~~**Entrega de eventos testável e `onPointerMove`:**~~ **feito** (2026-10-11):
+   `runtime/input.ts` com 20 testes sem janela; `onPointerMove` com `localX`/`localY` e
+   captura enquanto o botão está pressionado; `interact()` em `@nodebuilderjs/core/testing`
+   para os apps testarem mouse e teclado (inclusive digitar num `TextField`).
+   Base para tooltips, arrastar e sliders.
 5. **Gráficos, segunda etapa:**
    - `<Tooltip>` de verdade: linha-guia no ponto mais próximo do ponteiro e uma caixa com os
      valores das séries (usa o item 4);

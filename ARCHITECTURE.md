@@ -194,6 +194,13 @@ O Bun não implementa a libuv, então o addon não pode usá-la. Em vez disso:
 Toda leitura, todo dispatch e toda chamada GL acontecem na thread do JS. A thread extra
 nunca toca em estado compartilhado além de acordar o JS.
 
+No TypeScript, `runtime/input.ts` transforma os eventos crus em eventos de interface: hit
+test (ignorando nós `culled`), hover com entrada e saída, cursor, bordas de
+redimensionar, foco, clique e duplo clique, captura do ponteiro enquanto um botão está
+pressionado, rolagem e teclado com Tab. O que é janela (mover, redimensionar, cursor,
+relógio) passa por uma interface `InputHost`; o `run()` liga isso ao addon, e os testes (e o
+`interact()` de `@nodebuilderjs/core/testing`) usam um host sem janela.
+
 ## Wayland e X11
 
 O backend é escolhido em tempo de execução: Wayland se houver `WAYLAND_DISPLAY`, senão X11

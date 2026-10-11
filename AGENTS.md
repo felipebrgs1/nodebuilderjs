@@ -80,6 +80,7 @@ de desenho, pixels), não dos detalhes internos, para que refatorar não quebre 
 | Reatividade, `For`/`Show` | signals e effects direto; conte execuções e descartes |
 | Widgets e layout | monte com `mount` (`@nodebuilderjs/core/testing`) ou `insert` num `UINode` raiz, rode `layout()` e confira `x`/`y`/`width`/`height` ou `debugTree()`. Métricas falsas: 8 px por caractere, linha de 20 px |
 | Pintura e command buffer | `drawCommands(node)` / `decode(buffer)` de `test/helpers.ts` devolvem os comandos com nome (`{ op: "line", x0, ... }`). Primitiva de desenho nova começa aqui |
+| Eventos (mouse, teclado, foco) | `interact(root)` de `@nodebuilderjs/core/testing`, ou `createInput(root, host)` de `runtime/input.ts` com um host falso que registra mover/redimensionar/cursor e controla o relógio |
 | Imagens e texturas | `setImageBackend({ create, destroy })` registra criação e liberação de texturas |
 | Decodificadores e rasterizadores | testes "golden": a saída da referência (libjpeg-turbo, libwebp, librsvg, ImageMagick) fica em `test/fixtures/`, gerada uma vez; compare byte a byte ou com tolerância explícita. Depois, fuzzing com bytes trocados e arquivos truncados: todo erro é uma mensagem do formato (nunca um TypeError), e dimensões absurdas são recusadas antes de alocar (limite de 2^28 pixels) |
 | Addon (o que roda sem janela) | chame a função nativa pelo `loadNative()` num teste; use `test.skipIf` quando depender de algo opcional do sistema (ex.: libheif) |
@@ -90,16 +91,18 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
   a janela ativa com `spectacle -b -n -a -o <scratch>/x.png`; inspecione pixels com
   `magick` (crop + `-filter point -resize 800%`). O teste automático cobre o lado TS
   (os comandos emitidos); a captura cobre o C.
-- **Teclado** (acentos, teclas mortas): a automação não digita; peça ao usuário.
+- **Teclado do sistema** (acentos, teclas mortas, compose): o caminho xkb -> texto é do C e
+  só dá para testar digitando de verdade; peça ao usuário. Do evento de tecla em diante
+  (foco, Tab, TextField), use `interact().key/type`.
 - **Desempenho:** o "teste" é a medição. Meça antes de mudar (`NB_STATS=1` e
   `scripts/compare.sh` na mesma cena), mude, meça de novo na mesma sessão e registre os dois
   números. Otimização sem número de antes e depois não entra.
 
 ### Organização dos testes
 
-- Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `image`, `jpeg`,
-  `webp`, `svg` (+ `<Icon>`), `geometry` (triangulação), `draw` (primitivas e `shapes.ts`) e
-  `canvas`. Assunto novo ganha arquivo novo; quando o `core` crescer, divida-o.
+- Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `input` (eventos),
+  `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
+  (triangulação), `draw` (primitivas e `shapes.ts`), `canvas` e `charts/`. Assunto novo ganha arquivo novo; quando o `core` crescer, divida-o.
 - Testes rápidos e determinísticos: sem rede, sem relógio, sem janela. A suíte toda roda em
   ~0,1 s; um teste que precise de mais que isso deve ter um motivo.
 - Fixtures pequenas (poucos KB). Registre de onde vieram (ferramenta e versão, como em
@@ -121,7 +124,7 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
 src/                   um módulo por pasta; imports relativos com `.js`
   index.ts             API pública (reexporta os módulos)
   jsx-runtime.ts       runtime JSX próprio; jsx() só cria descrições (ElementDesc)
-  testing.ts           @nodebuilderjs/core/testing: mount, findByText, click
+  testing.ts           @nodebuilderjs/core/testing: mount, findByText, click, interact
   theme.ts             cores/tamanhos padrão (tema claro)
   assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts referencia com preserve="true")
   reactive/
@@ -133,7 +136,8 @@ src/                   um módulo por pasta; imports relativos com `.js`
     paint.ts           árvore -> CommandBuffer (Float32Array) + parseColor
     shapes.ts          polyline (segmentos LINE) e fillPolygon (triangulação + franja de AA)
   runtime/
-    app.ts             run(), eventos, foco, hover, agendamento de frames, NB_STATS
+    app.ts             run(): janela, agendamento de frames, NB_STATS; liga o input ao addon
+    input.ts           eventos -> UI: hit test, hover, cursor, foco, cliques, captura, rolagem, teclado
     native.ts          carrega native/build/<plataforma>-<arch>/nodebuilder.node (require literais)
   widgets/             um arquivo por widget; index.ts reexporta
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps, inherited, interaction
