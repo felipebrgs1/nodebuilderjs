@@ -18,7 +18,7 @@ typedef struct {
   int width, height;  // logical px
 } nb_window_options;
 
-// Resize edges (bitmask), matching what src/app.ts sends.
+// Resize edges (bitmask), matching what src/runtime/app.ts sends.
 enum { NB_EDGE_TOP = 1, NB_EDGE_BOTTOM = 2, NB_EDGE_LEFT = 4, NB_EDGE_RIGHT = 8 };
 
 /** Creates the window and a current GLES2-compatible context. Queues the first NB_EV_CONFIGURE. */

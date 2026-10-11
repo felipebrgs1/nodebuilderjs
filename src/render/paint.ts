@@ -1,7 +1,7 @@
 // Walks the laid-out tree and encodes draw commands into a Float32Array that the
 // native renderer executes in one go (format: native/include/nb.h, consumer: native/core/render_gles2.c).
 
-import { type ImageSource, imageHandle } from "./image.js";
+import { type ImageSource, imageHandle } from "../image/source.js";
 import type { Color, Painter, UINode } from "./node.js";
 
 const OP_RECT = 1;

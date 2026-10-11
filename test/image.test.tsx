@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { Column, Image, Show, UINode, createRoot, createSignal, decodeImage, layout, setTextMeasurer } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
-import { setImageBackend } from "../src/image.js";
-import { loadNative } from "../src/native.js";
-import { CommandBuffer, paintTree } from "../src/paint.js";
+import { setImageBackend } from "../src/image/source.js";
+import { loadNative } from "../src/runtime/native.js";
+import { CommandBuffer, paintTree } from "../src/render/paint.js";
 
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
 

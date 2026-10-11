@@ -1,8 +1,8 @@
 // Control flow components, mirroring SolidJS.
 
-import { type Child, resolve } from "./jsx-runtime.js";
-import type { UINode } from "./node.js";
-import { type Accessor, type MaybeAccessor, createMemo, createRoot, createSignal, onCleanup, read, untrack } from "./reactive.js";
+import { type Child, resolve } from "../jsx-runtime.js";
+import type { UINode } from "../render/node.js";
+import { type Accessor, type MaybeAccessor, createMemo, createRoot, createSignal, onCleanup, read, untrack } from "./signals.js";
 
 export function Show(props: { when: MaybeAccessor<unknown>; fallback?: Child; children?: Child }): Child {
   const visible = createMemo(() => !!read(props.when));

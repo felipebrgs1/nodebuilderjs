@@ -8,7 +8,7 @@
 //   bun run npm:publish --skip-build --otp 123456   # publish dist/npm as is (2FA codes last ~30 s)
 import { $ } from "bun";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { buildNative, minGlibc } from "../cli/package/native.js";
 
@@ -56,12 +56,14 @@ if (opts["skip-build"]) {
   mkdirSync(join(ROOT, "lib"));
   const transpiler = new Bun.Transpiler({ loader: "ts", target: "node" });
   // Hand-written declarations (src/assets.d.ts) stay in src/, which is published; index.d.ts points there.
-  const sources = readdirSync(join(ROOT, "src")).filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"));
+  // src/ has module folders (image/, widgets/...); lib/ mirrors them.
+  const sources = (readdirSync(join(ROOT, "src"), { recursive: true }) as string[]).filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"));
   for (const file of sources) {
     const code = transpiler.transformSync(readFileSync(join(ROOT, "src", file), "utf8"));
+    mkdirSync(dirname(join(ROOT, "lib", file)), { recursive: true });
     writeFileSync(join(ROOT, "lib", file.replace(/\.ts$/, ".js")), code);
   }
-  await $`${join(ROOT, "node_modules/.bin/tsc")} ${sources.map((f) => join(ROOT, "src", f))} --ignoreConfig --declaration --emitDeclarationOnly --outDir ${join(ROOT, "lib")} --target esnext --module preserve --moduleResolution bundler --strict --skipLibCheck --types bun`;
+  await $`${join(ROOT, "node_modules/.bin/tsc")} ${sources.map((f) => join(ROOT, "src", f))} --ignoreConfig --declaration --emitDeclarationOnly --rootDir ${join(ROOT, "src")} --outDir ${join(ROOT, "lib")} --target esnext --module preserve --moduleResolution bundler --strict --skipLibCheck --types bun`;
   console.log(`• lib/: ${sources.length} módulos (JS + .d.ts)`);
 
   // ---- prebuilt addon --------------------------------------------------------------

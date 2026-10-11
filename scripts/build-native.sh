@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Builds the native addon for the current OS into native/build/<platform>-<arch>/.
 # <platform>/<arch> use Node/Bun names (process.platform / process.arch) so the
-# loader in src/native.ts can find the right binary. Each OS has its own
+# loader in src/runtime/native.ts can find the right binary. Each OS has its own
 # native/platform/<os>/build.sh; this script only picks it and sets common vars.
 set -eu
 cd "$(dirname "$0")/.."

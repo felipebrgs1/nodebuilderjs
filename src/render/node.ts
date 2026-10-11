@@ -1,7 +1,7 @@
 // The retained UI tree. Nodes are created once by components and then mutated
 // in place by reactive bindings; any mutation schedules a new frame.
 
-import type { ImageSource } from "./image.js";
+import type { ImageSource } from "../image/source.js";
 
 export type Color = string;
 export type Edges = number | [vertical: number, horizontal: number] | [top: number, right: number, bottom: number, left: number];

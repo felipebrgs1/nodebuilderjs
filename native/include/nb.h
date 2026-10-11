@@ -60,7 +60,7 @@ void nb_text_atlas_uploaded(void);
 
 // ---- core/render_gles2.c ----------------------------------------------------
 
-// Command buffer opcodes (producer: src/paint.ts; keep both in sync).
+// Command buffer opcodes (producer: src/render/paint.ts; keep both in sync).
 enum {
   NB_OP_RECT = 1,
   NB_OP_TEXT = 2,

@@ -45,12 +45,12 @@ function candidates(target: string): (() => Native)[] {
   switch (target) {
     case "linux-x64":
       return [
-        () => (r ? r("../native/build/linux-x64/nodebuilder.node") : require("../native/build/linux-x64/nodebuilder.node")),
+        () => (r ? r("../../native/build/linux-x64/nodebuilder.node") : require("../../native/build/linux-x64/nodebuilder.node")),
         () => (r ? r("@nodebuilderjs/linux-x64/nodebuilder.node") : require("@nodebuilderjs/linux-x64/nodebuilder.node")),
       ];
     case "linux-arm64":
       return [
-        () => (r ? r("../native/build/linux-arm64/nodebuilder.node") : require("../native/build/linux-arm64/nodebuilder.node")),
+        () => (r ? r("../../native/build/linux-arm64/nodebuilder.node") : require("../../native/build/linux-arm64/nodebuilder.node")),
         () => (r ? r("@nodebuilderjs/linux-arm64/nodebuilder.node") : require("@nodebuilderjs/linux-arm64/nodebuilder.node")),
       ];
     default:

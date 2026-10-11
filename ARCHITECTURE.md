@@ -9,15 +9,13 @@ para as regras e convenções de quem mexe no código, veja o [AGENTS.md](AGENTS
  seu app (.tsx)
      │  componentes, signals
 ┌────▼──────────────────────────────── TypeScript (src/) ──────────────────────┐
-│ reactive.ts   signals, effects, memos, ownership                             │
-│ jsx-runtime   JSX -> descrições preguiçosas; control.ts: <For>, <Show>       │
-│ widgets.ts    Window, Column, Text, Image, Button... criam UINodes           │
-│ image.ts      fontes de imagem; png.ts, jpeg.ts, webp.ts: decodificadores    │
-│ svg.ts        SVG para ícones: geometria, contornos e rasterização           │
-│ node.ts       árvore retida (UINode) + estilo; mudanças chamam invalidate()  │
-│ layout.ts     flexbox simplificado                                           │
-│ paint.ts      árvore -> command buffer (Float32Array + textos)               │
-│ app.ts        loop de frames, eventos, foco, hover, NB_STATS                 │
+│ reactive/     signals, effects, memos, ownership; <For>, <Show>              │
+│ jsx-runtime   JSX -> descrições preguiçosas                                  │
+│ widgets/      Window, Column, Text, Image, Icon, Button... criam UINodes     │
+│ image/        fontes de imagem; decodificadores PNG, JPEG, WebP              │
+│ svg/          SVG para ícones, sobre geometry/ (caminhos, contornos, raster) │
+│ render/       node: árvore retida · layout: flexbox · paint: command buffer  │
+│ runtime/      loop de frames, eventos, foco, hover, NB_STATS; addon nativo   │
 └────┬─────────────────────────────────────────────────────────────────────────┘
      │  N-API: render(commands, texts), measureText, createImage, decodeImage, eventos
 ┌────▼──────────────────────────── núcleo portável (native/core/) ─────────────┐
@@ -42,7 +40,7 @@ eventos, medir texto e desenhar uma lista de retângulos, textos, imagens e reco
 
 ## Reatividade
 
-O modelo é o do SolidJS, implementado do zero em `src/reactive.ts`:
+O modelo é o do SolidJS, implementado do zero em `src/reactive/signals.ts`:
 
 - `createSignal` guarda um valor e sabe quem o leu. Ao mudar, reexecuta só esses leitores.
 - `createEffect` e `createMemo` registram as leituras feitas durante a execução.
@@ -84,7 +82,7 @@ monitor (XRandR).
 
 ## Layout
 
-`src/layout.ts` é um flexbox simplificado: `direction`, `gap`, `padding`, `grow`, `align`
+`src/render/layout.ts` é um flexbox simplificado: `direction`, `gap`, `padding`, `grow`, `align`
 (padrão `stretch`), `justify`, `min/max`, e `position: "absolute"` com `left/top`.
 
 O encolhimento segue o `min-size: auto` do CSS: um filho não fica menor que o próprio
@@ -105,7 +103,7 @@ isso não custar uma ida ao cache global. O layout incremental está no
 
 ## Command buffer
 
-A pintura não chama o C nó a nó: `paint.ts` escreve tudo num único `Float32Array`, que
+A pintura não chama o C nó a nó: `render/paint.ts` escreve tudo num único `Float32Array`, que
 cruza a fronteira N-API uma vez por frame, junto com um array de textos.
 
 | Op | Código | Floats seguintes |
@@ -118,7 +116,7 @@ cruza a fronteira N-API uma vez por frame, junto com um array de textos.
 | IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tinta; a = opacidade) · radius · id da imagem |
 
 O formato existe em três lugares que precisam ficar em sincronia: `native/include/nb.h`,
-`src/paint.ts` e `native/core/render_gles2.c`.
+`src/render/paint.ts` e `native/core/render_gles2.c`.
 
 ## Renderização
 
@@ -134,8 +132,8 @@ Texto: o HarfBuzz faz o shaping (acentos, ligaduras, kerning), o FreeType raster
 glifo uma vez e o guarda num atlas de textura. As medidas que o layout pede ao C ficam em
 cache no lado TypeScript.
 
-Imagens: PNG, JPEG e WebP são decodificados em TypeScript para RGBA (`src/png.ts` com o
-zlib do runtime, `src/jpeg.ts`, `src/webp.ts`). Os três reproduzem exatamente a saída das
+Imagens: PNG, JPEG e WebP são decodificados em TypeScript para RGBA (`src/image/png.ts`
+com o zlib do runtime, `jpeg.ts`, `webp.ts`). Os três reproduzem exatamente a saída das
 bibliotecas de referência: o JPEG usa a IDCT inteira, o upsampling "fancy" e as tabelas de
 cor do libjpeg-turbo; o WebP, o upsampling e as fórmulas de ponto fixo do libwebp. AVIF e
 HEIC precisariam de um decodificador de AV1/HEVC, então vão para o SO:
@@ -145,11 +143,11 @@ com `dlopen`. A API dela só tem handles e funções, então as poucas declaraç
 para compilar. `createImage` copia os pixels para o C, que os pré-multiplica e cria a textura no
 primeiro frame que a desenha (pode não haver contexto GL antes disso). Cada troca de imagem
 dentro de um frame fecha o batch, então muitas imagens diferentes custam uma chamada de
-desenho cada. `src/image.ts` divide uma decodificação entre todos os `<Image>` do mesmo
+desenho cada. `src/image/source.ts` divide uma decodificação entre todos os `<Image>` do mesmo
 arquivo (por caminho) e libera a textura quando o último sai da árvore. Uma imagem que não
 carrega mostra um aviso no console e não desenha nada.
 
-Ícones (`src/svg.ts`): o SVG vira polígonos no espaço do usuário. Curvas e arcos são
+Ícones (`src/svg/`, sobre `src/geometry/`): o SVG vira polígonos no espaço do usuário. Curvas e arcos são
 achatados com erro de 0,1 pixel da tela, e cada contorno vira um polígono por segmento,
 junção e ponta, todos no mesmo sentido, para que um preenchimento "nonzero" faça a união
 sem desenhar duas vezes onde se sobrepõem. Um rasterizador de linhas de varredura calcula a
@@ -170,7 +168,7 @@ O Bun não implementa a libuv, então o addon não pode usá-la. Em vez disso:
 2. Quando há algo, ela chama `wake()`, e o núcleo acorda o JS por uma
    `napi_threadsafe_function`.
 3. Já na thread do JS, `nb_platform_pump_process()` lê e despacha tudo (no Wayland,
-   sem bloquear), e os eventos chegam ao `app.ts` em lote.
+   sem bloquear), e os eventos chegam ao `runtime/app.ts` em lote.
 
 Toda leitura, todo dispatch e toda chamada GL acontecem na thread do JS. A thread extra
 nunca toca em estado compartilhado além de acordar o JS.
@@ -196,7 +194,7 @@ ANGLE (GLES sobre Direct3D/Metal) ou um novo `render_<api>.c` com a mesma interf
 
 ## Carregando o núcleo nativo
 
-`src/native.ts` procura o addon nesta ordem:
+`src/runtime/native.ts` procura o addon nesta ordem:
 
 1. `native/build/<plataforma>-<arch>/nodebuilder.node`, que só existe num checkout do
    framework depois de `bun run build:native`;

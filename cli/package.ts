@@ -128,7 +128,7 @@ export async function packageCommand(argv: string[]) {
     define: { "process.env.NB_APP_ID": JSON.stringify(app.appId) },
     plugins: [
       {
-        // src/native.ts names every candidate addon (local build and npm package, per platform);
+        // src/runtime/native.ts names every candidate addon (local build and npm package, per platform);
         // embed only the chosen one and leave the rest as never-taken runtime requires.
         name: "nodebuilder-addon",
         setup(b) {

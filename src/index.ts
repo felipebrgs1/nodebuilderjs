@@ -1,11 +1,12 @@
 /// <reference path="./assets.d.ts" preserve="true" />
-export * from "./reactive.js";
-export { Show, For } from "./control.js";
+export * from "./reactive/signals.js";
+export { Show, For } from "./reactive/control.js";
 export { type Child, type Component, Fragment } from "./jsx-runtime.js";
-export { run, requestAnimationFrame, windowControls, windowState } from "./app.js";
-export * from "./widgets.js";
+export { run, requestAnimationFrame, windowControls, windowState } from "./runtime/app.js";
+export * from "./widgets/index.js";
 export { theme } from "./theme.js";
-export { decodeImage, type Bitmap, type ImageInput } from "./image.js";
-export { parseSvg, renderSvg, type IconNode, type Svg } from "./svg.js";
-export { UINode, debugTree, setTextMeasurer, type Style, type Painter, type KeyEvent, type PointerEvent } from "./node.js";
-export { layout } from "./layout.js";
+export { decodeImage } from "./image/decode.js";
+export { type Bitmap, type ImageInput } from "./image/source.js";
+export { parseSvg, renderSvg, type IconNode, type Svg } from "./svg/index.js";
+export { UINode, debugTree, setTextMeasurer, type Style, type Painter, type KeyEvent, type PointerEvent } from "./render/node.js";
+export { layout } from "./render/layout.js";

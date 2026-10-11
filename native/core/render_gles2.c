@@ -1,4 +1,4 @@
-// GLES2 renderer: executes the command buffer produced by src/paint.ts.
+// GLES2 renderer: executes the command buffer produced by src/render/paint.ts.
 // Everything (rounded rects, borders, shadows, glyphs) goes through one shader
 // and one vertex format, so draw order is preserved with a single batch that is
 // only flushed when the clip changes. Clips are a scissor rectangle plus an

@@ -1,13 +1,13 @@
 // App runtime: owns the window, turns native events into UI events
 // (hover, click, focus, keys, scroll) and renders a frame whenever the tree changes.
 
-import { type Child, insert } from "./jsx-runtime.js";
-import { setImageBackend } from "./image.js";
-import { layout } from "./layout.js";
+import { type Child, insert } from "../jsx-runtime.js";
+import { setImageBackend } from "../image/source.js";
+import { layout } from "../render/layout.js";
 import { type Native, type NativeEvent, type NativeKeyEvent, loadNative } from "./native.js";
-import { type KeyEvent, type PointerEvent, UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer, textMetricsChanged } from "./node.js";
-import { CommandBuffer, paintTree } from "./paint.js";
-import { batch, createRoot, createSignal } from "./reactive.js";
+import { type KeyEvent, type PointerEvent, UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer, textMetricsChanged } from "../render/node.js";
+import { CommandBuffer, paintTree } from "../render/paint.js";
+import { batch, createRoot, createSignal } from "../reactive/signals.js";
 
 export interface WindowOptions {
   title: string;

@@ -2,8 +2,8 @@
 // jsx() only records a lightweight description; the component runs once when the
 // description is inserted into the tree (so <Show>/<For> can decide lazily).
 
-import { createEffect, untrack } from "./reactive.js";
-import { UINode } from "./node.js";
+import { createEffect, untrack } from "./reactive/signals.js";
+import { UINode } from "./render/node.js";
 
 export interface ElementDesc {
   readonly $element: true;

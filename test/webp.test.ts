@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { decodeWebp, isWebp } from "../src/webp.js";
+import { decodeWebp, isWebp } from "../src/image/webp.js";
 
 // Fixtures were encoded by libwebp (ImageMagick, or a small C program using libwebp's
 // low_memory mode, which is needed for several token partitions and skipped macroblocks),

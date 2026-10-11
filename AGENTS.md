@@ -65,25 +65,39 @@ tarefa: `bun run typecheck && bun test`, e para mudanças visuais, abra um exemp
 ## Estrutura
 
 ```
-src/
-  reactive.ts    createSignal/Effect/Memo/Root, onCleanup, batch, untrack, read
-  jsx-runtime.ts runtime JSX próprio; jsx() só cria descrições (ElementDesc)
-  control.ts     <Show>, <For> (keyed por referência)
-  node.ts        UINode (árvore retida), Style, handlers, invalidate(), measureText()
-  layout.ts      flexbox simplificado
-  paint.ts       árvore -> CommandBuffer (Float32Array) + parseColor
-  widgets.ts     Window, Box/Row/Column, Spacer, Scroll, Divider, Text, Image, Button,
-                 Checkbox, TextField, Card
-  image.ts       fontes de imagem: cache por caminho, contagem de uso, handle na GPU
-  png.ts         decodificador PNG (todos os tipos de cor, tRNS, Adam7) via node:zlib
-  jpeg.ts        JPEG baseline/progressivo, CMYK/YCCK, EXIF; idêntico ao libjpeg-turbo
-  webp.ts        WebP VP8 (com perdas), VP8L, alfa, 1º quadro de animação; idêntico ao libwebp
-  svg.ts         SVG para ícones (<Icon>): XML, paths, contornos, rasterização com AA
-  assets.d.ts    `declare module "*.png"` (referenciado por index.ts com preserve="true")
-  app.ts         run(), eventos, foco, hover, agendamento de frames, NB_STATS
-  native.ts      carrega native/build/${process.platform}-${process.arch}/nodebuilder.node
-  theme.ts       cores/tamanhos padrão (tema claro)
-  index.ts       API pública
+src/                   um módulo por pasta; imports sempre relativos com `.js`
+  index.ts             API pública (reexporta os módulos)
+  jsx-runtime.ts       runtime JSX próprio; jsx() só cria descrições (ElementDesc)
+  testing.ts           @nodebuilderjs/core/testing: mount, findByText, click
+  theme.ts             cores/tamanhos padrão (tema claro)
+  assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts referencia com preserve="true")
+  reactive/
+    signals.ts         createSignal/Effect/Memo/Root, onCleanup, batch, untrack, read
+    control.ts         <Show>, <For> (keyed por referência)
+  render/              árvore -> layout -> command buffer
+    node.ts            UINode (árvore retida), Style, handlers, invalidate(), measureText(), displayScale()
+    layout.ts          flexbox simplificado + culling
+    paint.ts           árvore -> CommandBuffer (Float32Array) + parseColor
+  runtime/
+    app.ts             run(), eventos, foco, hover, agendamento de frames, NB_STATS
+    native.ts          carrega native/build/<plataforma>-<arch>/nodebuilder.node (require literais)
+  widgets/             um arquivo por widget; index.ts reexporta
+    props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps, inherited, interaction
+    containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
+    text.ts image.ts icon.ts button.ts checkbox.ts text-field.ts window.ts
+  image/
+    source.ts          fontes de imagem: cache por caminho, contagem de uso, handle na GPU
+    decode.ts          decodeImage: escolhe o decodificador pela assinatura do arquivo
+    png.ts             PNG (todos os tipos de cor, tRNS, Adam7) via node:zlib
+    jpeg.ts            JPEG baseline/progressivo, CMYK/YCCK, EXIF; idêntico ao libjpeg-turbo
+    webp.ts            WebP VP8 (com perdas), VP8L, alfa, 1º quadro de animação; idêntico ao libwebp
+  svg/                 SVG para ícones (<Icon>)
+    parse.ts           XML, atributos de apresentação, style="", transform
+    render.ts          formas -> geometria -> bitmap
+  geometry/            sem dependências de SVG; base para as primitivas de desenho
+    path.ts            path data, curvas e arcos achatados em polilinhas
+    stroke.ts          contorno -> polígonos (pontas, junções, miter)
+    raster.ts          rasterização por linhas de varredura com AA (nonzero/evenodd)
 native/
   include/nb.h          API portável: eventos, texto, renderer, opcodes do command buffer
   include/nb_platform.h CONTRATO que cada SO implementa (janela, event pump, fontes)
@@ -150,8 +164,11 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
 - Widgets são **funções** que criam `UINode`s; não há classe base de widget.
 - Props de estilo são planas (`padding`, `gap`, `background`...), tipadas como
   `StyleProps` (`MaybeAccessor` de cada campo de `Style`).
-- **Ao adicionar um campo em `Style`**, inclua-o também em `STYLE_KEYS` (widgets.ts);
-  handlers novos vão em `Handlers` (node.ts) e `HANDLER_KEYS`.
+- **Ao adicionar um campo em `Style`**, inclua-o também em `STYLE_KEYS` (`widgets/props.ts`);
+  handlers novos vão em `Handlers` (`render/node.ts`) e `HANDLER_KEYS`.
+- **Widget novo:** arquivo próprio em `src/widgets/`, exportado em `widgets/index.ts`.
+  Código reaproveitável por outros módulos (geometria, decodificação) fica fora de
+  `widgets/`, no módulo do assunto.
 - Herdáveis via árvore: `color`, `fontSize`, `bold` (função `inherited`).
 - Defaults de cor/tamanho vêm de `theme.ts`, não hard-coded nos widgets.
 - Comentários e identificadores em **inglês**; textos de UI, README e este arquivo em
@@ -197,12 +214,12 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
 - Renderer em **alpha pré-multiplicado** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`). A borda é
   composta *sobre* o fundo (semântica CSS). Misturar em alpha "reto" gera artefatos
   escuros nos cantos (bug já corrigido; não regredir).
-- Mudou a API nativa? Atualize `core/addon.c` (export), `src/native.ts` (tipo) e, se
+- Mudou a API nativa? Atualize `core/addon.c` (export), `src/runtime/native.ts` (tipo) e, se
   precisar de algo do SO, `nb_platform.h` + backends. Se for opcode, os três lugares
   do formato abaixo.
 
-### Formato do command buffer (paint.ts -> render_gles2.c)
-Mantenha **`native/include/nb.h`, `src/paint.ts` e `native/core/render_gles2.c` em sincronia**.
+### Formato do command buffer (render/paint.ts -> render_gles2.c)
+Mantenha **`native/include/nb.h`, `src/render/paint.ts` e `native/core/render_gles2.c` em sincronia**.
 
 | Op | Código | Floats seguintes |
 |---|---|---|
@@ -215,7 +232,7 @@ Mantenha **`native/include/nb.h`, `src/paint.ts` e `native/core/render_gles2.c` 
 
 Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
 
-### Layout (layout.ts)
+### Layout (render/layout.ts)
 - Flex: `direction` (padrão column em `Column`/`Box`), `gap`, `padding`, `grow`,
   `align` (padrão **stretch**), `justify`, `min/max`, `position: "absolute"` (`left/top`).
 - **Encolhimento segue o CSS `min-size: auto`:** um filho não encolhe abaixo do próprio
@@ -246,7 +263,7 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
   continua alinhado ao vsync: pulamos vblanks com `native.requestFrame()` (commit sem
   desenho). No X11 o ritmo é por timer (não alinhado ao vsync; ver limitações).
   Tolerância de 1,5 ms para 144 Hz não cair para 72.
-- `requestAnimationFrame(cb)` existe (app.ts) e é ritmado pelo compositor.
+- `requestAnimationFrame(cb)` existe (`runtime/app.ts`) e é ritmado pelo compositor.
 - **Referências medidas** (2026-10-11, uma sessão só, i7-12700H, Intel Iris Xe, KWin,
   monitor 240 Hz; Electron 44, Tauri 2.12 + WebKitGTK 2.54, Flutter 3.47, egui/eframe 0.36
   com wgpu; células = fps · CPU · PSS somada). Electron e Tauri rodam o **mesmo** frontend em
@@ -361,7 +378,7 @@ todos com a versão do `package.json` da raiz:
 
 - O binário vai como `optionalDependencies` do core (`workspace:*` no repo; o pack troca
   pela versão), padrão esbuild: **sem script de instalação**, que o Bun bloqueia.
-- `src/native.ts` tenta, nesta ordem: build local (`../native/build/...`, só existe no repo)
+- `src/runtime/native.ts` tenta, nesta ordem: build local (`../../native/build/...`, só existe no repo)
   e o pacote `@nodebuilderjs/<plataforma>`. "Não encontrado" passa para o próximo; um addon
   encontrado que falha ao carregar (lib do sistema, glibc) é o erro reportado.
 - `bun run npm:build`: sincroniza versões, gera `lib/`, compila o addon portável (Docker) em
@@ -409,7 +426,8 @@ todos com a versão do `package.json` da raiz:
 - `bun build --compile` só embute `.node` carregado por `require("literal")`. Com
   `createRequire(...)(path)` o binário procura o arquivo em disco (e parece funcionar na
   máquina de build). Teste executáveis com o `native/build` fora do alcance, ou em container.
-  Por isso `src/native.ts` tem um `require` literal por plataforma.
+  Por isso `src/runtime/native.ts` tem um `require` literal por plataforma (relativo à pasta
+  dele: mover o arquivo exige ajustar os `../`).
 - O `Bun.Transpiler` (e o bundler) troca `typeof require === "function"` por `true`. Para
   saber se está no Bun use `process.versions.bun`, que não é avaliado em tempo de build.
 - O npm remove `.gitignore` de pacotes publicados: o template guarda `_gitignore` e o

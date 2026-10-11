@@ -3,7 +3,7 @@ import {
   Column, For, Row, Scroll, Show, Text, UINode, createEffect, createMemo, createRoot, createSignal, debugTree, layout, onCleanup,
 } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
-import { CommandBuffer, paintTree } from "../src/paint.js";
+import { CommandBuffer, paintTree } from "../src/render/paint.js";
 
 // Fake metrics: 8px per character, 20px line height.
 import { setTextMeasurer } from "@nodebuilderjs/core";

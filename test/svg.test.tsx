@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { Column, Icon, UINode, createRoot, createSignal, layout, parseSvg, renderSvg, setTextMeasurer } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
-import { setImageBackend } from "../src/image.js";
-import { CommandBuffer, paintTree } from "../src/paint.js";
-import { decodePng } from "../src/png.js";
+import { setImageBackend } from "../src/image/source.js";
+import { CommandBuffer, paintTree } from "../src/render/paint.js";
+import { decodePng } from "../src/image/png.js";
 
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
 

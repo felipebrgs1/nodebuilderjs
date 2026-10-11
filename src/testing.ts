@@ -3,9 +3,9 @@
 //   click(findByText(root, "Salvar")!);
 
 import { type Child, insert } from "./jsx-runtime.js";
-import { layout } from "./layout.js";
-import { type PointerEvent, UINode, setTextMeasurer } from "./node.js";
-import { createRoot } from "./reactive.js";
+import { layout } from "./render/layout.js";
+import { type PointerEvent, UINode, setTextMeasurer } from "./render/node.js";
+import { createRoot } from "./reactive/signals.js";
 
 /** 8 px per character, 20 px lines: layout is deterministic without fonts. */
 export function useFakeTextMetrics() {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { decodeJpeg } from "../src/jpeg.js";
+import { decodeJpeg } from "../src/image/jpeg.js";
 
 const read = (name: string) => new Uint8Array(readFileSync(new URL(`./fixtures/${name}`, import.meta.url)));
 
