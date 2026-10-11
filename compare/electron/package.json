@@ -1,0 +1,9 @@
+{
+  "name": "nodebuilder-electron-baseline",
+  "private": true,
+  "description": "Same scene as examples/bench.tsx, built with Electron + vanilla DOM, for comparison.",
+  "main": "main.js",
+  "scripts": { "start": "electron --ozone-platform=wayland ." },
+  "devDependencies": { "electron": "44.7.0" },
+  "trustedDependencies": ["electron"]
+}

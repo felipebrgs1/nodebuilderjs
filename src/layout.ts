@@ -97,14 +97,26 @@ function place(node: UINode, x: number, y: number, width: number, height: number
       free = 0;
     }
   } else if (free < 0 && !node.scrollable) {
-    // Shrink children without a fixed size, proportionally to their natural size.
-    const shrinkable = kids.map((c) => fixedMain(c) === undefined);
-    const total = sizes.reduce((a, v, i) => a + (shrinkable[i] ? v : 0), 0);
-    if (total > 0) {
-      const overflow = -free;
+    // Shrink proportionally to natural size, but (like CSS min-size: auto) never
+    // below a child's content unless it scrolls/clips or sets an explicit min.
+    const floor = kids.map((c, i) => {
+      const explicit = row ? c.style.minWidth : c.style.minHeight;
+      if (explicit !== undefined) return explicit;
+      return c.scrollable || c.style.clip ? 0 : sizes[i]!;
+    });
+    let overflow = -free;
+    for (let pass = 0; pass < kids.length && overflow > 0.01; pass++) {
+      const open = kids.map((c, i) => fixedMain(c) === undefined && sizes[i]! > floor[i]!);
+      const total = sizes.reduce((a, v, i) => a + (open[i] ? v : 0), 0);
+      if (total <= 0) break;
+      let taken = 0;
       kids.forEach((c, i) => {
-        if (shrinkable[i]) sizes[i] = clamp(sizes[i]! - (overflow * sizes[i]!) / total, mainMin(c), mainMax(c));
+        if (!open[i]) return;
+        const next = clamp(sizes[i]! - (overflow * sizes[i]!) / total, floor[i]!, mainMax(c));
+        taken += sizes[i]! - next;
+        sizes[i] = next;
       });
+      overflow -= taken;
     }
     free = 0;
   }

@@ -1,21 +1,11 @@
-// N-API surface of the native core.
-//
-// Event pump without libuv (so it runs on Node and Bun alike): a helper thread
-// only poll()s the Wayland socket and the key-repeat timerfd, then wakes the JS
-// thread through a threadsafe function. All Wayland reading and dispatching
-// happens on the JS thread; the helper waits until that is done before polling
-// again.
-#define _GNU_SOURCE
+// N-API surface of the native core. Portable: everything OS-specific goes
+// through nb_platform.h. The platform's event pump wakes us (from any thread)
+// via a threadsafe function; events are then processed and delivered to JS on
+// the JS thread. No libuv, so the addon loads in Bun and Node alike.
 #define NAPI_VERSION 8
 #include <node_api.h>
-#include <poll.h>
-#include <pthread.h>
-#include <semaphore.h>
-#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/eventfd.h>
-#include <unistd.h>
 
 #include "nb.h"
 
@@ -28,17 +18,11 @@
   } while (0)
 
 static napi_threadsafe_function g_tsfn;
-static pthread_t g_thread;
-static sem_t g_resume;
-static int g_wake_fd = -1;
-static atomic_bool g_quit;
-static atomic_int g_ready;  // READY_* bits set by the pump thread
 static bool g_open;
 
-enum { READY_DISPLAY = 1, READY_REPEAT = 2 };
-// Payloads for the threadsafe function: a poll wake-up (must resume the
-// thread) or a plain "deliver queued events" request from the JS thread.
-#define CALL_POLLED ((void *)1)
+// Payloads for the threadsafe function: a pump wake-up, or a plain "deliver
+// queued events" request made from the JS thread itself.
+#define CALL_PUMP ((void *)1)
 #define CALL_DELIVER ((void *)2)
 
 static nb_event *queue;
@@ -141,42 +125,14 @@ static void deliver(napi_env env, napi_value callback) {
 
 // Runs on the JS thread.
 static void call_js(napi_env env, napi_value callback, void *ctx, void *data) {
-  if (!env || !g_open) {
-    if (data == CALL_POLLED) sem_post(&g_resume);
-    return;
-  }
-  if (data == CALL_POLLED) {
-    int ready = atomic_exchange(&g_ready, 0);
-    if (ready & READY_REPEAT) nb_wl_repeat_tick();
-    if ((ready & READY_DISPLAY) && nb_wl_dispatch() < 0) {
-      nb_event e = {.type = NB_EV_CLOSE};
-      nb_push_event(&e);
-    }
-  }
-  nb_wl_flush();
+  if (!env || !g_open) return;
+  if (data == CALL_PUMP) nb_platform_pump_process();
+  else nb_platform_flush();
   deliver(env, callback);
-  if (data == CALL_POLLED) sem_post(&g_resume);
 }
 
-static void *pump(void *arg) {
-  while (!atomic_load(&g_quit)) {
-    struct pollfd fds[3] = {
-        {.fd = nb_wl_fd(), .events = POLLIN},
-        {.fd = nb_wl_repeat_fd(), .events = POLLIN},
-        {.fd = g_wake_fd, .events = POLLIN},
-    };
-    if (poll(fds, 3, -1) < 0) continue;
-    if (atomic_load(&g_quit)) break;
-    int ready = 0;
-    if (fds[0].revents) ready |= READY_DISPLAY;
-    if (fds[1].revents & POLLIN) ready |= READY_REPEAT;
-    if (!ready) continue;
-    atomic_fetch_or(&g_ready, ready);
-    if (napi_call_threadsafe_function(g_tsfn, CALL_POLLED, napi_tsfn_nonblocking) != napi_ok) break;
-    sem_wait(&g_resume);
-  }
-  return NULL;
-}
+// Called by the platform pump, possibly from another thread.
+static void wake_js(void) { napi_call_threadsafe_function(g_tsfn, CALL_PUMP, napi_tsfn_nonblocking); }
 
 /** Asks the JS thread to deliver events queued outside a pump wake-up. */
 static void request_delivery(void) {
@@ -216,24 +172,28 @@ static napi_value js_open(napi_env env, napi_callback_info info) {
     napi_throw_error(env, NULL, "text engine initialisation failed");
     return NULL;
   }
-  bool ok = nb_wl_open(title ? title : "nodebuilder", app_id ? app_id : "nodebuilder", w, h);
+  nb_window_options options = {.title = title ? title : "nodebuilder", .app_id = app_id ? app_id : "nodebuilder",
+                               .width = w, .height = h};
+  bool ok = nb_platform_open(&options);
   free(title);
   free(app_id);
   if (!ok || !nb_render_init()) {
-    nb_wl_close();
-    napi_throw_error(env, NULL, "could not open window (is this a Wayland session?)");
+    nb_platform_close();
+    napi_throw_error(env, NULL, "could not open window");
     return NULL;
   }
 
   napi_value name;
   napi_create_string_utf8(env, "nodebuilder:wayland", NAPI_AUTO_LENGTH, &name);
   CHECK(napi_create_threadsafe_function(env, argv[1], NULL, name, 0, 1, NULL, NULL, NULL, call_js, &g_tsfn));
-  sem_init(&g_resume, 0, 0);
-  g_wake_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-  atomic_store(&g_quit, false);
-  atomic_store(&g_ready, 0);
   g_open = true;
-  pthread_create(&g_thread, NULL, pump, NULL);
+  if (!nb_platform_pump_start(wake_js)) {
+    g_open = false;
+    napi_release_threadsafe_function(g_tsfn, napi_tsfn_abort);
+    nb_platform_close();
+    napi_throw_error(env, NULL, "could not start the event pump");
+    return NULL;
+  }
   request_delivery();  // the initial configure arrived while opening
   return NULL;
 }
@@ -241,14 +201,9 @@ static napi_value js_open(napi_env env, napi_callback_info info) {
 static napi_value js_close(napi_env env, napi_callback_info info) {
   if (!g_open) return NULL;
   g_open = false;
-  atomic_store(&g_quit, true);
-  uint64_t one = 1;
-  if (write(g_wake_fd, &one, sizeof one) < 0) {}
-  sem_post(&g_resume);
-  pthread_join(g_thread, NULL);
-  close(g_wake_fd);
+  nb_platform_pump_stop();
   napi_release_threadsafe_function(g_tsfn, napi_tsfn_abort);
-  nb_wl_close();
+  nb_platform_close();
   queue_len = 0;
   return NULL;
 }
@@ -279,10 +234,10 @@ static napi_value js_render(napi_env env, napi_callback_info info) {
   }
 
   int bw, bh, scale;
-  nb_wl_begin_frame(&bw, &bh, &scale);
+  nb_platform_begin_frame(&bw, &bh, &scale);
   nb_render_frame(bw, bh, (float)scale, data, length, (const char **)texts, text_count);
-  nb_wl_end_frame();
-  nb_wl_flush();  // EGL may have read our events off the socket
+  nb_platform_end_frame();
+  nb_platform_flush();  // presenting may have received events (e.g. EGL reading the socket)
   request_delivery();
 
   for (uint32_t i = 0; i < text_count; i++) free(texts[i]);
@@ -305,7 +260,7 @@ static napi_value js_measure_text(napi_env env, napi_callback_info info) {
   CHECK(napi_get_value_double(env, argv[1], &size));
   CHECK(napi_get_value_int32(env, argv[2], &font));
 
-  float scale = (float)nb_wl_scale(), ascent, descent;
+  float scale = (float)nb_platform_scale(), ascent, descent;
   int px = (int)(size * scale + 0.5);
   float w = nb_text_measure(font, text ? text : "", px, &ascent, &descent);
   free(text);
@@ -326,7 +281,7 @@ static napi_value js_set_cursor(napi_env env, napi_callback_info info) {
   napi_value argv[1];
   CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
   char *name = get_string(env, argv[0]);
-  if (g_open && name) nb_wl_set_cursor(name);
+  if (g_open && name) nb_platform_set_cursor(name);
   free(name);
   return NULL;
 }
@@ -336,13 +291,13 @@ static napi_value js_set_title(napi_env env, napi_callback_info info) {
   napi_value argv[1];
   CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
   char *title = get_string(env, argv[0]);
-  if (g_open && title) nb_wl_set_title(title);
+  if (g_open && title) nb_platform_set_title(title);
   free(title);
   return NULL;
 }
 
 static napi_value js_move(napi_env env, napi_callback_info info) {
-  if (g_open) nb_wl_move();
+  if (g_open) nb_platform_move();
   return NULL;
 }
 
@@ -352,7 +307,7 @@ static napi_value js_resize(napi_env env, napi_callback_info info) {
   uint32_t edges;
   CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
   CHECK(napi_get_value_uint32(env, argv[0], &edges));
-  if (g_open) nb_wl_resize(edges);
+  if (g_open) nb_platform_resize(edges);
   return NULL;
 }
 
@@ -362,12 +317,17 @@ static napi_value js_set_maximized(napi_env env, napi_callback_info info) {
   bool max;
   CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
   CHECK(napi_get_value_bool(env, argv[0], &max));
-  if (g_open) nb_wl_set_maximized(max);
+  if (g_open) nb_platform_set_maximized(max);
+  return NULL;
+}
+
+static napi_value js_request_frame(napi_env env, napi_callback_info info) {
+  if (g_open) nb_platform_request_frame();
   return NULL;
 }
 
 static napi_value js_minimize(napi_env env, napi_callback_info info) {
-  if (g_open) nb_wl_minimize();
+  if (g_open) nb_platform_minimize();
   return NULL;
 }
 
@@ -383,6 +343,7 @@ NAPI_MODULE_INIT() {
       {"resize", NULL, js_resize, NULL, NULL, NULL, napi_default, NULL},
       {"setMaximized", NULL, js_set_maximized, NULL, NULL, NULL, napi_default, NULL},
       {"minimize", NULL, js_minimize, NULL, NULL, NULL, napi_default, NULL},
+      {"requestFrame", NULL, js_request_frame, NULL, NULL, NULL, napi_default, NULL},
   };
   napi_define_properties(env, exports, sizeof props / sizeof props[0], props);
   return exports;

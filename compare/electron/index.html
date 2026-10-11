@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'">
+<style>
+  html, body { margin: 0; height: 100%; background: #fafafa; font-family: sans-serif; color: #1f1f24; }
+  body { display: flex; flex-direction: column; padding: 12px; gap: 8px; box-sizing: border-box; }
+  #title { font-weight: bold; font-size: 16px; }
+  #scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  .row { display: flex; gap: 4px; }
+  .cell { flex: 1; padding: 6px 8px; border-radius: 6px; border: 1px solid #00000014; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div id="title"></div>
+  <div id="scroll"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>

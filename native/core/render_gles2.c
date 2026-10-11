@@ -96,6 +96,7 @@ bool nb_render_init(void) {
   for (int i = 0; i < 7; i++) glBindAttribLocation(program, i, attr_names[i]);
   glLinkProgram(program);
   GLint ok;
+  if (getenv("NB_DEBUG")) fprintf(stderr, "nodebuilder: GL renderer %s (%s)\n", glGetString(GL_RENDERER), glGetString(GL_VERSION));
   glGetProgramiv(program, GL_LINK_STATUS, &ok);
   if (!ok) return false;
   u_viewport = glGetUniformLocation(program, "u_viewport");

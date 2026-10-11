@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import {
-  Column, For, Row, Show, Text, UINode, createEffect, createMemo, createRoot, createSignal, debugTree, layout, onCleanup,
+  Column, For, Row, Scroll, Show, Text, UINode, createEffect, createMemo, createRoot, createSignal, debugTree, layout, onCleanup,
 } from "nodebuilder";
 import { insert } from "nodebuilder/jsx-runtime";
 
@@ -118,6 +118,24 @@ test("flex layout: row with grow, gap and padding", () => {
   expect(mid!.x).toBe(39);
   expect(mid!.width).toBe(300 - 20 - 24 - 16 - 10);
   expect(t2!.x + t2!.width).toBe(290);
+});
+
+test("overflow shrinks the scroller, not the text above it", () => {
+  const { root } = mount(() => (
+    <Column>
+      <Text>title</Text>
+      <Scroll grow={1}>
+        <Column height={500} />
+      </Scroll>
+    </Column>
+  ));
+  const col = root.children[0]!;
+  layout(col, 200, 100);
+  const [title, scroller] = col.children;
+  expect(title!.height).toBe(20);
+  expect(scroller!.y).toBe(20);
+  expect(scroller!.height).toBe(80);
+  expect(scroller!.contentHeight).toBe(500);
 });
 
 test("debugTree prints the laid out tree", () => {

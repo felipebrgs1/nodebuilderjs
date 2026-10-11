@@ -4,7 +4,7 @@
 import { type Child, insert } from "./jsx-runtime.js";
 import { layout } from "./layout.js";
 import { type Native, type NativeEvent, type NativeKeyEvent, loadNative } from "./native.js";
-import { type KeyEvent, type PointerEvent, UINode, setFrameScheduler, setTextMeasurer } from "./node.js";
+import { type KeyEvent, type PointerEvent, UINode, invalidate, setFrameScheduler, setTextMeasurer } from "./node.js";
 import { CommandBuffer, paintTree } from "./paint.js";
 import { batch, createRoot, createSignal } from "./reactive.js";
 
@@ -15,6 +15,11 @@ export interface WindowOptions {
   height?: number;
   /** Return false to keep the window open. */
   onClose?: () => boolean | void;
+}
+
+export interface RunOptions {
+  /** Frame rate cap; frames stay vsync-aligned (240 Hz display -> every other vblank). Default 120, env NB_MAX_FPS. */
+  maxFps?: number;
 }
 
 /** Nodes created by <Window> carry their options here. */
@@ -37,10 +42,18 @@ export const windowControls = {
   setTitle: (title: string) => native?.setTitle(title),
 };
 
+let frameCallbacks: ((time: number) => void)[] = [];
+
+/** Runs `cb` right before the next frame is laid out (paced by the compositor). */
+export function requestAnimationFrame(cb: (time: number) => void) {
+  frameCallbacks.push(cb);
+  invalidate();
+}
+
 const RESIZE_BORDER = 6;
 const CLICK_INTERVAL = 400;
 
-export function run(app: () => Child) {
+export function run(app: () => Child, runOptions: RunOptions = {}) {
   native = loadNative();
   const nat = native;
 
@@ -75,26 +88,75 @@ export function run(app: () => Child) {
   let scheduled = false;
   let configured = false;
   let open = true;
+  let rendering = false;
+
+  const maxFps = Number(process.env.NB_MAX_FPS) || runOptions.maxFps || 120;
+  // Tolerance keeps e.g. 144 Hz at full rate instead of halving it to 72.
+  const minInterval = 1000 / maxFps - 1.5;
+  let lastRender = -Infinity;
 
   const schedule = () => {
     dirty = true;
-    if (open && configured && !framePending && !scheduled) {
-      scheduled = true;
-      setImmediate(renderFrame);
+    if (!open || !configured || framePending || scheduled || rendering) return;
+    if (performance.now() - lastRender < minInterval) {
+      // Too soon for the cap: skip this vblank and decide again on the next one.
+      framePending = true;
+      nat.requestFrame();
+      return;
     }
+    scheduled = true;
+    setImmediate(renderFrame);
   };
   setFrameScheduler(schedule);
+
+  // NB_STATS=1 prints one line per second with where frame time goes.
+  const stats = process.env.NB_STATS
+    ? { frames: 0, layout: 0, paint: 0, native: 0, since: performance.now() }
+    : null;
+  const countNodes = (n: UINode): number => n.children.reduce((a, c) => a + countNodes(c), 1);
 
   function renderFrame() {
     scheduled = false;
     if (!dirty || !open) return;
-    dirty = false;
+    const t0 = performance.now();
+    lastRender = t0;
+    rendering = true;
+    if (frameCallbacks.length) {
+      const callbacks = frameCallbacks;
+      frameCallbacks = [];
+      batch(() => callbacks.forEach((cb) => cb(t0)));
+    }
+    dirty = false; // everything changed so far is in this frame
     layout(root, width(), height());
     refreshHover();
+    const t1 = performance.now();
     buffer.reset();
     paintTree(root, buffer);
+    const t2 = performance.now();
     nat.render(buffer.commands, buffer.texts);
+    const t3 = performance.now();
     framePending = true;
+    rendering = false;
+    if (frameCallbacks.length) dirty = true; // next frame is wanted; sent when the compositor is ready
+
+    if (stats) {
+      stats.frames++;
+      stats.layout += t1 - t0;
+      stats.paint += t2 - t1;
+      stats.native += t3 - t2;
+      const elapsed = t3 - stats.since;
+      if (elapsed >= 1000) {
+        const f = stats.frames;
+        const ms = (v: number) => (v / f).toFixed(2).padStart(6);
+        const mem = process.memoryUsage();
+        console.log(
+          `fps ${String(Math.round((f * 1000) / elapsed)).padStart(3)} | ms/frame: state+layout ${ms(stats.layout)}  paint ${ms(stats.paint)}  native ${ms(stats.native)}` +
+            ` | nodes ${countNodes(root)} cmds ${(buffer.length * 4 / 1024).toFixed(0)}KB texts ${buffer.texts.length}` +
+            ` | heap ${(mem.heapUsed / 2 ** 20).toFixed(1)}MB rss ${(mem.rss / 2 ** 20).toFixed(0)}MB`,
+        );
+        Object.assign(stats, { frames: 0, layout: 0, paint: 0, native: 0, since: t3 });
+      }
+    }
   }
 
   // ---- pointer -------------------------------------------------------------

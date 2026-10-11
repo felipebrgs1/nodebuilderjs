@@ -15,7 +15,9 @@
     "test": "bun test",
     "counter": "bun examples/counter.tsx",
     "todo": "bun examples/todo.tsx",
-    "dev": "bun --watch examples/todo.tsx"
+    "dev": "bun --watch examples/todo.tsx",
+    "bench": "NB_STATS=1 bun examples/bench.tsx",
+    "measure": "sh scripts/measure.sh"
   },
   "engines": {
     "bun": ">=1.4"

@@ -1,4 +1,4 @@
-// Loads the native core (native/build/nodebuilder.node).
+// Loads the native core for the current OS/arch.
 
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -25,17 +25,21 @@ export interface Native {
   resize(edges: number): void;
   setMaximized(maximized: boolean): void;
   minimize(): void;
+  /** Requests a frame callback (next vblank) without drawing anything. */
+  requestFrame(): void;
 }
 
 let native: Native | null = null;
 
 export function loadNative(): Native {
   if (native) return native;
-  const path = fileURLToPath(new URL("../native/build/nodebuilder.node", import.meta.url));
+  // One binary per OS/arch: native/build/<platform>-<arch>/ (see scripts/build-native.sh).
+  const target = `${process.platform}-${process.arch}`;
+  const path = fileURLToPath(new URL(`../native/build/${target}/nodebuilder.node`, import.meta.url));
   try {
     native = createRequire(import.meta.url)(path) as Native;
   } catch (err) {
-    throw new Error(`nodebuilder: native core not found at ${path}. Run "bun run build:native" first.`, { cause: err });
+    throw new Error(`nodebuilder: native core for ${target} not found at ${path}. Run "bun run build:native" first.`, { cause: err });
   }
   return native;
 }

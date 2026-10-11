@@ -1,13 +1,16 @@
-// Shared declarations for the nodebuilder native core.
-// The core is deliberately small: window + input (Wayland), GPU drawing (GLES2)
-// and text (FreeType/HarfBuzz). Everything else lives in TypeScript.
+// Shared declarations for the portable native core (native/core/).
+// OS-specific code lives in native/platform/<os>/ behind nb_platform.h.
+// The core is deliberately small: events, GPU drawing (GLES2) and text
+// (FreeType/HarfBuzz). Everything else lives in TypeScript.
 #pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-// ---- events (window.c -> addon.c) -------------------------------------------
+#include "nb_platform.h"
+
+// ---- events (platform -> addon.c) -------------------------------------------
 
 enum nb_event_type {
   NB_EV_CONFIGURE = 1,
@@ -37,29 +40,10 @@ typedef struct {
   char text[32];   // UTF-8 produced by the key (after compose / dead keys)
 } nb_event;
 
-// Implemented by addon.c
+// Implemented by core/addon.c; platforms call it from the JS thread.
 void nb_push_event(const nb_event *e);
 
-// ---- window.c ---------------------------------------------------------------
-
-bool nb_wl_open(const char *title, const char *app_id, int width, int height);
-void nb_wl_close(void);
-int nb_wl_fd(void);
-int nb_wl_dispatch(void);      // non-blocking read + dispatch; -1 on error
-int nb_wl_repeat_fd(void);     // timerfd that fires for key repeat
-void nb_wl_repeat_tick(void);
-void nb_wl_flush(void);        // dispatch pending + flush outgoing requests
-void nb_wl_begin_frame(int *buffer_w, int *buffer_h, int *scale);
-void nb_wl_end_frame(void);
-int nb_wl_scale(void);
-void nb_wl_set_cursor(const char *name);
-void nb_wl_set_title(const char *title);
-void nb_wl_move(void);
-void nb_wl_resize(uint32_t edges);
-void nb_wl_set_maximized(bool maximized);
-void nb_wl_minimize(void);
-
-// ---- text.c -----------------------------------------------------------------
+// ---- core/text.c ------------------------------------------------------------
 
 enum { NB_FONT_REGULAR = 0, NB_FONT_BOLD = 1, NB_FONT_COUNT };
 
@@ -73,9 +57,9 @@ void nb_text_draw(int font, const char *utf8, int px, float x, float top, nb_gly
 const uint8_t *nb_text_atlas(int *size, bool *dirty);
 void nb_text_atlas_uploaded(void);
 
-// ---- render.c ---------------------------------------------------------------
+// ---- core/render_gles2.c ----------------------------------------------------
 
-// Command buffer opcodes (see src/paint.ts for the producer side).
+// Command buffer opcodes (producer: src/paint.ts; keep both in sync).
 enum { NB_OP_RECT = 1, NB_OP_TEXT = 2, NB_OP_CLIP = 3 /* x y w h radius */, NB_OP_UNCLIP = 4, NB_OP_SHADOW = 5 };
 
 bool nb_render_init(void);

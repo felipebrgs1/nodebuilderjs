@@ -1,27 +1,32 @@
 #!/usr/bin/env sh
-# Builds native/build/nodebuilder.node with the system C compiler.
-# Needs: wayland-client/egl/cursor, EGL, GLESv2, xkbcommon, freetype2, harfbuzz, fontconfig.
+# Builds the native addon for the current OS into native/build/<platform>-<arch>/.
+# <platform>/<arch> use Node/Bun names (process.platform / process.arch) so the
+# loader in src/native.ts can find the right binary. Each OS has its own
+# native/platform/<os>/build.sh; this script only picks it and sets common vars.
 set -eu
 cd "$(dirname "$0")/.."
 
-# Node-API headers come from the `node-api-headers` dev dependency, so neither
-# Node nor node-gyp is needed to build (the addon loads in Bun and Node).
+case "$(uname -s)" in
+  Linux) PLATFORM=linux ;;
+  *) echo "nodebuilder: $(uname -s) is not supported yet (see native/platform/)" >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+  x86_64 | amd64) ARCH=x64 ;;
+  aarch64 | arm64) ARCH=arm64 ;;
+  *) ARCH=$(uname -m) ;;
+esac
+
+# Node-API headers come from the `node-api-headers` dev dependency.
 NAPI_INCLUDE=${NAPI_INCLUDE:-node_modules/node-api-headers/include}
 if [ ! -f "$NAPI_INCLUDE/node_api.h" ]; then
   echo "Node-API headers not found in $NAPI_INCLUDE; run 'bun install' first." >&2
   exit 1
 fi
 
-PKGS="wayland-client wayland-egl wayland-cursor egl glesv2 xkbcommon freetype2 harfbuzz fontconfig"
-GEN=native/build/gen
-mkdir -p "$GEN"
-wayland-scanner client-header native/protocols/xdg-shell.xml "$GEN/xdg-shell-client-protocol.h"
-wayland-scanner private-code native/protocols/xdg-shell.xml "$GEN/xdg-shell-protocol.c"
-
-${CC:-cc} -O2 -g -std=gnu11 -fPIC -shared -pthread -Wall -Wno-unused-parameter \
-  -I"$NAPI_INCLUDE" -I"$GEN" $(pkg-config --cflags $PKGS) \
-  native/src/addon.c native/src/window.c native/src/render.c native/src/text.c "$GEN/xdg-shell-protocol.c" \
-  $(pkg-config --libs $PKGS) -lm \
-  -o native/build/nodebuilder.node
-
-echo "built native/build/nodebuilder.node"
+export NAPI_INCLUDE
+export OUT_DIR="native/build/$PLATFORM-$ARCH"
+export CORE_SOURCES="native/core/addon.c native/core/text.c native/core/render_gles2.c"
+export CORE_INCLUDE="native/include"
+mkdir -p "$OUT_DIR"
+sh "native/platform/$PLATFORM/build.sh"
+echo "built $OUT_DIR/nodebuilder.node"

@@ -1,8 +1,7 @@
-// Text: font discovery (fontconfig), shaping (HarfBuzz), rasterisation (FreeType)
-// and a single alpha glyph atlas shared by every font size.
+// Text: shaping (HarfBuzz), rasterisation (FreeType) and a single alpha glyph
+// atlas shared by every font size. Which font files to use is the platform's call.
 #include "nb.h"
 
-#include <fontconfig/fontconfig.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <hb-ft.h>
@@ -39,29 +38,13 @@ static int shelf_x, shelf_y, shelf_h;
 static bool atlas_dirty;
 static hb_buffer_t *buffer;
 
-static char *find_font(const char *pattern) {
-  FcPattern *pat = FcNameParse((const FcChar8 *)pattern);
-  FcConfigSubstitute(NULL, pat, FcMatchPattern);
-  FcDefaultSubstitute(pat);
-  FcResult result;
-  FcPattern *match = FcFontMatch(NULL, pat, &result);
-  char *path = NULL;
-  if (match) {
-    FcChar8 *file;
-    if (FcPatternGetString(match, FC_FILE, 0, &file) == FcResultMatch) path = strdup((const char *)file);
-    FcPatternDestroy(match);
-  }
-  FcPatternDestroy(pat);
-  return path;
-}
-
 bool nb_text_init(void) {
   if (buffer) return true;
-  if (FT_Init_FreeType(&ft) || !FcInit()) return false;
-  font_paths[NB_FONT_REGULAR] = find_font("sans-serif");
-  font_paths[NB_FONT_BOLD] = find_font("sans-serif:bold");
+  if (FT_Init_FreeType(&ft)) return false;
+  font_paths[NB_FONT_REGULAR] = nb_platform_font_path(NB_FONT_REGULAR);
+  font_paths[NB_FONT_BOLD] = nb_platform_font_path(NB_FONT_BOLD);
   if (!font_paths[NB_FONT_REGULAR]) {
-    fprintf(stderr, "nodebuilder: no sans-serif font found\n");
+    fprintf(stderr, "nodebuilder: no UI font found\n");
     return false;
   }
   if (!font_paths[NB_FONT_BOLD]) font_paths[NB_FONT_BOLD] = strdup(font_paths[NB_FONT_REGULAR]);

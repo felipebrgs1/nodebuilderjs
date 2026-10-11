@@ -8,7 +8,7 @@ renderizados por um núcleo nativo próprio (Wayland + GLES2 + FreeType/HarfBuzz
 
 ```sh
 bun install            # dev: typescript 7 (tsgo), @types/bun, node-api-headers
-bun run build:native   # compila native/build/nodebuilder.node com o cc do sistema
+bun run build:native   # compila native/build/<platform>-<arch>/nodebuilder.node
 bun run counter        # exemplo contador (Bun executa o .tsx direto, sem build)
 bun run todo           # exemplo lista de tarefas
 bun run dev            # todo com --watch
@@ -31,12 +31,16 @@ src/layout.ts       flexbox simplificado (row/column, gap, padding, grow, align,
 src/paint.ts        árvore -> buffer de comandos (Float32Array)
 src/widgets.ts      Window (decoração própria), Box/Row/Column, Text, Button, TextField, Checkbox, Card, Scroll
 src/app.ts          loop de eventos: hover, clique, foco, teclado, scroll, resize/move da janela
-native/src/         núcleo C (~1.4k linhas): window.c, render.c, text.c, addon.c (N-API)
+native/include/     nb.h (API portável) + nb_platform.h (contrato por SO)
+native/core/        núcleo C portável: addon.c (N-API), text.c, render_gles2.c
+native/platform/    backends por SO; hoje só linux/ (Wayland, EGL, xkb, fontconfig)
 ```
 
-O addon não usa libuv (o Bun não implementa): uma thread auxiliar só faz `poll()` no
-socket Wayland e no timerfd de repetição de teclas e acorda o JS via
-`napi_threadsafe_function`. Toda leitura/dispatch do Wayland acontece na thread do JS.
+O addon não usa libuv (o Bun não implementa): o backend do SO avisa que há eventos
+(no Linux, uma thread que só faz `poll()`), e o núcleo acorda o JS via
+`napi_threadsafe_function`. Toda leitura/dispatch acontece na thread do JS.
+Para portar a outro SO: implementar `native/include/nb_platform.h` em
+`native/platform/<os>/` (veja AGENTS.md).
 
 Componentes executam **uma vez**. Só props passadas como função (`text={() => ...}`,
 `{count}`) são reativas, e atualizam o nó diretamente, sem virtual DOM.

@@ -1,5 +1,5 @@
 // Walks the laid-out tree and encodes draw commands into a Float32Array that the
-// native renderer executes in one go (see native/src/render.c for the format).
+// native renderer executes in one go (format: native/include/nb.h, consumer: native/core/render_gles2.c).
 
 import type { Color, Painter, UINode } from "./node.js";
 
