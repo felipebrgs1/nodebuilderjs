@@ -3,6 +3,7 @@ import {
   Column, For, Row, Scroll, Show, Text, UINode, createEffect, createMemo, createRoot, createSignal, debugTree, layout, onCleanup,
 } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
+import { CommandBuffer, paintTree } from "../src/paint.js";
 
 // Fake metrics: 8px per character, 20px line height.
 import { setTextMeasurer } from "@nodebuilderjs/core";
@@ -146,4 +147,32 @@ test("debugTree prints the laid out tree", () => {
   ));
   layout(root.children[0]!, 100, 50);
   expect(debugTree(root.children[0]!)).toBe('Column [0,0 100x50]\n  Text "hi" [4,4 92x20]\n');
+});
+
+test("culling: rows outside a scroll are neither laid out nor painted", () => {
+  const items = Array.from({ length: 100 }, (_, i) => `row ${i}`);
+  const { root } = mount(() => (
+    <Scroll height={100}>
+      <For each={items}>{(t) => <Row><Text>{t}</Text></Row>}</For>
+    </Scroll>
+  ));
+  const scroller = root.children[0]!;
+  const painted = () => {
+    const buffer = new CommandBuffer();
+    paintTree(scroller, buffer);
+    return buffer.texts;
+  };
+
+  layout(scroller, 200, 100);
+  expect(scroller.contentHeight).toBe(2000); // every row still counts for the scroll extent
+  expect(painted()).toEqual(["row 0", "row 1", "row 2", "row 3", "row 4", "row 5"]);
+  const far = scroller.children[50]!;
+  expect(far.culled).toBe(true);
+  expect(far.y).toBe(1000); // its own box is still placed
+
+  scroller.scrollY = 1010;
+  layout(scroller, 200, 100);
+  expect(far.culled).toBe(false);
+  expect(far.children[0]!.y).toBe(-10); // the subtree is placed again when it comes into view
+  expect(painted()).toEqual(["row 50", "row 51", "row 52", "row 53", "row 54", "row 55"]);
 });

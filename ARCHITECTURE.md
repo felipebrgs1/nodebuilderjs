@@ -67,7 +67,7 @@ signal muda
        respeita o frame pendente do compositor e o teto de fps (120 por padrão)
   -> renderFrame()
        callbacks de requestAnimationFrame
-       layout()        posições e tamanhos de toda a árvore
+       layout()        posições e tamanhos da parte visível da árvore
        refreshHover()  o nó sob o ponteiro pode ter mudado
        paintTree()     árvore -> command buffer
        native.render() C desenha e faz eglSwapBuffers
@@ -88,7 +88,17 @@ O encolhimento segue o `min-size: auto` do CSS: um filho não fica menor que o p
 conteúdo, a menos que seja rolável, recorte o conteúdo (`clip`) ou tenha `minWidth`/
 `minHeight` explícito. `Scroll` é uma coluna rolável com `minHeight: 0`.
 
-Hoje o layout é recalculado inteiro a cada frame (ver [roadmap](ROADMAP.md)).
+**Culling:** cada nó que recorta (`Scroll`, `clip`, a `Window`) estreita a região visível
+passada aos filhos. Um filho totalmente fora dela (contando a sombra) recebe a própria caixa,
+para a altura do conteúdo e as barras de rolagem continuarem certas, mas é marcado `culled`:
+seus descendentes não são posicionados, pintados nem testados no clique. Numa tabela de 500
+linhas, só as ~15 visíveis chegam à pintura e ao HarfBuzz. Limitação: um descendente que
+transborda a caixa de um nó descartado (ex.: um popup absoluto) some junto com ele.
+
+O tamanho natural de todos os filhos ainda é calculado a cada frame, porque a altura do
+conteúdo depende deles; cada `Text` guarda a última medida (texto, tamanho, negrito) para
+isso não custar uma ida ao cache global. O layout incremental está no
+[roadmap](ROADMAP.md).
 
 ## Command buffer
 
@@ -205,7 +215,7 @@ NB_STATS=1 bun examples/bench.tsx        # N=1000 MODE=one|all|static
 NB_STATS=1 bun examples/dashboard.tsx    # TAB=overview|table|logs|settings ROWS=500 CYCLE=30
 ```
 
-`NB_STATS=1` imprime por segundo: fps, tempo por frame (estado + layout, pintura, nativo),
+`NB_STATS=1` imprime por segundo: fps, tempo por frame (estado, layout, pintura, nativo),
 número de nós, tamanho do command buffer, heap e RSS.
 
 As comparações usam a mesma cena feita em HTML e JavaScript puros, rodando no Electron

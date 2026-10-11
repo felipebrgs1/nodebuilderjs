@@ -102,6 +102,7 @@ export type TextMeasurer = (text: string, size: number, bold: boolean) => TextMe
 
 let scheduleFrame: () => void = () => {};
 let measurer: TextMeasurer = (text, size) => ({ width: text.length * size * 0.55, ascent: size * 0.9, descent: size * 0.25 });
+let generation = 0;
 
 /** Wired by the app runtime; tests can install a fake measurer. */
 export function setFrameScheduler(fn: () => void) {
@@ -109,6 +110,14 @@ export function setFrameScheduler(fn: () => void) {
 }
 export function setTextMeasurer(fn: TextMeasurer) {
   measurer = fn;
+  generation++;
+}
+/** Bumped whenever earlier measurements may be wrong (new measurer, new scale); per-node caches compare it. */
+export function metricsGeneration() {
+  return generation;
+}
+export function textMetricsChanged() {
+  generation++;
 }
 export function measureText(text: string, size: number, bold = false): TextMetrics {
   return measurer(text, size, bold);
@@ -145,6 +154,8 @@ export class UINode {
   /** Content extent, used by scroll containers. */
   contentHeight = 0;
   scrollY = 0;
+  /** Outside the visible area in the last layout: its box is set, its subtree is stale and skipped. */
+  culled = false;
 
   constructor(label = "box") {
     this.label = label;

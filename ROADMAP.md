@@ -24,8 +24,8 @@ Números completos no [README](README.md#benchmarks). Resumo, com teto de 60 fps
 |---|---|---|
 | Memória parado e em telas leves | **a menor dos cinco** (81–91 MB) | manter |
 | CPU com muitos textos mudando | a menor com 1000 textos (44%); egui gasta menos com 3000 (84% contra 94%) | manter e melhorar |
-| Lista longa (tabela de 500 linhas) | **o pior fps** (49, contra 54–59) | culling e lista virtualizada |
-| Um texto mudando entre 1000 | 39% de CPU, quase o mesmo que refazer tudo | trabalho proporcional ao que mudou |
+| Lista longa (tabela de 500 linhas) | era o pior fps (49, contra 54–59); com culling, 104 fps com teto de 120 (era 78) | lista virtualizada |
+| Um texto mudando entre 1000 | 39% de CPU; 23% depois do culling, ainda longe de proporcional | trabalho proporcional ao que mudou |
 | Ritmo de frames | 55–58 fps em telas leves (egui e Electron: 59–60); com teto de 120, de 91 a 111 fps entre rodadas | agendamento de frames |
 | Memória sob carga | 157–194 MB (egui: 108–128) | menos alocação por nó e por frame |
 | Tamanho do executável | ~91 MB (~31 MB compactado), quase tudo é o runtime do Bun | investigar |
@@ -40,9 +40,13 @@ Cada item tem uma meta medida com as mesmas cenas (`examples/bench.tsx` e
 `examples/dashboard.tsx`) e o mesmo método do README. Detalhes técnicos dos gargalos no
 [AGENTS.md](AGENTS.md#performance).
 
-1. **Culling:** não medir, pintar nem testar clique no que está fora da área visível de um
-   `Scroll`. *Meta: tabela de 500 linhas a 59–60 fps com teto de 60 e ≥ 110 fps com teto de
-   120 (hoje 49 e 80).*
+1. ~~**Culling:**~~ **feito.** Layout, pintura e clique ignoram o que está fora da área
+   visível de um `Scroll` (ou de qualquer nó que recorte). Resultado, antes → depois na mesma
+   sessão: tabela de 500 linhas com teto de 120, 78 → 104 fps e 82% → 51% de CPU; com teto de
+   60, 55% → 40% de CPU, mas 48 → 53 fps: o trabalho por frame caiu para ~3,5 ms e o que
+   falta é o agendamento (item 4), que limita também as telas leves (51–54 fps nessa sessão).
+   O tamanho natural de todas as linhas ainda é calculado todo frame (~2,5 ms), o que fica
+   para os itens 2 e 3.
 2. **Lista virtualizada** (`<VirtualFor>` ou `VirtualList`): criar só os nós das linhas
    visíveis, como o `ListView.builder` do Flutter, para listas de milhares de itens. *Meta:
    10 mil linhas com o mesmo custo de 50.*

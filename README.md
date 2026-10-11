@@ -112,13 +112,18 @@ linhas visíveis. Nas outras quatro, todas as linhas existem.
   21 e 7 fps quando milhares de textos mudam a cada frame.
 - **O nodebuilder** tem a menor memória parado (81 MB) e nas abas leves do painel, e a
   menor CPU quando 1000 textos mudam a cada frame (44%; com 3000, o egui gasta menos, mas a
-  46 fps contra 50). Perde fps na tabela de 500 linhas (49 contra 54 a 59) porque ainda mede
-  e desenha o que está fora da tela, o primeiro item do [roadmap](ROADMAP.md). Na tabela, nos
-  logs e na troca de abas usa mais memória que egui e Flutter (157 a 166 MB): é o heap do
-  JavaScript.
+  46 fps contra 50). Nesta rodada perdia fps na tabela de 500 linhas (49 contra 54 a 59)
+  porque media e desenhava o que estava fora da tela; isso já foi resolvido (veja abaixo).
+  Na tabela, nos logs e na troca de abas usa mais memória que egui e Flutter (157 a
+  166 MB): é o heap do JavaScript.
 - **Com teto de 120 fps**, só Electron, egui e nodebuilder passam de 60: o Electron fica
   entre 107 e 117 fps, o egui entre 102 e 119 e o nodebuilder entre 80 e 118 (com 3000
   células, todos em 45–51 fps).
+- **Depois desta rodada**, o nodebuilder passou a ignorar o que está fora da área visível
+  (culling). Medido antes e depois na mesma sessão: a tabela de 500 linhas foi de 78 para
+  104 fps com teto de 120 (CPU de 82% para 51%) e, com teto de 60, de 55% para 40% de CPU;
+  "um texto muda entre 1000" caiu de 39% para 23% de CPU. Com teto de 60 o fps ainda fica
+  abaixo de 59 em todas as cenas, por causa do agendamento de frames ([roadmap](ROADMAP.md)).
 - **Tamanho:** o Tauri tem 5,7 MB (usa o WebKit do sistema), o egui 15 MB, o Flutter 23 MB,
   o nodebuilder ~91 MB (~31 MB compactado, quase tudo é o runtime do Bun) e o Electron
   ~280 MB.

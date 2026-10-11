@@ -207,6 +207,10 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
 - **Encolhimento segue o CSS `min-size: auto`:** um filho não encolhe abaixo do próprio
   conteúdo, exceto se for `scrollable`/`clip` ou tiver `minWidth/minHeight` explícito.
 - `Scroll` = coluna com `scrollable = true` e `minHeight: 0`.
+- **Culling:** `place()` recebe a região visível (estreitada por cada nó com clip/scroll). Filho
+  fora dela ganha a caixa mas fica `culled`: subárvore não é posicionada, pintada (`paintTree`)
+  nem testada no clique (`hitTest`). Coordenadas de descendentes de um nó `culled` são velhas;
+  nunca as use sem checar a marca.
 - Clip (`clip`/scroll) recorta por dentro da borda, com raio `radius - borderWidth`.
 
 ## Testes e verificação
@@ -222,7 +226,7 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
 
 ## Performance
 
-- `NB_STATS=1` imprime por segundo: fps, ms/frame (state+layout, paint, native), nós,
+- `NB_STATS=1` imprime por segundo: fps, ms/frame (state, layout, paint, native), nós,
   tamanho do command buffer, heap e RSS.
 - Teto de fps: `run(app, { maxFps })` ou `NB_MAX_FPS`; padrão 120. No Wayland o frame
   continua alinhado ao vsync: pulamos vblanks com `native.requestFrame()` (commit sem
@@ -271,8 +275,11 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
   `compare/egui/target/release/nodebuilder-egui-baseline` (`cargo build --release`). Mesmas
   variáveis em todos (`N`, `MODE`, `SCENE=dashboard`, `TAB`, `CYCLE`, `NB_MAX_FPS`).
 
-  Onde perdemos: a tabela. ~470 linhas fora da tela entram no layout, na pintura e no
-  shaping todo frame (gargalos 1–3 abaixo); Chromium e WebKit só trabalham no que é visível.
+  Onde perdíamos: a tabela, porque ~470 linhas fora da tela entravam no layout, na pintura e
+  no shaping todo frame. Resolvido pelo culling (2026-10-11, antes → depois na mesma sessão):
+  tabela 48 → 53 fps e 55% → 40% de CPU com teto 60; 78 → 104 fps e 82% → 51% com teto 120;
+  "1000 células, 1 texto muda" 39% → 23% (memo da medida no `Text`). As tabelas acima são
+  da rodada anterior ao culling.
   Ainda sem explicação: com teto 60 o nodebuilder fica em 52–58 fps em cenas leves (o
   agendamento perde vblanks de vez em quando) e, com teto 120, a visão geral oscilou entre
   91 e 111 fps de uma rodada para outra. Vale investigar junto com o item 7 (latência).
@@ -286,9 +293,10 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
 - Quebra da RAM do nodebuilder: Bun vazio 15 MB, + texto 26 MB, + janela GL 108 MB;
   o framework em si ~15 MB. O resto é driver.
 - **Gargalos conhecidos (ordem de prioridade para otimizar):**
-  1. pintura sem culling (desenha nós fora da área visível);
+  1. ~~pintura sem culling~~ (feito; o layout ainda calcula o tamanho natural de todos os
+     filhos de um `Scroll`: ~2,5 ms na tabela de 500 linhas);
   2. layout completo a cada frame (sem dirty flags / layout incremental);
-  3. HarfBuzz re-shape de todo texto a cada frame (sem cache de shaping no C);
+  3. HarfBuzz re-shape de todo texto *visível* a cada frame (sem cache de shaping no C);
   4. GPU híbrida: o glvnd carrega libs da NVIDIA sem usá-las (+38 MB). Forçar só Mesa
      precisa detectar a GPU do compositor, senão quebra máquinas só-NVIDIA;
   5. redesenho da janela inteira (sem `EGL_KHR_partial_update`/dano);

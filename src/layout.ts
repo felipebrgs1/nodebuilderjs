@@ -5,9 +5,40 @@ import type { Edges, Size, UINode } from "./node.js";
 
 let cache = new Map<UINode, Size>();
 
+/** Visible region in absolute logical pixels; narrowed by every clipping node. */
+export interface Rect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 export function layout(root: UINode, width: number, height: number) {
   cache = new Map();
-  place(root, 0, 0, width, height);
+  place(root, 0, 0, width, height, { x0: 0, y0: 0, x1: width, y1: height });
+}
+
+/** How far a node's own drawing reaches outside its box (shadows). */
+export function overhang(n: UINode): number {
+  const sh = n.style.shadow;
+  return sh ? sh.blur + Math.abs(sh.y ?? 0) : 0;
+}
+
+/** Inner region a clipping node lets its children draw into, intersected with `view`. */
+export function clipView(n: UINode, view: Rect): Rect {
+  const b = n.style.borderWidth ?? 0;
+  return {
+    x0: Math.max(view.x0, n.x + b),
+    y0: Math.max(view.y0, n.y + b),
+    x1: Math.min(view.x1, n.x + n.width - b),
+    y1: Math.min(view.y1, n.y + n.height - b),
+  };
+}
+
+export function outside(n: UINode, view: Rect): boolean {
+  const m = overhang(n);
+  // Strict, so zero-size nodes on an edge (e.g. holders of absolute children) are kept.
+  return n.x - m > view.x1 || n.y - m > view.y1 || n.x + n.width + m < view.x0 || n.y + n.height + m < view.y0;
 }
 
 export function edges(e: Edges | undefined): [top: number, right: number, bottom: number, left: number] {
@@ -61,11 +92,16 @@ export function intrinsic(node: UINode): Size {
   return size;
 }
 
-function place(node: UINode, x: number, y: number, width: number, height: number) {
+function place(node: UINode, x: number, y: number, width: number, height: number, view: Rect) {
   node.x = x;
   node.y = y;
   node.width = width;
   node.height = height;
+  // Culling: an invisible node keeps its box (scroll extents and hit tests stay right),
+  // but its subtree is not placed, painted nor hit-tested until it comes back into view.
+  node.culled = outside(node, view);
+  if (node.culled) return;
+  if (node.scrollable || node.style.clip) view = clipView(node, view);
 
   const s = node.style;
   const [pt, pr, pb, pl] = edges(s.padding);
@@ -146,14 +182,14 @@ function place(node: UINode, x: number, y: number, width: number, height: number
     const crossOffset = align === "center" ? (innerCross - crossSize) / 2 : align === "end" ? innerCross - crossSize : 0;
     const main = sizes[i]!;
     const scroll = node.scrollable ? node.scrollY : 0;
-    if (row) place(c, innerX + cursor, innerY + crossOffset, main, crossSize);
-    else place(c, innerX + crossOffset, innerY + cursor - scroll, crossSize, main);
+    if (row) place(c, innerX + cursor, innerY + crossOffset, main, crossSize, view);
+    else place(c, innerX + crossOffset, innerY + cursor - scroll, crossSize, main, view);
     cursor += main + spacing;
   });
 
   for (const c of node.children) {
     if (inFlow(c)) continue;
     const k = intrinsic(c);
-    place(c, innerX + (c.style.left ?? 0), innerY + (c.style.top ?? 0), c.style.width ?? k.width, c.style.height ?? k.height);
+    place(c, innerX + (c.style.left ?? 0), innerY + (c.style.top ?? 0), c.style.width ?? k.width, c.style.height ?? k.height, view);
   }
 }

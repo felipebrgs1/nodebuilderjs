@@ -4,7 +4,7 @@
 import { windowControls, windowOptionsKey, windowState } from "./app.js";
 import { type Child, insert, jsx, setTextFactory } from "./jsx-runtime.js";
 import { edges } from "./layout.js";
-import { type Handlers, type Style, UINode, invalidate, measureText } from "./node.js";
+import { type Handlers, type Style, UINode, invalidate, measureText, metricsGeneration } from "./node.js";
 import { type Accessor, type MaybeAccessor, createEffect, createSignal, onCleanup, read, untrack } from "./reactive.js";
 import { theme } from "./theme.js";
 
@@ -102,10 +102,14 @@ export function Text(props: StyleProps & Handlers & { text?: MaybeAccessor<strin
     invalidate();
   });
   const font = () => ({ size: inherited(node, "fontSize") ?? theme.font.size, bold: inherited(node, "bold") ?? false });
+  // Every row of a long list is measured each frame (scroll extent), so skip the shared cache's key building.
+  let last = { value: "", size: 0, bold: false, generation: -1, result: { width: 0, height: 0 } };
   node.measure = () => {
     const { size, bold } = font();
+    if (value === last.value && size === last.size && bold === last.bold && last.generation === metricsGeneration()) return last.result;
     const m = measureText(value, size, bold);
-    return { width: Math.ceil(m.width), height: Math.ceil(m.ascent + m.descent) };
+    last = { value, size, bold, generation: metricsGeneration(), result: { width: Math.ceil(m.width), height: Math.ceil(m.ascent + m.descent) } };
+    return last.result;
   };
   node.paint = (p, n) => {
     const { size, bold } = font();

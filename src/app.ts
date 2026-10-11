@@ -4,7 +4,7 @@
 import { type Child, insert } from "./jsx-runtime.js";
 import { layout } from "./layout.js";
 import { type Native, type NativeEvent, type NativeKeyEvent, loadNative } from "./native.js";
-import { type KeyEvent, type PointerEvent, UINode, invalidate, setFrameScheduler, setTextMeasurer } from "./node.js";
+import { type KeyEvent, type PointerEvent, UINode, invalidate, setFrameScheduler, setTextMeasurer, textMetricsChanged } from "./node.js";
 import { CommandBuffer, paintTree } from "./paint.js";
 import { batch, createRoot, createSignal } from "./reactive.js";
 
@@ -113,7 +113,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
 
   // NB_STATS=1 prints one line per second with where frame time goes.
   const stats = process.env.NB_STATS
-    ? { frames: 0, layout: 0, paint: 0, native: 0, since: performance.now() }
+    ? { frames: 0, state: 0, layout: 0, paint: 0, native: 0, since: performance.now() }
     : null;
   const countNodes = (n: UINode): number => n.children.reduce((a, c) => a + countNodes(c), 1);
 
@@ -129,6 +129,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
       batch(() => callbacks.forEach((cb) => cb(t0)));
     }
     dirty = false; // everything changed so far is in this frame
+    const tState = performance.now();
     layout(root, width(), height());
     refreshHover();
     const t1 = performance.now();
@@ -143,7 +144,8 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
 
     if (stats) {
       stats.frames++;
-      stats.layout += t1 - t0;
+      stats.state += tState - t0;
+      stats.layout += t1 - tState;
       stats.paint += t2 - t1;
       stats.native += t3 - t2;
       const elapsed = t3 - stats.since;
@@ -152,11 +154,11 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
         const ms = (v: number) => (v / f).toFixed(2).padStart(6);
         const mem = process.memoryUsage();
         console.log(
-          `fps ${String(Math.round((f * 1000) / elapsed)).padStart(3)} | ms/frame: state+layout ${ms(stats.layout)}  paint ${ms(stats.paint)}  native ${ms(stats.native)}` +
+          `fps ${String(Math.round((f * 1000) / elapsed)).padStart(3)} | ms/frame: state ${ms(stats.state)}  layout ${ms(stats.layout)}  paint ${ms(stats.paint)}  native ${ms(stats.native)}` +
             ` | nodes ${countNodes(root)} cmds ${(buffer.length * 4 / 1024).toFixed(0)}KB texts ${buffer.texts.length}` +
             ` | heap ${(mem.heapUsed / 2 ** 20).toFixed(1)}MB rss ${(mem.rss / 2 ** 20).toFixed(0)}MB`,
         );
-        Object.assign(stats, { frames: 0, layout: 0, paint: 0, native: 0, since: t3 });
+        Object.assign(stats, { frames: 0, state: 0, layout: 0, paint: 0, native: 0, since: t3 });
       }
     }
   }
@@ -170,7 +172,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
   let lastClick = { time: 0, x: 0, y: 0, clicks: 0 };
 
   function hitTest(node: UINode, x: number, y: number): UINode | null {
-    if (x < node.x || y < node.y || x >= node.x + node.width || y >= node.y + node.height) return null;
+    if (node.culled || x < node.x || y < node.y || x >= node.x + node.width || y >= node.y + node.height) return null;
     const kids = node.children;
     for (let i = kids.length - 1; i >= 0; i--) {
       const hit = hitTest(kids[i]!, x, y);
@@ -316,6 +318,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
         if (ev.scale !== currentScale) {
           currentScale = ev.scale;
           metrics.clear();
+          textMetricsChanged();
         }
         configured = true;
         schedule();

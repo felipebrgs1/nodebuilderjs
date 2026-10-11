@@ -71,6 +71,7 @@ export class CommandBuffer implements Painter {
 }
 
 export function paintTree(node: UINode, p: Painter) {
+  if (node.culled) return; // outside the visible area (see layout.ts)
   const s = node.style;
   if (s.shadow) {
     const blur = s.shadow.blur;
