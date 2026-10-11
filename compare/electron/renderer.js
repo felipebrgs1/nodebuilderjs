@@ -1,5 +1,8 @@
 // Vanilla DOM (no framework): the cheapest possible way to drive this scene in Electron.
-const params = new URLSearchParams(location.search);
+// Electron passes the scene options in the query string; the Tauri shell injects __BENCH_PARAMS__.
+const params = new URLSearchParams(window.__BENCH_PARAMS__ ?? location.search);
+// Tauri doesn't forward console.log to the terminal, so lines also go to its `report` command.
+const report = (line) => (console.log(line), window.__TAURI__?.core.invoke("report", { line }));
 const N = Number(params.get("N"));
 const MODE = params.get("MODE");
 const MIN_INTERVAL = 1000 / Number(params.get("MAX_FPS")) - 1.5; // same cap rule as nodebuilder
@@ -37,7 +40,7 @@ function frame(now) {
   jsTime += performance.now() - t0;
   frames++;
   if (now - since >= 1000) {
-    console.log(`fps ${Math.round((frames * 1000) / (now - since))} | js ${(jsTime / frames).toFixed(2)} ms/frame`);
+    report(`fps ${Math.round((frames * 1000) / (now - since))} | js ${(jsTime / frames).toFixed(2)} ms/frame`);
     frames = 0;
     jsTime = 0;
     since = now;

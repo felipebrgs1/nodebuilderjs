@@ -1,0 +1,17 @@
+[package]
+name = "nodebuilder-tauri-baseline"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Same scenes as examples/bench.tsx and examples/dashboard.tsx, in Tauri 2 + vanilla DOM, for comparison."
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

@@ -102,6 +102,7 @@ packages/        workspaces publicados junto com o core (ver "Publicação no np
 lib/             JS + .d.ts para o Node (gerado por scripts/npm.ts, fora do git)
 test/            core.test.tsx (bun:test; bunfig.toml limita o bun test a test/)
 compare/electron bench e dashboard em Electron + DOM puro (baseline; SCENE=dashboard)
+compare/tauri    os mesmos HTML/JS do Electron numa casca Tauri 2 (Rust, WebKitGTK)
 scripts/         build-native.sh, measure.sh, compare.sh, npm.ts
 ```
 
@@ -226,28 +227,47 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
   desenho). No X11 o ritmo é por timer (não alinhado ao vsync; ver limitações).
   Tolerância de 1,5 ms para 144 Hz não cair para 72.
 - `requestAnimationFrame(cb)` existe (app.ts) e é ritmado pelo compositor.
-- **Referências medidas (2026-10-11, i7-12700H, Intel Iris Xe, KWin, monitor 240 Hz, teto 120):**
+- **Referências medidas** (2026-10-11, i7-12700H, Intel Iris Xe, KWin, monitor 240 Hz;
+  Electron 44, Tauri 2.12 + WebKitGTK 2.54; células = fps · CPU · PSS somada). Electron e
+  Tauri rodam o **mesmo** frontend em DOM puro (`compare/electron/*.html|js`). O WebKitGTK
+  limita o `requestAnimationFrame` a 60 fps, então a comparação principal é com teto 60:
 
-| Cenário | Electron 44 (DOM puro) | nodebuilder |
+| Cena (teto 60) | Electron | Tauri | nodebuilder |
+|---|---|---|---|
+| Dashboard: visão geral (~190 nós) | 59 · 59% · 311 MB | 60 · 71% · 274 MB | 57 · 29% · 87 MB |
+| Dashboard: tabela (~6000 nós, 500 linhas) | 59 · 64% · 357 MB | 59 · 64% · 293 MB | **48** · 55% · 155 MB |
+| Dashboard: logs (~1700 nós, 2 linhas/frame) | 59 · 94% · 385 MB | 59 · 143% · 297 MB | 52 · 41% · 139 MB |
+| Dashboard: configurações (~130 nós) | 59 · 44% · 280 MB | 60 · 48% · 263 MB | 58 · 19% · 82 MB |
+| Dashboard: `CYCLE=30` | 58 · 66% · 359 MB | 58 · 84% · 322 MB | 52 · 40% · 142 MB |
+| 1000 células, parado | 0% · 283 MB | 0% · 250 MB | 0,6% · 77 MB |
+| 1000 células, 1 texto muda | 59 · 52% · 291 MB | 60 · 37% · 260 MB | 57 · 40% · 99 MB |
+| 1000 células, todas mudam | 59 · 123% · 390 MB | 31 · 144% · 316 MB | 57 · 46% · 129 MB |
+| 3000 células, todas mudam | 51 · 177% · 412 MB | 21 · 122% · 368 MB | 49 · 93% · 199 MB |
+
+| Cena (teto 120) | Electron | nodebuilder |
 |---|---|---|
-| 1000 células, parado | 0,2% CPU · 323 MB PSS | 0,3% CPU · 122 MB PSS |
-| 1000 células, 1 texto muda | 116 fps · 66% · 326 MB | 106 fps · 39% · 148 MB |
-| 1000 células, todas mudam | 111 fps · 237% · 439 MB | 104 fps · 65% · 192 MB |
-| 3000 células, todas mudam | 49 fps · 176% · 461 MB | 49 fps · 94% · 244 MB |
+| Dashboard: visão geral | 118 · 86% · 347 MB | 91 · 37% · 87 MB |
+| Dashboard: tabela | 116 · 78% · 356 MB | **77** · 81% · 156 MB |
+| Dashboard: logs | 104 · 150% · 430 MB | 116 · 68% · 154 MB |
+| Dashboard: configurações | 117 · 68% · 289 MB | 89 · 23% · 84 MB |
+| Dashboard: `CYCLE=30` | 112 · 97% · 393 MB | 87 · 57% · 160 MB |
+| 1000 células, 1 texto muda | 117 · 73% · 288 MB | 106 · 41% · 103 MB |
+| 1000 células, todas mudam | 113 · 234% · 391 MB | 111 · 66% · 138 MB |
+| 3000 células, todas mudam | 50 · 172% · 397 MB | 50 · 94% · 204 MB |
 
-- **Dashboard** (`examples/dashboard.tsx`, 500 serviços, ao vivo; mesmo hardware e data).
-  Electron: `SCENE=dashboard TAB=<aba> scripts/compare.sh <rótulo> 3 5 -- compare/electron/node_modules/.bin/electron --ozone-platform=wayland compare/electron`
+  Comandos: `scripts/compare.sh <rótulo> 3 5 -- <cmd>` com, para o Electron,
+  `compare/electron/node_modules/.bin/electron --ozone-platform=wayland compare/electron` e,
+  para o Tauri, `compare/tauri/target/release/nodebuilder-tauri-baseline` (compile antes com
+  `cargo build --release` em `compare/tauri`). Mesmas variáveis nos três (`N`, `MODE`,
+  `SCENE=dashboard`, `TAB`, `CYCLE`, `NB_MAX_FPS`).
 
-| Aba | Electron 44 (DOM puro) | nodebuilder |
-|---|---|---|
-| Visão geral (~190 nós) | 117 fps · 69% · 362 MB | 105 fps · 37% · 99 MB |
-| Serviços (~6000 nós, 500 linhas) | 116 fps · 82% · 376 MB | **81 fps** · 83% · 173 MB |
-| Logs (~1700 nós, 2 linhas/frame) | 102 fps · 153% · 452 MB | 108 fps · 70% · 180 MB |
-| Configurações (~130 nós) | 115 fps · 60% · 306 MB | 108 fps · 23% · 91 MB |
-| `CYCLE=30` (troca de aba a cada 30 frames) | 110 fps · 97% · 411 MB | 97 fps · 59% · 149 MB |
-
-  A aba Serviços é onde perdemos: ~470 linhas fora da tela entram no layout, na pintura
-  e no shaping todo frame (gargalos 1–3 abaixo); o Chromium só trabalha no que é visível.
+  Onde perdemos: a tabela. ~470 linhas fora da tela entram no layout, na pintura e no
+  shaping todo frame (gargalos 1–3 abaixo); Chromium e WebKit só trabalham no que é visível.
+  Ainda sem explicação: com teto 60 o nodebuilder fica em 52–58 fps em cenas leves (o
+  agendamento perde vblanks de vez em quando) e, com teto 120, a visão geral oscilou entre
+  91 e 105 fps de uma rodada para outra. Vale investigar junto com o item 7 (latência).
+  O Tauri levou mais de 3 s para ficar ocioso depois de abrir: meça com aquecimento ≥ 8 s
+  quando a cena é estática.
 
 - Quebra da RAM do nodebuilder: Bun vazio 15 MB, + texto 26 MB, + janela GL 108 MB;
   o framework em si ~15 MB. O resto é driver.

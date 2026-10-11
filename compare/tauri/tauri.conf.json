@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "nodebuilder-tauri-baseline",
+  "identifier": "dev.nodebuilder.tauri-baseline",
+  "build": {
+    "frontendDist": [
+      "../electron/index.html",
+      "../electron/renderer.js",
+      "../electron/dashboard.html",
+      "../electron/dashboard.js"
+    ]
+  },
+  "app": { "withGlobalTauri": true, "windows": [], "security": { "csp": null } },
+  "bundle": { "active": false }
+}

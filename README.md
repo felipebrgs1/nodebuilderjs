@@ -68,32 +68,45 @@ Ubuntu 22.04+, Debian 12+, Fedora, RHEL 9+ e derivados.
 
 ## Benchmarks
 
-Mesma cena feita em nodebuilder e em Electron 44 com DOM puro (sem framework), na mesma
-máquina: i7-12700H, Intel Iris Xe, KDE Plasma (Wayland), teto de 120 fps.
+A mesma cena feita três vezes: em nodebuilder, em **Electron 44** e em **Tauri 2**. Nos dois
+últimos, o frontend é idêntico (HTML e JavaScript puros, sem framework); muda só o runtime:
+Chromium no Electron, o WebKitGTK do sistema no Tauri. Máquina: i7-12700H, Intel Iris Xe,
+KDE Plasma (Wayland), monitor de 240 Hz.
 
-**App realista** ([`examples/dashboard.tsx`](examples/dashboard.tsx): barra lateral, abas,
-gráfico, tabela de 500 linhas e logs ao vivo):
+O Tauri usa o `requestAnimationFrame` do WebKitGTK, que no Linux não passa de **60 fps**.
+Para comparar o mesmo trabalho, a tabela abaixo limita os três a 60 fps.
 
-| Aba | Electron | nodebuilder |
-|---|---|---|
-| Visão geral | 117 fps · 69% CPU · 362 MB | 105 fps · **37% CPU · 99 MB** |
-| Tabela com 500 linhas | 116 fps · 82% CPU · 376 MB | 81 fps · 83% CPU · **173 MB** |
-| Logs ao vivo | 102 fps · 153% CPU · 452 MB | 108 fps · **70% CPU · 180 MB** |
-| Configurações | 115 fps · 60% CPU · 306 MB | 108 fps · **23% CPU · 91 MB** |
+Cada célula: **fps · CPU · memória**. CPU de 100% é um núcleo inteiro; memória é a PSS
+somada de todos os processos do app.
 
-**Teste de estresse** ([`examples/bench.tsx`](examples/bench.tsx): grade de células de texto):
+| Cena | Electron | Tauri | nodebuilder |
+|---|---|---|---|
+| **Painel** ([dashboard.tsx](examples/dashboard.tsx)): visão geral | 59 · 59% · 311 MB | 60 · 71% · 274 MB | 57 · **29% · 87 MB** |
+| Painel: tabela com 500 linhas | 59 · 64% · 357 MB | 59 · 64% · 293 MB | 48 · **55% · 155 MB** |
+| Painel: logs ao vivo | 59 · 94% · 385 MB | 59 · 143% · 297 MB | 52 · **41% · 139 MB** |
+| Painel: configurações | 59 · 44% · 280 MB | 60 · 48% · 263 MB | 58 · **19% · 82 MB** |
+| Painel: troca de aba a cada 30 frames | 58 · 66% · 359 MB | 58 · 84% · 322 MB | 52 · **40% · 142 MB** |
+| **Grade** ([bench.tsx](examples/bench.tsx)): 1000 células paradas | 0% · 283 MB | 0% · 250 MB | 0,6% · **77 MB** |
+| Grade: 1000 células, um texto muda | 59 · 52% · 291 MB | 60 · **37%** · 260 MB | 57 · 40% · **99 MB** |
+| Grade: 1000 células, todas mudam | 59 · 123% · 390 MB | 31 · 144% · 316 MB | 57 · **46% · 129 MB** |
+| Grade: 3000 células, todas mudam | 51 · 177% · 412 MB | 21 · 122% · 368 MB | 49 · **93% · 199 MB** |
 
-| Cenário | Electron | nodebuilder |
-|---|---|---|
-| 1000 células, parado | 0,2% CPU · 323 MB | 0,3% CPU · **122 MB** |
-| 1000 células, todas mudando | 111 fps · 237% CPU · 439 MB | 104 fps · **65% CPU · 192 MB** |
-| 3000 células, todas mudando | 49 fps · 176% CPU · 461 MB | 49 fps · **94% CPU · 244 MB** |
+**Em resumo:**
+- **Memória:** o nodebuilder usa de 27% a 48% da memória do Electron e de 31% a 54% da do
+  Tauri. Parado, ocupa 77 MB, contra 250 MB do Tauri e 283 MB do Electron.
+- **CPU:** o nodebuilder gasta menos que o Electron em todas as cenas animadas (de 37% a 86%
+  do que ele gasta; em metade delas, menos da metade). O Tauri fica perto do Electron e gasta
+  mais nas cenas com muito texto mudando.
+- **fps:** o Tauri não sustenta 60 fps quando muitos textos mudam a cada frame (31 e 21 fps).
+  Com teto de 120 fps, o Electron fica entre 104 e 118 fps e o nodebuilder entre 77 e 116
+  (com 3000 células, 50 fps nos dois).
+- **Onde o nodebuilder perde:** listas longas. Ele ainda mede e desenha o que está fora da
+  tela (48 fps na tabela de 500 linhas, contra 59 dos outros). É o primeiro item do
+  [roadmap](ROADMAP.md).
+- **Onde o Tauri ganha:** tamanho. O binário tem 5,7 MB porque usa o WebKit do sistema; o
+  executável do nodebuilder tem ~91 MB (~31 MB compactado), e o Electron ~280 MB.
 
-Memória é PSS somado de todos os processos; CPU de 100% equivale a um núcleo inteiro.
-
-Onde ainda perdemos: listas longas. Hoje o nodebuilder calcula e desenha também o que está
-fora da tela, e é a primeira coisa no [roadmap](ROADMAP.md). Para reproduzir as medições,
-veja [ARCHITECTURE.md](ARCHITECTURE.md#medindo-desempenho).
+Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#medindo-desempenho).
 
 ## Limitações atuais
 

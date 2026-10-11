@@ -208,14 +208,21 @@ NB_STATS=1 bun examples/dashboard.tsx    # TAB=overview|table|logs|settings ROWS
 `NB_STATS=1` imprime por segundo: fps, tempo por frame (estado + layout, pintura, nativo),
 número de nós, tamanho do command buffer, heap e RSS.
 
-A comparação com o Electron usa a mesma cena em DOM puro (`compare/electron/`) e mede a
-árvore de processos inteira:
+As comparações usam a mesma cena feita em HTML e JavaScript puros, rodando no Electron
+(`compare/electron/`) e numa casca Tauri 2 (`compare/tauri/`, que carrega os mesmos
+arquivos). `scripts/compare.sh` mede a árvore de processos inteira (o Electron abre 8
+processos e o Tauri 3):
 
 ```sh
 scripts/compare.sh "nodebuilder" 3 5 -- bun examples/dashboard.tsx
 SCENE=dashboard scripts/compare.sh "electron" 3 5 -- \
   compare/electron/node_modules/.bin/electron --ozone-platform=wayland compare/electron
+(cd compare/tauri && cargo build --release)
+SCENE=dashboard scripts/compare.sh "tauri" 3 5 -- compare/tauri/target/release/nodebuilder-tauri-baseline
 ```
+
+No Linux o Tauri não passa de 60 fps (limite do `requestAnimationFrame` do WebKitGTK); para
+comparar o mesmo trabalho, rode os outros dois com `NB_MAX_FPS=60`.
 
 Quebra da memória do nodebuilder: Bun vazio ~15 MB, texto (FreeType/HarfBuzz) ~26 MB, janela
 GL ~108 MB (quase tudo é driver de vídeo), framework ~15 MB.
