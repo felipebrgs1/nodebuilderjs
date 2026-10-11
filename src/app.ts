@@ -361,7 +361,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
   };
 
   nat.open(
-    { title: options.title, appId: options.appId ?? "dev.nodebuilder.app", width: options.width ?? 800, height: options.height ?? 600 },
+    { title: options.title, appId: options.appId ?? process.env.NB_APP_ID ?? "dev.nodebuilder.app", width: options.width ?? 800, height: options.height ?? 600 },
     (events) => batch(() => events.forEach(handle)),
   );
 }

@@ -1,7 +1,6 @@
 // Loads the native core for the current OS/arch.
 
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
 
 export type NativeKeyEvent = { type: "keydown" | "keyup"; key: string; text: string; repeat: boolean; ctrl: boolean; shift: boolean; alt: boolean; super: boolean };
 
@@ -31,15 +30,49 @@ export interface Native {
 
 let native: Native | null = null;
 
+// Where the addon can come from, in order: a local build (framework checkout, see
+// scripts/build-native.sh), then the prebuilt @nodebuilderjs/<platform>-<arch> package from npm.
+// Every path is a literal require() because that is what `bun build --compile` embeds
+// (createRequire is not followed); Node's ESM has no global require, hence the fallback.
+function candidates(target: string): (() => Native)[] {
+  // Not `typeof require`: transpilers fold that to a constant. In Bun, require exists in ESM.
+  const r = process.versions.bun ? null : createRequire(import.meta.url);
+  switch (target) {
+    case "linux-x64":
+      return [
+        () => (r ? r("../native/build/linux-x64/nodebuilder.node") : require("../native/build/linux-x64/nodebuilder.node")),
+        () => (r ? r("@nodebuilderjs/linux-x64/nodebuilder.node") : require("@nodebuilderjs/linux-x64/nodebuilder.node")),
+      ];
+    case "linux-arm64":
+      return [
+        () => (r ? r("../native/build/linux-arm64/nodebuilder.node") : require("../native/build/linux-arm64/nodebuilder.node")),
+        () => (r ? r("@nodebuilderjs/linux-arm64/nodebuilder.node") : require("@nodebuilderjs/linux-arm64/nodebuilder.node")),
+      ];
+    default:
+      return [];
+  }
+}
+
+const isNotFound = (err: unknown) =>
+  (err as { code?: string })?.code === "MODULE_NOT_FOUND" || /Cannot find (module|package)/.test(String((err as Error)?.message));
+
 export function loadNative(): Native {
   if (native) return native;
-  // One binary per OS/arch: native/build/<platform>-<arch>/ (see scripts/build-native.sh).
   const target = `${process.platform}-${process.arch}`;
-  const path = fileURLToPath(new URL(`../native/build/${target}/nodebuilder.node`, import.meta.url));
-  try {
-    native = createRequire(import.meta.url)(path) as Native;
-  } catch (err) {
-    throw new Error(`nodebuilder: native core for ${target} not found at ${path}. Run "bun run build:native" first.`, { cause: err });
+  const list = candidates(target);
+  if (!list.length) throw new Error(`nodebuilder: ${target} is not supported yet`);
+  for (const load of list) {
+    try {
+      return (native = load());
+    } catch (err) {
+      // Found but unloadable (missing system lib, too old glibc...): that is the real error.
+      if (!isNotFound(err)) {
+        throw new Error(`nodebuilder: could not load the native core for ${target}: ${(err as Error).message}`, { cause: err });
+      }
+    }
   }
-  return native;
+  throw new Error(
+    `nodebuilder: native core for ${target} not found. Install @nodebuilderjs/${target} ` +
+      `(normally pulled in by @nodebuilderjs/core) or, in the framework repo, run "bun run build:native".`,
+  );
 }

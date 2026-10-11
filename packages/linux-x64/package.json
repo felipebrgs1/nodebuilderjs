@@ -1,0 +1,12 @@
+{
+  "name": "@nodebuilderjs/linux-x64",
+  "version": "0.1.0",
+  "description": "Núcleo nativo do nodebuilder para Linux x64 (glibc 2.34+). Instalado automaticamente por @nodebuilderjs/core.",
+  "license": "MIT",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "libc": ["glibc"],
+  "files": ["nodebuilder.node"],
+  "exports": { "./nodebuilder.node": "./nodebuilder.node", "./package.json": "./package.json" },
+  "publishConfig": { "access": "public" }
+}

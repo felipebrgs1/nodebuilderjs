@@ -16,6 +16,25 @@ bun test               # testes headless (sem janela)
 bun run typecheck      # tsc 7 (compilador nativo em Go), só checagem
 ```
 
+## Começar um app
+
+```sh
+bun create nodebuilderjs meu-app
+cd meu-app
+bun run dev        # abre a janela e reinicia ao salvar
+bun test           # testes sem janela
+bun run package    # AppImage, .deb, .rpm e .tar.gz em dist/
+```
+
+O app depende de `@nodebuilderjs/core`, que traz o núcleo nativo pré-compilado
+(`@nodebuilderjs/linux-x64`, glibc 2.34+: Ubuntu 22.04+, Debian 12+, Fedora, RHEL 9+).
+
+## Distribuir
+
+`nodebuilder package <entrada.tsx>` gera um executável único (Bun + app + núcleo nativo) e o
+empacota como AppImage, `.deb`, `.rpm` e `.tar.gz`. Neste repositório:
+`bun run package examples/dashboard.tsx --name painel --title "Painel"`. Detalhes em AGENTS.md.
+
 Requisitos do sistema: sessão Wayland ou X11, headers de wayland-client/egl/cursor,
 libX11/Xcursor/Xrandr, EGL, GLESv2, xkbcommon, freetype2, harfbuzz e fontconfig.
 
@@ -27,7 +46,7 @@ O backend é escolhido sozinho (Wayland, senão X11). Para forçar: `NB_BACKEND=
 ```
 examples/*.tsx      app do usuário (TSX + signals)
 src/reactive.ts     createSignal / createEffect / createMemo / createRoot / onCleanup
-src/jsx-runtime.ts  runtime JSX próprio (jsxImportSource: "nodebuilder")
+src/jsx-runtime.ts  runtime JSX próprio (jsxImportSource: "@nodebuilderjs/core")
 src/control.ts      <Show>, <For> (keyed)
 src/node.ts         árvore retida (UINode); mutações agendam um frame
 src/layout.ts       flexbox simplificado (row/column, gap, padding, grow, align, justify, scroll)

@@ -6,8 +6,8 @@
 import {
   Box, Button, Card, Checkbox, Column, Divider, For, Row, Scroll, Show, Spacer, Text, TextField, Window,
   createMemo, createSignal, requestAnimationFrame, run, theme,
-} from "nodebuilder";
-import type { Accessor } from "nodebuilder";
+} from "@nodebuilderjs/core";
+import type { Accessor } from "@nodebuilderjs/core";
 
 const ROWS = Number(process.env.ROWS ?? 500);
 const LIVE = process.env.LIVE !== "0";

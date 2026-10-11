@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, Column, For, Row, Scroll, Show, Text, TextField, Window, createMemo, createSignal, run } from "nodebuilder";
+import { Button, Card, Checkbox, Column, For, Row, Scroll, Show, Text, TextField, Window, createMemo, createSignal, run } from "@nodebuilderjs/core";
 
 interface Todo {
   title: string;

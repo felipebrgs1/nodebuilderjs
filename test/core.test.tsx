@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import {
   Column, For, Row, Scroll, Show, Text, UINode, createEffect, createMemo, createRoot, createSignal, debugTree, layout, onCleanup,
-} from "nodebuilder";
-import { insert } from "nodebuilder/jsx-runtime";
+} from "@nodebuilderjs/core";
+import { insert } from "@nodebuilderjs/core/jsx-runtime";
 
 // Fake metrics: 8px per character, 20px line height.
-import { setTextMeasurer } from "nodebuilder";
+import { setTextMeasurer } from "@nodebuilderjs/core";
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
 
 function mount(view: () => any) {

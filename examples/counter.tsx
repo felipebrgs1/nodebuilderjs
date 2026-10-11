@@ -1,4 +1,4 @@
-import { Button, Column, Row, Text, Window, createMemo, createSignal, run } from "nodebuilder";
+import { Button, Column, Row, Text, Window, createMemo, createSignal, run } from "@nodebuilderjs/core";
 
 function Counter() {
   const [count, setCount] = createSignal(0);

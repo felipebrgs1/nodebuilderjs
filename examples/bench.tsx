@@ -1,7 +1,7 @@
 // Stress test. N cells; MODE=one changes one label per frame, MODE=all changes every label,
 // MODE=static draws once and idles. Mirrored in compare/electron for comparison.
 //   NB_STATS=1 N=1000 MODE=all bun examples/bench.tsx
-import { Column, For, Row, Scroll, Text, Window, createSignal, requestAnimationFrame, run } from "nodebuilder";
+import { Column, For, Row, Scroll, Text, Window, createSignal, requestAnimationFrame, run } from "@nodebuilderjs/core";
 
 const N = Number(process.env.N ?? 1000);
 const MODE = process.env.MODE ?? "one";

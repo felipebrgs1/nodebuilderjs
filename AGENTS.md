@@ -20,6 +20,8 @@ muito bem, então o máximo possível do framework fica em TS, e o C fica pequen
 2. **Bun é o runtime e o gerenciador de pacotes principal.** Use `bun`, `bun add`,
    `bun test`. Nunca npm/yarn/pnpm, `node:test` ou etapa de build com `tsc`.
    O código deve **continuar funcionando no Node** também (o addon é agnóstico).
+   A única exceção é a publicação: `scripts/npm.ts` gera `lib/` (JS via `Bun.Transpiler`,
+   `.d.ts` via tsc) só para quem usa o pacote no Node; o Bun sempre lê `src/`.
 3. **Nunca usar libuv (`uv_*`) no addon.** O Bun não implementa libuv e aborta com
    `unsupported_uv_function`. Trabalho assíncrono nativo (fds, timers) entra no conjunto
    de `poll()` da thread de bombeamento (ver "Núcleo nativo").
@@ -43,6 +45,8 @@ bun run dev              # todo com --watch
 bun run bench            # stress test com NB_STATS=1 (env: N=1000 MODE=one|all|static)
 bun run bench:dashboard  # app realista com abas (env: TAB=overview|table|logs|settings
                          #   ROWS=500 LIVE=0 CYCLE=<frames por troca de aba>)
+bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]  # pacotes em dist/
+bun run npm:build        # pacotes npm em dist/npm/ (não publica; ver "Publicação no npm")
 scripts/measure.sh <rótulo> <arquivo.tsx> [s]          # CPU/RAM de um processo
 scripts/compare.sh <rótulo> <warm> <s> -- <comando...>  # CPU/RAM da árvore de processos
 ```
@@ -84,9 +88,16 @@ native/
     protocols/          xdg-shell.xml (vendorizado; wayland-protocols não está instalado)
   build/<platform>-<arch>/  saída (nomes de process.platform/arch: linux-x64, ...)
 examples/        counter.tsx, todo.tsx, bench.tsx, dashboard.tsx
-test/            core.test.tsx (bun:test)
+  testing.ts     mount/findByText/click para testes de apps (@nodebuilderjs/core/testing)
+cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.ts
+  package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
+packages/        workspaces publicados junto com o core (ver "Publicação no npm")
+  linux-x64/     @nodebuilderjs/linux-x64: só o addon pré-compilado (gerado, fora do git)
+  create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/
+lib/             JS + .d.ts para o Node (gerado por scripts/npm.ts, fora do git)
+test/            core.test.tsx (bun:test; bunfig.toml limita o bun test a test/)
 compare/electron bench e dashboard em Electron + DOM puro (baseline; SCENE=dashboard)
-scripts/         build-native.sh, measure.sh, compare.sh
+scripts/         build-native.sh, measure.sh, compare.sh, npm.ts
 ```
 
 ## Modelo mental (fluxo de um frame)
@@ -246,6 +257,63 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
   7. latência: frame callback -> thread -> `setImmediate` antes de renderizar.
 - Toda otimização deve ser medida antes/depois com `bench` + `compare.sh` (mesmo cenário).
 
+## Empacotamento
+
+`nodebuilder package <app.tsx>` (no repo: `bun run package`) gera em `dist/` um AppImage,
+`.deb`, `.rpm` e `.tar.gz` (`--targets` escolhe; `--help` lista as opções). Etapas:
+
+1. **Addon** (`--native`): num app, `prebuilt` embute o binário de `@nodebuilderjs/<plataforma>`
+   (já portável, nada a compilar). No repositório do framework, `docker` compila num
+   Ubuntu 22.04 (`cli/package/Dockerfile`), exigindo só glibc ≥ 2.34 e libwayland ≥ 1.20, e
+   substitui o build local em `native/build/` (funciona igual para desenvolvimento);
+   `local` compila aqui e só roda com a glibc desta máquina ou mais nova. Um plugin do
+   `Bun.build` embute só o addon escolhido e deixa os outros candidatos como externos.
+2. **Executável único:** `Bun.build({ compile })` embute runtime, código e o addon (~91 MB,
+   ~31 MB compactado). `process.env.NB_APP_ID` é definido em tempo de build e vira o
+   app id Wayland / WM_CLASS, que casa com o `.desktop` (`StartupWMClass`).
+3. **Árvore de instalação:** `/usr/bin/<nome>`, `.desktop` e ícone (hicolor) em
+   `/usr/share`. As bibliotecas do sistema são **dependências declaradas, nunca embutidas**
+   (`DEB_DEPENDS`/`RPM_SONAMES` em `cli/package/common.ts`; mantenha em sincronia com `PKGS`
+   do `native/platform/linux/build.sh`).
+4. **Formatos**, todos sem ferramentas da distro (só `tar`/`xz`):
+   - `.deb`: `ar` escrito à mão (control.tar.xz + data.tar.xz);
+   - `.rpm`: RPM v4 escrito à mão (`cli/package/rpm.ts`), com região imutável e digests SHA-256;
+     requires por soname, então serve Fedora, RHEL e openSUSE;
+   - AppImage: `appimagetool` baixado em `~/.cache/nodebuilder` (só no build).
+
+Verificado (2026-10-11) com instalação real em container e janela no Wayland do host
+(`--device /dev/dri`, socket em `XDG_RUNTIME_DIR`): `.deb` em Ubuntu 22.04/24.04 e
+Debian 12; `.rpm` em Fedora 43 (rpm 6.0, `rpm -K` OK) e AlmaLinux 9; AppImage no host e
+em Ubuntu 22.04 sem FUSE. Containers mínimos precisam de `libgl1-mesa-dri` /
+`mesa-dri-drivers` e de alguma fonte; desktops já têm.
+
+## Publicação no npm
+
+Escopo `@nodebuilderjs` (o nome `nodebuilder` no npm é de outro projeto). Três pacotes,
+todos com a versão do `package.json` da raiz:
+
+| Pacote | Conteúdo |
+|---|---|
+| `@nodebuilderjs/core` | este repo: `src/` (Bun, condição `bun`), `lib/` (Node + tipos), `cli/` (bin `nodebuilder`) |
+| `@nodebuilderjs/linux-x64` | só `nodebuilder.node` portável, com `os`/`cpu`/`libc` |
+| `create-nodebuilderjs` | `bun create nodebuilderjs meu-app` (`npm create` também funciona) |
+
+- O binário vai como `optionalDependencies` do core (`workspace:*` no repo; o pack troca
+  pela versão), padrão esbuild: **sem script de instalação**, que o Bun bloqueia.
+- `src/native.ts` tenta, nesta ordem: build local (`../native/build/...`, só existe no repo)
+  e o pacote `@nodebuilderjs/<plataforma>`. "Não encontrado" passa para o próximo; um addon
+  encontrado que falha ao carregar (lib do sistema, glibc) é o erro reportado.
+- `bun run npm:build`: sincroniza versões, gera `lib/`, compila o addon portável (Docker) em
+  `packages/linux-x64/` e empacota em `dist/npm/`. `bun run npm:publish` faz o mesmo e roda
+  `bun publish` em cada tarball (binário antes do core). Precisa de login no npm e da org
+  `@nodebuilderjs` criada.
+- Antes de publicar, teste ponta a ponta sem registro: crie um app com
+  `node dist/npm/…create…/index.js` (extraído do tarball), aponte `@nodebuilderjs/core` para
+  `file:<tarball>` e use `overrides` para `@nodebuilderjs/linux-x64`; rode `bun test`,
+  `bun start`, `nodebuilder package` e instale o `.deb` num container (sem `node_modules`).
+- arm64: o loader e o empacotador já conhecem `linux-arm64`, mas ainda não há pacote
+  (precisa de build em máquina/CI arm64).
+
 ## Limitações atuais
 
 - TextField: sem seleção, clipboard, undo; Text: sem quebra de linha; uma fonte só
@@ -272,5 +340,16 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
 - `Object.keys(native)` retorna `[]` (propriedades não enumeráveis); não é erro.
 - Depois de `bun run build:native`, o binário fica em `native/build/linux-x64/`; o caminho
   antigo `native/build/nodebuilder.node` não existe mais.
+- `bun build --compile` só embute `.node` carregado por `require("literal")`. Com
+  `createRequire(...)(path)` o binário procura o arquivo em disco (e parece funcionar na
+  máquina de build). Teste executáveis com o `native/build` fora do alcance, ou em container.
+  Por isso `src/native.ts` tem um `require` literal por plataforma.
+- O `Bun.Transpiler` (e o bundler) troca `typeof require === "function"` por `true`. Para
+  saber se está no Bun use `process.versions.bun`, que não é avaliado em tempo de build.
+- O npm remove `.gitignore` de pacotes publicados: o template guarda `_gitignore` e o
+  `create-nodebuilderjs` renomeia ao copiar.
+- Headers da libwayland < 1.22 não têm os campos v6 do `wl_surface_listener`, e uma libwayland
+  antiga em runtime aborta se o compositor mandar eventos v6. O bind do `wl_compositor` é
+  limitado por `wl_surface_interface.version` (da lib carregada) e o listener é uma tabela.
 - Para testar o X11 numa sessão Wayland: `NB_BACKEND=x11` (usa o XWayland, `DISPLAY=:0`).
   `NB_DEBUG=1` mostra o backend escolhido, escala, Hz, visual e o `GL_RENDERER`.

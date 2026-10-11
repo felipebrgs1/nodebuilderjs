@@ -1,14 +1,56 @@
 {
-  "name": "nodebuilder",
+  "name": "@nodebuilderjs/core",
   "version": "0.1.0",
-  "description": "Declarative native Linux UI for Bun/Node: Solid-style signals + TSX, rendered with its own Wayland/GLES core (no DOM, no toolkit).",
+  "description": "UI nativa para Linux em TypeScript: componentes TSX com reatividade estilo SolidJS, desenhados por um núcleo próprio (Wayland/X11 + GLES2 + FreeType/HarfBuzz). Sem DOM, sem Electron, sem GTK/Qt.",
+  "keywords": [
+    "gui",
+    "desktop",
+    "linux",
+    "wayland",
+    "x11",
+    "native",
+    "jsx",
+    "tsx",
+    "signals",
+    "bun"
+  ],
   "type": "module",
   "license": "MIT",
-  "exports": {
-    ".": "./src/index.ts",
-    "./jsx-runtime": "./src/jsx-runtime.ts",
-    "./jsx-dev-runtime": "./src/jsx-runtime.ts"
+  "bin": {
+    "nodebuilder": "./cli/nodebuilder.ts"
   },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "bun": "./src/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./lib/jsx-runtime.d.ts",
+      "bun": "./src/jsx-runtime.ts",
+      "default": "./lib/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./lib/jsx-runtime.d.ts",
+      "bun": "./src/jsx-runtime.ts",
+      "default": "./lib/jsx-runtime.js"
+    },
+    "./testing": {
+      "types": "./lib/testing.d.ts",
+      "bun": "./src/testing.ts",
+      "default": "./lib/testing.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "cli",
+    "README.md"
+  ],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build:native": "sh scripts/build-native.sh",
     "typecheck": "tsc --noEmit -p .",
@@ -18,14 +60,23 @@
     "dev": "bun --watch examples/todo.tsx",
     "bench": "NB_STATS=1 bun examples/bench.tsx",
     "bench:dashboard": "NB_STATS=1 bun examples/dashboard.tsx",
-    "measure": "sh scripts/measure.sh"
+    "measure": "sh scripts/measure.sh",
+    "package": "bun cli/nodebuilder.ts package",
+    "npm:build": "bun scripts/npm.ts",
+    "npm:publish": "bun scripts/npm.ts --publish"
   },
   "engines": {
     "bun": ">=1.4"
+  },
+  "optionalDependencies": {
+    "@nodebuilderjs/linux-x64": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",
     "node-api-headers": "^1.9.0",
     "typescript": "7.0.2"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -6,10 +6,10 @@
     "strict": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "nodebuilder",
-    "paths": { "nodebuilder": ["./src/index.ts"], "nodebuilder/*": ["./src/*.ts"] },
+    "jsxImportSource": "@nodebuilderjs/core",
+    "paths": { "@nodebuilderjs/core": ["./src/index.ts"], "@nodebuilderjs/core/*": ["./src/*.ts"] },
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["src", "examples", "test"]
+  "include": ["src", "examples", "test", "scripts", "cli"]
 }

@@ -1,2 +1,5 @@
 node_modules/
 native/build/
+dist/
+packages/*/nodebuilder.node
+lib/

@@ -324,7 +324,9 @@ static const struct xdg_wm_base_listener wm_listener = {.ping = wm_ping};
 
 static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char *iface, uint32_t version) {
   if (!strcmp(iface, wl_compositor_interface.name)) {
-    S.compositor_version = MIN(version, 6);
+    // wl_surface v6 (preferred_buffer_scale) only if the installed libwayland knows its events;
+    // an older one aborts with a protocol error when the compositor sends them.
+    S.compositor_version = MIN(MIN(version, 6), (uint32_t)wl_surface_interface.version);
     S.compositor = wl_registry_bind(r, name, &wl_compositor_interface, S.compositor_version);
   } else if (!strcmp(iface, xdg_wm_base_interface.name)) {
     S.wm_base = wl_registry_bind(r, name, &xdg_wm_base_interface, MIN(version, 5));
@@ -356,11 +358,13 @@ static void surface_preferred_scale(void *d, struct wl_surface *s, int32_t scale
 
 static void surface_preferred_transform(void *d, struct wl_surface *s, uint32_t transform) {}
 
-static const struct wl_surface_listener surface_listener = {
-    .enter = surface_enter,
-    .leave = surface_leave,
-    .preferred_buffer_scale = surface_preferred_scale,
-    .preferred_buffer_transform = surface_preferred_transform,
+// A plain table in protocol event order instead of struct wl_surface_listener, whose v6
+// fields are missing from libwayland < 1.22 headers (portable builds use older distros).
+static void (*const surface_listener[])(void) = {
+    (void (*)(void))surface_enter,
+    (void (*)(void))surface_leave,
+    (void (*)(void))surface_preferred_scale,
+    (void (*)(void))surface_preferred_transform,
 };
 
 static void xdg_surface_configure(void *d, struct xdg_surface *xs, uint32_t serial) {
@@ -473,7 +477,7 @@ static bool wl_open(const nb_window_options *options) {
   }
 
   S.surface = wl_compositor_create_surface(S.compositor);
-  wl_surface_add_listener(S.surface, &surface_listener, NULL);
+  wl_proxy_add_listener((struct wl_proxy *)S.surface, (void (**)(void))surface_listener, NULL);
   S.xdg_surface = xdg_wm_base_get_xdg_surface(S.wm_base, S.surface);
   xdg_surface_add_listener(S.xdg_surface, &xdg_surface_listener, NULL);
   S.toplevel = xdg_surface_get_toplevel(S.xdg_surface);
