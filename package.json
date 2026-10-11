@@ -1,0 +1,28 @@
+{
+  "name": "nodebuilder",
+  "version": "0.1.0",
+  "description": "Declarative native Linux UI for Bun/Node: Solid-style signals + TSX, rendered with its own Wayland/GLES core (no DOM, no toolkit).",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./jsx-runtime": "./src/jsx-runtime.ts",
+    "./jsx-dev-runtime": "./src/jsx-runtime.ts"
+  },
+  "scripts": {
+    "build:native": "sh scripts/build-native.sh",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "bun test",
+    "counter": "bun examples/counter.tsx",
+    "todo": "bun examples/todo.tsx",
+    "dev": "bun --watch examples/todo.tsx"
+  },
+  "engines": {
+    "bun": ">=1.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "node-api-headers": "^1.9.0",
+    "typescript": "7.0.2"
+  }
+}

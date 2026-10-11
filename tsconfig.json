@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "nodebuilder",
+    "paths": { "nodebuilder": ["./src/index.ts"], "nodebuilder/*": ["./src/*.ts"] },
+    "skipLibCheck": true,
+    "types": ["bun"]
+  },
+  "include": ["src", "examples", "test"]
+}

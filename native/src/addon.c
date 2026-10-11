@@ -1,0 +1,389 @@
+// N-API surface of the native core.
+//
+// Event pump without libuv (so it runs on Node and Bun alike): a helper thread
+// only poll()s the Wayland socket and the key-repeat timerfd, then wakes the JS
+// thread through a threadsafe function. All Wayland reading and dispatching
+// happens on the JS thread; the helper waits until that is done before polling
+// again.
+#define _GNU_SOURCE
+#define NAPI_VERSION 8
+#include <node_api.h>
+#include <poll.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <stdatomic.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/eventfd.h>
+#include <unistd.h>
+
+#include "nb.h"
+
+#define CHECK(call)                                    \
+  do {                                                 \
+    if ((call) != napi_ok) {                           \
+      napi_throw_error(env, NULL, "N-API call failed: " #call); \
+      return NULL;                                     \
+    }                                                  \
+  } while (0)
+
+static napi_threadsafe_function g_tsfn;
+static pthread_t g_thread;
+static sem_t g_resume;
+static int g_wake_fd = -1;
+static atomic_bool g_quit;
+static atomic_int g_ready;  // READY_* bits set by the pump thread
+static bool g_open;
+
+enum { READY_DISPLAY = 1, READY_REPEAT = 2 };
+// Payloads for the threadsafe function: a poll wake-up (must resume the
+// thread) or a plain "deliver queued events" request from the JS thread.
+#define CALL_POLLED ((void *)1)
+#define CALL_DELIVER ((void *)2)
+
+static nb_event *queue;
+static size_t queue_len, queue_cap;
+
+void nb_push_event(const nb_event *e) {
+  if (queue_len == queue_cap) {
+    queue_cap = queue_cap ? queue_cap * 2 : 64;
+    queue = realloc(queue, queue_cap * sizeof *queue);
+  }
+  queue[queue_len++] = *e;
+}
+
+static const char *type_name(int t) {
+  switch (t) {
+    case NB_EV_CONFIGURE: return "configure";
+    case NB_EV_CLOSE: return "close";
+    case NB_EV_FRAME: return "frame";
+    case NB_EV_POINTER_MOVE: return "pointermove";
+    case NB_EV_POINTER_DOWN: return "pointerdown";
+    case NB_EV_POINTER_UP: return "pointerup";
+    case NB_EV_POINTER_LEAVE: return "pointerleave";
+    case NB_EV_SCROLL: return "scroll";
+    case NB_EV_KEY_DOWN: return "keydown";
+    case NB_EV_KEY_UP: return "keyup";
+    case NB_EV_FOCUS: return "focus";
+  }
+  return "unknown";
+}
+
+static void set_num(napi_env env, napi_value obj, const char *k, double v) {
+  napi_value n;
+  napi_create_double(env, v, &n);
+  napi_set_named_property(env, obj, k, n);
+}
+
+static void set_bool(napi_env env, napi_value obj, const char *k, bool v) {
+  napi_value b;
+  napi_get_boolean(env, v, &b);
+  napi_set_named_property(env, obj, k, b);
+}
+
+static void set_str(napi_env env, napi_value obj, const char *k, const char *v) {
+  napi_value s;
+  napi_create_string_utf8(env, v, NAPI_AUTO_LENGTH, &s);
+  napi_set_named_property(env, obj, k, s);
+}
+
+static napi_value event_to_js(napi_env env, const nb_event *e) {
+  napi_value o;
+  napi_create_object(env, &o);
+  set_str(env, o, "type", type_name(e->type));
+  switch (e->type) {
+    case NB_EV_CONFIGURE:
+      set_num(env, o, "width", e->width);
+      set_num(env, o, "height", e->height);
+      set_num(env, o, "scale", e->scale);
+      set_bool(env, o, "maximized", e->maximized);
+      set_bool(env, o, "activated", e->activated);
+      break;
+    case NB_EV_POINTER_MOVE:
+    case NB_EV_POINTER_DOWN:
+    case NB_EV_POINTER_UP:
+      set_num(env, o, "x", e->x);
+      set_num(env, o, "y", e->y);
+      set_num(env, o, "button", e->button);
+      break;
+    case NB_EV_SCROLL:
+      set_num(env, o, "x", e->x);
+      set_num(env, o, "y", e->y);
+      set_num(env, o, "dx", e->dx);
+      set_num(env, o, "dy", e->dy);
+      break;
+    case NB_EV_KEY_DOWN:
+    case NB_EV_KEY_UP:
+      set_str(env, o, "key", e->key);
+      set_str(env, o, "text", e->text);
+      set_bool(env, o, "repeat", e->repeat);
+      set_bool(env, o, "ctrl", e->mods & NB_MOD_CTRL);
+      set_bool(env, o, "shift", e->mods & NB_MOD_SHIFT);
+      set_bool(env, o, "alt", e->mods & NB_MOD_ALT);
+      set_bool(env, o, "super", e->mods & NB_MOD_SUPER);
+      break;
+    case NB_EV_FOCUS:
+      set_bool(env, o, "focused", e->focused);
+      break;
+  }
+  return o;
+}
+
+static void deliver(napi_env env, napi_value callback) {
+  if (!queue_len) return;
+  napi_value arr, global, result;
+  napi_create_array_with_length(env, queue_len, &arr);
+  for (size_t i = 0; i < queue_len; i++) napi_set_element(env, arr, i, event_to_js(env, &queue[i]));
+  queue_len = 0;
+  napi_get_global(env, &global);
+  napi_call_function(env, global, callback, 1, &arr, &result);
+}
+
+// Runs on the JS thread.
+static void call_js(napi_env env, napi_value callback, void *ctx, void *data) {
+  if (!env || !g_open) {
+    if (data == CALL_POLLED) sem_post(&g_resume);
+    return;
+  }
+  if (data == CALL_POLLED) {
+    int ready = atomic_exchange(&g_ready, 0);
+    if (ready & READY_REPEAT) nb_wl_repeat_tick();
+    if ((ready & READY_DISPLAY) && nb_wl_dispatch() < 0) {
+      nb_event e = {.type = NB_EV_CLOSE};
+      nb_push_event(&e);
+    }
+  }
+  nb_wl_flush();
+  deliver(env, callback);
+  if (data == CALL_POLLED) sem_post(&g_resume);
+}
+
+static void *pump(void *arg) {
+  while (!atomic_load(&g_quit)) {
+    struct pollfd fds[3] = {
+        {.fd = nb_wl_fd(), .events = POLLIN},
+        {.fd = nb_wl_repeat_fd(), .events = POLLIN},
+        {.fd = g_wake_fd, .events = POLLIN},
+    };
+    if (poll(fds, 3, -1) < 0) continue;
+    if (atomic_load(&g_quit)) break;
+    int ready = 0;
+    if (fds[0].revents) ready |= READY_DISPLAY;
+    if (fds[1].revents & POLLIN) ready |= READY_REPEAT;
+    if (!ready) continue;
+    atomic_fetch_or(&g_ready, ready);
+    if (napi_call_threadsafe_function(g_tsfn, CALL_POLLED, napi_tsfn_nonblocking) != napi_ok) break;
+    sem_wait(&g_resume);
+  }
+  return NULL;
+}
+
+/** Asks the JS thread to deliver events queued outside a pump wake-up. */
+static void request_delivery(void) {
+  if (queue_len && g_open) napi_call_threadsafe_function(g_tsfn, CALL_DELIVER, napi_tsfn_nonblocking);
+}
+
+static char *get_string(napi_env env, napi_value v) {
+  size_t len;
+  if (napi_get_value_string_utf8(env, v, NULL, 0, &len) != napi_ok) return NULL;
+  char *s = malloc(len + 1);
+  napi_get_value_string_utf8(env, v, s, len + 1, &len);
+  return s;
+}
+
+// open({ title, appId, width, height }, onEvents)
+static napi_value js_open(napi_env env, napi_callback_info info) {
+  if (g_open) {
+    napi_throw_error(env, NULL, "window already open");
+    return NULL;
+  }
+  size_t argc = 2;
+  napi_value argv[2];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+
+  napi_value v;
+  CHECK(napi_get_named_property(env, argv[0], "title", &v));
+  char *title = get_string(env, v);
+  CHECK(napi_get_named_property(env, argv[0], "appId", &v));
+  char *app_id = get_string(env, v);
+  int32_t w, h;
+  CHECK(napi_get_named_property(env, argv[0], "width", &v));
+  CHECK(napi_get_value_int32(env, v, &w));
+  CHECK(napi_get_named_property(env, argv[0], "height", &v));
+  CHECK(napi_get_value_int32(env, v, &h));
+
+  if (!nb_text_init()) {
+    napi_throw_error(env, NULL, "text engine initialisation failed");
+    return NULL;
+  }
+  bool ok = nb_wl_open(title ? title : "nodebuilder", app_id ? app_id : "nodebuilder", w, h);
+  free(title);
+  free(app_id);
+  if (!ok || !nb_render_init()) {
+    nb_wl_close();
+    napi_throw_error(env, NULL, "could not open window (is this a Wayland session?)");
+    return NULL;
+  }
+
+  napi_value name;
+  napi_create_string_utf8(env, "nodebuilder:wayland", NAPI_AUTO_LENGTH, &name);
+  CHECK(napi_create_threadsafe_function(env, argv[1], NULL, name, 0, 1, NULL, NULL, NULL, call_js, &g_tsfn));
+  sem_init(&g_resume, 0, 0);
+  g_wake_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+  atomic_store(&g_quit, false);
+  atomic_store(&g_ready, 0);
+  g_open = true;
+  pthread_create(&g_thread, NULL, pump, NULL);
+  request_delivery();  // the initial configure arrived while opening
+  return NULL;
+}
+
+static napi_value js_close(napi_env env, napi_callback_info info) {
+  if (!g_open) return NULL;
+  g_open = false;
+  atomic_store(&g_quit, true);
+  uint64_t one = 1;
+  if (write(g_wake_fd, &one, sizeof one) < 0) {}
+  sem_post(&g_resume);
+  pthread_join(g_thread, NULL);
+  close(g_wake_fd);
+  napi_release_threadsafe_function(g_tsfn, napi_tsfn_abort);
+  nb_wl_close();
+  queue_len = 0;
+  return NULL;
+}
+
+// render(commands: Float32Array, texts: string[])
+static napi_value js_render(napi_env env, napi_callback_info info) {
+  if (!g_open) return NULL;
+  size_t argc = 2;
+  napi_value argv[2];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+
+  napi_typedarray_type type;
+  size_t length;
+  void *data;
+  CHECK(napi_get_typedarray_info(env, argv[0], &type, &length, &data, NULL, NULL));
+  if (type != napi_float32_array) {
+    napi_throw_type_error(env, NULL, "commands must be a Float32Array");
+    return NULL;
+  }
+
+  uint32_t text_count;
+  CHECK(napi_get_array_length(env, argv[1], &text_count));
+  char **texts = calloc(text_count ? text_count : 1, sizeof(char *));
+  for (uint32_t i = 0; i < text_count; i++) {
+    napi_value s;
+    napi_get_element(env, argv[1], i, &s);
+    texts[i] = get_string(env, s);
+  }
+
+  int bw, bh, scale;
+  nb_wl_begin_frame(&bw, &bh, &scale);
+  nb_render_frame(bw, bh, (float)scale, data, length, (const char **)texts, text_count);
+  nb_wl_end_frame();
+  nb_wl_flush();  // EGL may have read our events off the socket
+  request_delivery();
+
+  for (uint32_t i = 0; i < text_count; i++) free(texts[i]);
+  free(texts);
+  return NULL;
+}
+
+// measureText(text, size, font) -> [width, ascent, descent] in logical px
+static napi_value js_measure_text(napi_env env, napi_callback_info info) {
+  size_t argc = 3;
+  napi_value argv[3];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  if (!nb_text_init()) {
+    napi_throw_error(env, NULL, "text engine initialisation failed");
+    return NULL;
+  }
+  char *text = get_string(env, argv[0]);
+  double size;
+  int32_t font;
+  CHECK(napi_get_value_double(env, argv[1], &size));
+  CHECK(napi_get_value_int32(env, argv[2], &font));
+
+  float scale = (float)nb_wl_scale(), ascent, descent;
+  int px = (int)(size * scale + 0.5);
+  float w = nb_text_measure(font, text ? text : "", px, &ascent, &descent);
+  free(text);
+
+  napi_value out, n;
+  napi_create_array_with_length(env, 3, &out);
+  napi_create_double(env, w / scale, &n);
+  napi_set_element(env, out, 0, n);
+  napi_create_double(env, ascent / scale, &n);
+  napi_set_element(env, out, 1, n);
+  napi_create_double(env, descent / scale, &n);
+  napi_set_element(env, out, 2, n);
+  return out;
+}
+
+static napi_value js_set_cursor(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  char *name = get_string(env, argv[0]);
+  if (g_open && name) nb_wl_set_cursor(name);
+  free(name);
+  return NULL;
+}
+
+static napi_value js_set_title(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  char *title = get_string(env, argv[0]);
+  if (g_open && title) nb_wl_set_title(title);
+  free(title);
+  return NULL;
+}
+
+static napi_value js_move(napi_env env, napi_callback_info info) {
+  if (g_open) nb_wl_move();
+  return NULL;
+}
+
+static napi_value js_resize(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  uint32_t edges;
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  CHECK(napi_get_value_uint32(env, argv[0], &edges));
+  if (g_open) nb_wl_resize(edges);
+  return NULL;
+}
+
+static napi_value js_set_maximized(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  bool max;
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  CHECK(napi_get_value_bool(env, argv[0], &max));
+  if (g_open) nb_wl_set_maximized(max);
+  return NULL;
+}
+
+static napi_value js_minimize(napi_env env, napi_callback_info info) {
+  if (g_open) nb_wl_minimize();
+  return NULL;
+}
+
+NAPI_MODULE_INIT() {
+  napi_property_descriptor props[] = {
+      {"open", NULL, js_open, NULL, NULL, NULL, napi_default, NULL},
+      {"close", NULL, js_close, NULL, NULL, NULL, napi_default, NULL},
+      {"render", NULL, js_render, NULL, NULL, NULL, napi_default, NULL},
+      {"measureText", NULL, js_measure_text, NULL, NULL, NULL, napi_default, NULL},
+      {"setCursor", NULL, js_set_cursor, NULL, NULL, NULL, napi_default, NULL},
+      {"setTitle", NULL, js_set_title, NULL, NULL, NULL, napi_default, NULL},
+      {"move", NULL, js_move, NULL, NULL, NULL, napi_default, NULL},
+      {"resize", NULL, js_resize, NULL, NULL, NULL, napi_default, NULL},
+      {"setMaximized", NULL, js_set_maximized, NULL, NULL, NULL, napi_default, NULL},
+      {"minimize", NULL, js_minimize, NULL, NULL, NULL, napi_default, NULL},
+  };
+  napi_define_properties(env, exports, sizeof props / sizeof props[0], props);
+  return exports;
+}

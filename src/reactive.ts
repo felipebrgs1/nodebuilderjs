@@ -1,0 +1,168 @@
+// Fine-grained reactivity in the style of SolidJS: signals, effects, memos and
+// an ownership tree so that everything created under a scope is disposed with it.
+
+export type Accessor<T> = () => T;
+export type Setter<T> = (value: T | ((prev: T) => T)) => T;
+export type MaybeAccessor<T> = T | Accessor<T>;
+
+interface Owner {
+  owner: Owner | null;
+  owned: Owner[];
+  cleanups: (() => void)[];
+  disposed: boolean;
+}
+
+interface Computation extends Owner {
+  run: () => void;
+  sources: Set<SignalState<unknown>>;
+}
+
+interface SignalState<T> {
+  value: T;
+  observers: Set<Computation>;
+  equals: (a: T, b: T) => boolean;
+}
+
+let currentOwner: Owner | null = null;
+let currentListener: Computation | null = null;
+let batchDepth = 0;
+const pending = new Set<Computation>();
+
+function cleanOwner(owner: Owner) {
+  for (const child of owner.owned) disposeOwner(child);
+  owner.owned = [];
+  const cleanups = owner.cleanups;
+  owner.cleanups = [];
+  for (let i = cleanups.length - 1; i >= 0; i--) cleanups[i]!();
+  if ("sources" in owner) {
+    const c = owner as Computation;
+    for (const s of c.sources) s.observers.delete(c);
+    c.sources.clear();
+  }
+}
+
+function disposeOwner(owner: Owner) {
+  cleanOwner(owner);
+  owner.disposed = true;
+  pending.delete(owner as Computation);
+}
+
+function execute(c: Computation) {
+  cleanOwner(c);
+  const prevOwner = currentOwner;
+  const prevListener = currentListener;
+  currentOwner = c;
+  currentListener = c;
+  try {
+    c.run();
+  } finally {
+    currentOwner = prevOwner;
+    currentListener = prevListener;
+  }
+}
+
+function flushPending() {
+  let guard = 0;
+  while (pending.size) {
+    const c = pending.values().next().value!;
+    pending.delete(c);
+    if (!c.disposed) execute(c);
+    if (++guard > 100_000) throw new Error("nodebuilder: reactive update loop detected");
+  }
+}
+
+/** Runs `fn` with all signal writes coalesced; effects run once at the end. */
+export function batch<T>(fn: () => T): T {
+  batchDepth++;
+  try {
+    return fn();
+  } finally {
+    if (--batchDepth === 0) flushPending();
+  }
+}
+
+export function untrack<T>(fn: () => T): T {
+  const prev = currentListener;
+  currentListener = null;
+  try {
+    return fn();
+  } finally {
+    currentListener = prev;
+  }
+}
+
+export function createSignal<T>(value: T, options?: { equals?: false | ((a: T, b: T) => boolean) }): [Accessor<T>, Setter<T>] {
+  const state: SignalState<T> = {
+    value,
+    observers: new Set(),
+    equals: options?.equals === false ? () => false : (options?.equals ?? Object.is),
+  };
+  const read: Accessor<T> = () => {
+    if (currentListener) {
+      state.observers.add(currentListener);
+      currentListener.sources.add(state as SignalState<unknown>);
+    }
+    return state.value;
+  };
+  const write: Setter<T> = (next) => {
+    const v = typeof next === "function" ? (next as (prev: T) => T)(state.value) : next;
+    if (state.equals(state.value, v)) return state.value;
+    state.value = v;
+    for (const o of state.observers) pending.add(o);
+    if (batchDepth === 0) batch(() => {});
+    return v;
+  };
+  return [read, write];
+}
+
+/** Runs `fn` now and again whenever a signal it read changes. */
+export function createEffect<T>(fn: (prev: T | undefined) => T, initial?: T): void {
+  let value = initial;
+  const c: Computation = {
+    owner: currentOwner,
+    owned: [],
+    cleanups: [],
+    disposed: false,
+    sources: new Set(),
+    run: () => {
+      value = fn(value);
+    },
+  };
+  currentOwner?.owned.push(c);
+  execute(c);
+}
+
+/** A derived, cached value that only notifies when its result changes. */
+export function createMemo<T>(fn: (prev: T | undefined) => T, options?: { equals?: false | ((a: T, b: T) => boolean) }): Accessor<T> {
+  const [read, write] = createSignal<T>(undefined as T, options);
+  createEffect<T>((prev) => {
+    const next = fn(prev);
+    write(() => next);
+    return next;
+  });
+  return read;
+}
+
+/** Creates an ownership scope that lives until `dispose` is called. */
+export function createRoot<T>(fn: (dispose: () => void) => T): T {
+  const root: Owner = { owner: null, owned: [], cleanups: [], disposed: false };
+  const prevOwner = currentOwner;
+  const prevListener = currentListener;
+  currentOwner = root;
+  currentListener = null;
+  try {
+    return fn(() => disposeOwner(root));
+  } finally {
+    currentOwner = prevOwner;
+    currentListener = prevListener;
+  }
+}
+
+/** Registers `fn` to run when the current scope is disposed or re-executed. */
+export function onCleanup(fn: () => void): void {
+  currentOwner?.cleanups.push(fn);
+}
+
+export function read<T>(value: MaybeAccessor<T>): T {
+  return typeof value === "function" ? (value as Accessor<T>)() : value;
+}

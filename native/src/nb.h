@@ -1,0 +1,83 @@
+// Shared declarations for the nodebuilder native core.
+// The core is deliberately small: window + input (Wayland), GPU drawing (GLES2)
+// and text (FreeType/HarfBuzz). Everything else lives in TypeScript.
+#pragma once
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+// ---- events (window.c -> addon.c) -------------------------------------------
+
+enum nb_event_type {
+  NB_EV_CONFIGURE = 1,
+  NB_EV_CLOSE,
+  NB_EV_FRAME,
+  NB_EV_POINTER_MOVE,
+  NB_EV_POINTER_DOWN,
+  NB_EV_POINTER_UP,
+  NB_EV_POINTER_LEAVE,
+  NB_EV_SCROLL,
+  NB_EV_KEY_DOWN,
+  NB_EV_KEY_UP,
+  NB_EV_FOCUS,
+};
+
+enum nb_mod { NB_MOD_CTRL = 1, NB_MOD_SHIFT = 2, NB_MOD_ALT = 4, NB_MOD_SUPER = 8 };
+
+typedef struct {
+  int type;
+  double x, y;     // pointer position (logical px)
+  double dx, dy;   // scroll delta
+  int button;      // 0 left, 1 middle, 2 right
+  int width, height, scale;
+  bool maximized, activated, focused, repeat;
+  int mods;
+  char key[64];    // xkb keysym name, e.g. "Return", "a", "BackSpace"
+  char text[32];   // UTF-8 produced by the key (after compose / dead keys)
+} nb_event;
+
+// Implemented by addon.c
+void nb_push_event(const nb_event *e);
+
+// ---- window.c ---------------------------------------------------------------
+
+bool nb_wl_open(const char *title, const char *app_id, int width, int height);
+void nb_wl_close(void);
+int nb_wl_fd(void);
+int nb_wl_dispatch(void);      // non-blocking read + dispatch; -1 on error
+int nb_wl_repeat_fd(void);     // timerfd that fires for key repeat
+void nb_wl_repeat_tick(void);
+void nb_wl_flush(void);        // dispatch pending + flush outgoing requests
+void nb_wl_begin_frame(int *buffer_w, int *buffer_h, int *scale);
+void nb_wl_end_frame(void);
+int nb_wl_scale(void);
+void nb_wl_set_cursor(const char *name);
+void nb_wl_set_title(const char *title);
+void nb_wl_move(void);
+void nb_wl_resize(uint32_t edges);
+void nb_wl_set_maximized(bool maximized);
+void nb_wl_minimize(void);
+
+// ---- text.c -----------------------------------------------------------------
+
+enum { NB_FONT_REGULAR = 0, NB_FONT_BOLD = 1, NB_FONT_COUNT };
+
+typedef void (*nb_glyph_emit)(void *ud, float x0, float y0, float x1, float y1,
+                              float u0, float v0, float u1, float v1);
+
+bool nb_text_init(void);
+// All values in physical pixels.
+float nb_text_measure(int font, const char *utf8, int px, float *ascent, float *descent);
+void nb_text_draw(int font, const char *utf8, int px, float x, float top, nb_glyph_emit emit, void *ud);
+const uint8_t *nb_text_atlas(int *size, bool *dirty);
+void nb_text_atlas_uploaded(void);
+
+// ---- render.c ---------------------------------------------------------------
+
+// Command buffer opcodes (see src/paint.ts for the producer side).
+enum { NB_OP_RECT = 1, NB_OP_TEXT = 2, NB_OP_CLIP = 3 /* x y w h radius */, NB_OP_UNCLIP = 4, NB_OP_SHADOW = 5 };
+
+bool nb_render_init(void);
+void nb_render_frame(int buffer_w, int buffer_h, float scale, const float *cmds, size_t count,
+                     const char **texts, size_t text_count);
