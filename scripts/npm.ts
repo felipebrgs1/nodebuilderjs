@@ -55,7 +55,8 @@ if (opts["skip-build"]) {
   rmSync(join(ROOT, "lib"), { recursive: true, force: true });
   mkdirSync(join(ROOT, "lib"));
   const transpiler = new Bun.Transpiler({ loader: "ts", target: "node" });
-  const sources = readdirSync(join(ROOT, "src")).filter((f) => f.endsWith(".ts"));
+  // Hand-written declarations (src/assets.d.ts) stay in src/, which is published; index.d.ts points there.
+  const sources = readdirSync(join(ROOT, "src")).filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"));
   for (const file of sources) {
     const code = transpiler.transformSync(readFileSync(join(ROOT, "src", file), "utf8"));
     writeFileSync(join(ROOT, "lib", file.replace(/\.ts$/, ".js")), code);

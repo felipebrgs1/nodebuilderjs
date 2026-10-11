@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { MODE_RECT = 0, MODE_GLYPH = 1, MODE_SHADOW = 2 };
+enum { MODE_RECT = 0, MODE_GLYPH = 1, MODE_SHADOW = 2, MODE_IMAGE = 3 };
 
 // pos(2) local(2) half(2) color(4) border_color(4) params(3: radius, border|blur, mode) uv(2)
 #define VERTEX_FLOATS 19
@@ -34,7 +34,7 @@ static const char *fragment_src =
     "#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n"
     "varying vec2 v_local; varying vec2 v_half; varying vec4 v_color; varying vec4 v_bcolor;\n"
     "varying vec3 v_params; varying vec2 v_uv;\n"
-    "uniform sampler2D u_atlas;\n"
+    "uniform sampler2D u_atlas; uniform sampler2D u_image;\n"
     "uniform vec4 u_clip; uniform float u_clip_radius; uniform float u_fb_height;\n"
     "float sd_round_box(vec2 p, vec2 b, float r) {\n"
     "  vec2 q = abs(p) - b + vec2(r);\n"
@@ -42,7 +42,10 @@ static const char *fragment_src =
     "}\n"
     "void main() {\n"
     "  vec4 c;\n"
-    "  if (v_params.z > 1.5) {\n"  // shadow
+    "  if (v_params.z > 2.5) {\n"  // image (premultiplied texels), rounded like a rect
+    "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
+    "    c = texture2D(u_image, v_uv) * v_color.a * clamp(0.5 - d, 0.0, 1.0);\n"
+    "  } else if (v_params.z > 1.5) {\n"  // shadow
     "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
     "    c = vec4(v_color.rgb, 1.0) * v_color.a * (1.0 - smoothstep(-v_params.y, v_params.y, d));\n"
     "  } else if (v_params.z > 0.5) {\n"  // glyph
@@ -66,7 +69,7 @@ static const char *fragment_src =
     "}\n";
 
 static GLuint program, vbo, atlas_tex;
-static GLint u_viewport, u_atlas, u_clip, u_clip_radius, u_fb_height;
+static GLint u_viewport, u_atlas, u_image, u_clip, u_clip_radius, u_fb_height;
 static float *verts;
 static size_t vert_count, vert_cap;
 static int fb_w, fb_h;
@@ -101,6 +104,7 @@ bool nb_render_init(void) {
   if (!ok) return false;
   u_viewport = glGetUniformLocation(program, "u_viewport");
   u_atlas = glGetUniformLocation(program, "u_atlas");
+  u_image = glGetUniformLocation(program, "u_image");
   u_clip = glGetUniformLocation(program, "u_clip");
   u_clip_radius = glGetUniformLocation(program, "u_clip_radius");
   u_fb_height = glGetUniformLocation(program, "u_fb_height");
@@ -187,6 +191,93 @@ static void apply_clip(void) {
   glUniform1f(u_clip_radius, c->mask_radius);
 }
 
+// ---- images ------------------------------------------------------------------
+
+typedef struct {
+  int w, h;
+  uint8_t *pixels;  // premultiplied RGBA until uploaded, then freed
+  GLuint tex;
+  bool live, dead;  // dead: destroyed, texture still to be deleted (needs the context)
+} image;
+static image *images;
+static int image_count;
+static GLuint bound_image;  // texture on unit 1 for the current batch
+
+int nb_image_create(int w, int h, const uint8_t *rgba) {
+  if (w <= 0 || h <= 0) return 0;
+  int slot = 0;
+  while (slot < image_count && (images[slot].live || images[slot].dead)) slot++;
+  if (slot == image_count) {
+    image *grown = realloc(images, (image_count + 1) * sizeof *images);
+    if (!grown) return 0;
+    images = grown;
+    image_count++;
+  }
+  size_t n = (size_t)w * h;
+  uint8_t *px = malloc(n * 4);
+  if (!px) return 0;
+  // Premultiply now so linear filtering doesn't bleed the color of transparent texels.
+  for (size_t i = 0; i < n; i++) {
+    unsigned a = rgba[i * 4 + 3];
+    px[i * 4 + 0] = (uint8_t)((rgba[i * 4 + 0] * a + 127) / 255);
+    px[i * 4 + 1] = (uint8_t)((rgba[i * 4 + 1] * a + 127) / 255);
+    px[i * 4 + 2] = (uint8_t)((rgba[i * 4 + 2] * a + 127) / 255);
+    px[i * 4 + 3] = (uint8_t)a;
+  }
+  images[slot] = (image){.w = w, .h = h, .pixels = px, .live = true};
+  return slot + 1;
+}
+
+void nb_image_destroy(int id) {
+  if (id <= 0 || id > image_count || !images[id - 1].live) return;
+  image *im = &images[id - 1];
+  free(im->pixels);
+  im->pixels = NULL;
+  im->live = false;
+  im->dead = im->tex != 0;
+}
+
+static void collect_images(void) {
+  for (int i = 0; i < image_count; i++) {
+    if (!images[i].dead) continue;
+    if (images[i].tex == bound_image) bound_image = 0;
+    glDeleteTextures(1, &images[i].tex);
+    images[i] = (image){0};
+  }
+}
+
+// Binds the image for the following quads; false if it can't be drawn.
+static bool use_image(int id) {
+  if (id <= 0 || id > image_count || !images[id - 1].live) return false;
+  image *im = &images[id - 1];
+  if (!im->tex) {
+    GLint max = 0;
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max);
+    if (im->w > max || im->h > max) {
+      fprintf(stderr, "nodebuilder: image %dx%d is larger than the GPU limit (%d)\n", im->w, im->h, max);
+      nb_image_destroy(id);
+      return false;
+    }
+    glGenTextures(1, &im->tex);
+  }
+  if (im->tex != bound_image) flush();  // the pending quads use the previous image
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, im->tex);
+  if (im->pixels) {
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, im->w, im->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, im->pixels);
+    free(im->pixels);
+    im->pixels = NULL;
+  }
+  glActiveTexture(GL_TEXTURE0);
+  bound_image = im->tex;
+  return true;
+}
+
 typedef struct { const float *color; } glyph_ctx;
 
 static void emit_glyph(void *ud, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1) {
@@ -201,6 +292,8 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
   fb_w = bw;
   fb_h = bh;
   clip_depth = 0;
+  bound_image = 0;
+  collect_images();
 
   glViewport(0, 0, bw, bh);
   glDisable(GL_SCISSOR_TEST);
@@ -211,6 +304,7 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
   glUseProgram(program);
   glUniform2f(u_viewport, (float)bw, (float)bh);
   glUniform1i(u_atlas, 0);
+  glUniform1i(u_image, 1);
   glUniform1f(u_fb_height, (float)bh);
   glUniform1f(u_clip_radius, 0);
   glActiveTexture(GL_TEXTURE0);
@@ -246,6 +340,17 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
         glyph_ctx ctx = {.color = a + 4};
         nb_text_draw((int)a[3], texts[idx], (int)lroundf(a[2] * scale), roundf(a[0] * scale),
                      roundf(a[1] * scale), emit_glyph, &ctx);
+        break;
+      }
+      case NB_OP_IMAGE: {  // x y w h  u0 v0 u1 v1  radius opacity id
+        const float *a = cmd + i;
+        i += 11;
+        if (!use_image((int)a[10])) break;
+        float x = a[0] * scale, y = a[1] * scale, w = a[2] * scale, h = a[3] * scale;
+        float hw = w / 2, hh = h / 2, r = fminf(a[8] * scale, fminf(hw, hh));
+        const float tint[4] = {1, 1, 1, a[9]};
+        push_quad(x, y, x + w, y + h, x + hw, y + hh, hw, hh, tint, none, r, 0, MODE_IMAGE, a[4], a[5], a[6],
+                  a[7]);
         break;
       }
       case NB_OP_CLIP: {  // x y w h radius

@@ -1,6 +1,8 @@
 // The retained UI tree. Nodes are created once by components and then mutated
 // in place by reactive bindings; any mutation schedules a new frame.
 
+import type { ImageSource } from "./image.js";
+
 export type Color = string;
 export type Edges = number | [vertical: number, horizontal: number] | [top: number, right: number, bottom: number, left: number];
 
@@ -87,6 +89,8 @@ export interface Painter {
   rect(x: number, y: number, w: number, h: number, color: Color, radius?: number, borderWidth?: number, borderColor?: Color): void;
   shadow(x: number, y: number, w: number, h: number, color: Color, radius: number, blur: number): void;
   text(x: number, y: number, text: string, size: number, color: Color, bold?: boolean): void;
+  /** Draws `uv` (a sub-rectangle of the image, 0..1) stretched over the box. */
+  image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius?: number, opacity?: number): void;
   /** Clips to a (optionally rounded) rect until the matching unclip(). */
   clip(x: number, y: number, w: number, h: number, radius?: number): void;
   unclip(): void;

@@ -2,6 +2,7 @@
 // (hover, click, focus, keys, scroll) and renders a frame whenever the tree changes.
 
 import { type Child, insert } from "./jsx-runtime.js";
+import { setImageBackend } from "./image.js";
 import { layout } from "./layout.js";
 import { type Native, type NativeEvent, type NativeKeyEvent, loadNative } from "./native.js";
 import { type KeyEvent, type PointerEvent, UINode, invalidate, setFrameScheduler, setTextMeasurer, textMetricsChanged } from "./node.js";
@@ -71,6 +72,8 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
     }
     return m;
   });
+
+  setImageBackend({ create: (w, h, rgba) => nat.createImage(w, h, rgba), destroy: (id) => nat.destroyImage(id) });
 
   const root = new UINode("root");
   root.isRoot = true;

@@ -69,8 +69,11 @@ src/
   node.ts        UINode (árvore retida), Style, handlers, invalidate(), measureText()
   layout.ts      flexbox simplificado
   paint.ts       árvore -> CommandBuffer (Float32Array) + parseColor
-  widgets.ts     Window, Box/Row/Column, Spacer, Scroll, Divider, Text, Button,
+  widgets.ts     Window, Box/Row/Column, Spacer, Scroll, Divider, Text, Image, Button,
                  Checkbox, TextField, Card
+  image.ts       fontes de imagem: cache por caminho, contagem de uso, handle na GPU
+  png.ts         decodificador PNG (todos os tipos de cor, tRNS, Adam7) via node:zlib
+  assets.d.ts    `declare module "*.png"` (referenciado por index.ts com preserve="true")
   app.ts         run(), eventos, foco, hover, agendamento de frames, NB_STATS
   native.ts      carrega native/build/${process.platform}-${process.arch}/nodebuilder.node
   theme.ts       cores/tamanhos padrão (tema claro)
@@ -92,7 +95,7 @@ native/
     build.sh            compilação do backend (chamado por scripts/build-native.sh)
     protocols/          xdg-shell.xml (vendorizado; wayland-protocols não está instalado)
   build/<platform>-<arch>/  saída (nomes de process.platform/arch: linux-x64, ...)
-examples/        counter.tsx, todo.tsx, bench.tsx, dashboard.tsx
+examples/        counter.tsx, todo.tsx, images.tsx (+ assets/), bench.tsx, dashboard.tsx
   testing.ts     mount/findByText/click para testes de apps (@nodebuilderjs/core/testing)
 cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.ts
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
@@ -100,7 +103,8 @@ packages/        workspaces publicados junto com o core (ver "Publicação no np
   linux-x64/     @nodebuilderjs/linux-x64: só o addon pré-compilado (gerado, fora do git)
   create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/
 lib/             JS + .d.ts para o Node (gerado por scripts/npm.ts, fora do git)
-test/            core.test.tsx (bun:test; bunfig.toml limita o bun test a test/)
+test/            core.test.tsx, image.test.tsx (bun:test; bunfig.toml limita o bun test a test/)
+  fixtures/      PNGs de teste (ImageMagick; paletas com alfa parcial feitas à mão) + .raw esperados
 compare/electron bench e dashboard em Electron + DOM puro (baseline; SCENE=dashboard)
 compare/tauri    os mesmos HTML/JS do Electron numa casca Tauri 2 (Rust, WebKitGTK)
 compare/flutter  as duas cenas em Flutter (Dart, lib/main.dart)
@@ -198,6 +202,7 @@ Mantenha **`native/include/nb.h`, `src/paint.ts` e `native/core/render_gles2.c` 
 | CLIP | 3 | x y w h radius (scissor + máscara arredondada mais interna) |
 | UNCLIP | 4 | (nenhum) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
+| IMAGE | 6 | x y w h · u0 v0 u1 v1 · radius opacity · id (de `createImage`) |
 
 Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
 
@@ -365,6 +370,8 @@ todos com a versão do `package.json` da raiz:
 
 - TextField: sem seleção, clipboard, undo; Text: sem quebra de linha; uma fonte só
   (sem fallback: emojis não aparecem).
+- Imagens: só PNG; decodificação síncrona na thread do JS (~80–130 ms para 4 megapixels);
+  sem mipmaps (reduzir muito uma imagem serrilha) e sem versão @2x para HiDPI.
 - Sem acessibilidade (AT-SPI), animações/transições, tema escuro, multi-janela, IME
   (text-input-v3), DnD, escala fracionária real (KDE 125% renderiza em 2x e reduz).
 - Janela sempre com decoração própria (CSD): barra de título, mover, maximizar,
@@ -400,3 +407,11 @@ todos com a versão do `package.json` da raiz:
   limitado por `wl_surface_interface.version` (da lib carregada) e o listener é uma tabela.
 - Para testar o X11 numa sessão Wayland: `NB_BACKEND=x11` (usa o XWayland, `DISPLAY=:0`).
   `NB_DEBUG=1` mostra o backend escolhido, escala, Hz, visual e o `GL_RENDERER`.
+- Arquivos de um app (imagens) só entram no executável do `bun build --compile` se forem
+  importados com `with { type: "file" }`; o import vira o caminho (`/$bunfs/...` no
+  executável), que o `readFileSync` lê. `new URL("./x.png", import.meta.url)` funciona no
+  desenvolvimento e quebra no pacote.
+- O tsc 5.5+ descarta `/// <reference path>` dos `.d.ts` gerados; sem `preserve="true"`, o
+  `declare module "*.png"` não chegaria a quem usa o pacote pelo `lib/`.
+- O `PNG8:` do ImageMagick reduz o alfa da paleta a 0/255; por isso as fixtures de paleta
+  com alfa parcial são escritas à mão (e conferidas com o próprio `magick`).

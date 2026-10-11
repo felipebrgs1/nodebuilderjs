@@ -11,13 +11,14 @@ para as regras e convenções de quem mexe no código, veja o [AGENTS.md](AGENTS
 ┌────▼──────────────────────────────── TypeScript (src/) ──────────────────────┐
 │ reactive.ts   signals, effects, memos, ownership                             │
 │ jsx-runtime   JSX -> descrições preguiçosas; control.ts: <For>, <Show>       │
-│ widgets.ts    Window, Column, Text, Button... criam UINodes                  │
+│ widgets.ts    Window, Column, Text, Image, Button... criam UINodes           │
+│ image.ts      fontes de imagem compartilhadas; png.ts: decodificador PNG     │
 │ node.ts       árvore retida (UINode) + estilo; mudanças chamam invalidate()  │
 │ layout.ts     flexbox simplificado                                           │
 │ paint.ts      árvore -> command buffer (Float32Array + textos)               │
 │ app.ts        loop de frames, eventos, foco, hover, NB_STATS                 │
 └────┬─────────────────────────────────────────────────────────────────────────┘
-     │  N-API: render(commands, texts), measureText, eventos
+     │  N-API: render(commands, texts), measureText, createImage, eventos
 ┌────▼──────────────────────────── núcleo portável (native/core/) ─────────────┐
 │ addon.c         superfície N-API, fila de eventos, threadsafe function       │
 │ render_gles2.c  um shader, um formato de vértice, um batch por frame         │
@@ -35,7 +36,7 @@ para as regras e convenções de quem mexe no código, veja o [AGENTS.md](AGENTS
 
 A ideia é manter o máximo em TypeScript (fácil de ler, mudar e, de propósito, fácil para
 LLMs escreverem) e deixar o C pequeno e estável: ele só sabe abrir uma janela, entregar
-eventos, medir texto e desenhar uma lista de retângulos, textos e recortes.
+eventos, medir texto e desenhar uma lista de retângulos, textos, imagens e recortes.
 
 ## Reatividade
 
@@ -112,6 +113,7 @@ cruza a fronteira N-API uma vez por frame, junto com um array de textos.
 | CLIP | 3 | x y w h radius (scissor + máscara arredondada mais interna) |
 | UNCLIP | 4 | (nenhum) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
+| IMAGE | 6 | x y w h · u0 v0 u1 v1 · radius opacity · id da imagem |
 
 O formato existe em três lugares que precisam ficar em sincronia: `native/include/nb.h`,
 `src/paint.ts` e `native/core/render_gles2.c`.
@@ -129,6 +131,14 @@ nos cantos.
 Texto: o HarfBuzz faz o shaping (acentos, ligaduras, kerning), o FreeType rasteriza cada
 glifo uma vez e o guarda num atlas de textura. As medidas que o layout pede ao C ficam em
 cache no lado TypeScript.
+
+Imagens: o PNG é decodificado em TypeScript (`src/png.ts`, com o zlib do runtime) para
+RGBA. `createImage` copia os pixels para o C, que os pré-multiplica e cria a textura no
+primeiro frame que a desenha (pode não haver contexto GL antes disso). Cada troca de imagem
+dentro de um frame fecha o batch, então muitas imagens diferentes custam uma chamada de
+desenho cada. `src/image.ts` divide uma decodificação entre todos os `<Image>` do mesmo
+arquivo (por caminho) e libera a textura quando o último sai da árvore. Uma imagem que não
+carrega mostra um aviso no console e não desenha nada.
 
 Coordenadas: o TypeScript trabalha em pixels lógicos; o C multiplica pela escala inteira da
 tela (Wayland: `preferred_buffer_scale`; X11: `Xft.dpi / 96`).

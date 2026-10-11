@@ -61,7 +61,20 @@ void nb_text_atlas_uploaded(void);
 // ---- core/render_gles2.c ----------------------------------------------------
 
 // Command buffer opcodes (producer: src/paint.ts; keep both in sync).
-enum { NB_OP_RECT = 1, NB_OP_TEXT = 2, NB_OP_CLIP = 3 /* x y w h radius */, NB_OP_UNCLIP = 4, NB_OP_SHADOW = 5 };
+enum {
+  NB_OP_RECT = 1,
+  NB_OP_TEXT = 2,
+  NB_OP_CLIP = 3 /* x y w h radius */,
+  NB_OP_UNCLIP = 4,
+  NB_OP_SHADOW = 5,
+  NB_OP_IMAGE = 6 /* x y w h  u0 v0 u1 v1  radius opacity id */,
+};
+
+// Images: RGBA8 with straight alpha, copied on create. The GL texture is made at the
+// next frame that draws it (there may be no context yet) and freed at the next frame
+// after destroy (the context must be current). Ids are > 0; 0 means failure.
+int nb_image_create(int width, int height, const uint8_t *rgba);
+void nb_image_destroy(int id);
 
 bool nb_render_init(void);
 void nb_render_frame(int buffer_w, int buffer_h, float scale, const float *cmds, size_t count,

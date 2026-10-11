@@ -7,8 +7,8 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 
 - Reatividade estilo SolidJS (signals, memos, effects, ownership), JSX próprio, `<For>` e `<Show>`
 - Layout flexbox, rolagem, recorte com cantos arredondados, sombras
-- Widgets: `Window` com decoração própria, `Column`/`Row`/`Box`, `Scroll`, `Text`, `Button`,
-  `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`
+- Widgets: `Window` com decoração própria, `Column`/`Row`/`Box`, `Scroll`, `Text`, `Image`
+  (PNG), `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`
 - Núcleo nativo próprio: Wayland e X11 (escolhidos em tempo de execução), OpenGL ES 2,
   HarfBuzz + FreeType, teclas mortas e acentos, escala inteira (HiDPI)
 - Roda no Bun e no Node
@@ -96,7 +96,9 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
 
 ## Widgets e visual
 
-- Imagens (PNG/JPEG/SVG) e ícones
+- Imagens: PNG já funciona (`<Image>` com `fit`, cantos e opacidade). Falta: JPEG
+  (decodificador próprio ou `libjpeg-turbo` do sistema), SVG para ícones, decodificar fora
+  da thread do JS, mipmaps para imagens muito reduzidas e versões @2x para HiDPI
 - Animações e transições
 - Tema escuro, seguindo a preferência do sistema
 - Novos widgets: slider, seleção (dropdown), abas, tooltip, diálogo modal, menu de contexto

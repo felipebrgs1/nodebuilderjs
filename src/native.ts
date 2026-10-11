@@ -17,6 +17,9 @@ export interface Native {
   close(): void;
   render(commands: Float32Array, texts: string[]): void;
   measureText(text: string, size: number, font: number): [width: number, ascent: number, descent: number];
+  /** Copies straight-alpha RGBA pixels; returns an id (> 0) for draw commands. */
+  createImage(width: number, height: number, rgba: Uint8Array): number;
+  destroyImage(id: number): void;
   setCursor(name: string): void;
   setTitle(title: string): void;
   move(): void;

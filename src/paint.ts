@@ -1,6 +1,7 @@
 // Walks the laid-out tree and encodes draw commands into a Float32Array that the
 // native renderer executes in one go (format: native/include/nb.h, consumer: native/core/render_gles2.c).
 
+import { type ImageSource, imageHandle } from "./image.js";
 import type { Color, Painter, UINode } from "./node.js";
 
 const OP_RECT = 1;
@@ -8,6 +9,7 @@ const OP_TEXT = 2;
 const OP_CLIP = 3;
 const OP_UNCLIP = 4;
 const OP_SHADOW = 5;
+const OP_IMAGE = 6;
 
 const colorCache = new Map<string, [number, number, number, number]>();
 const named: Record<string, string> = { transparent: "#0000", white: "#fff", black: "#000" };
@@ -55,6 +57,11 @@ export class CommandBuffer implements Painter {
     if (!text) return;
     this.texts.push(text);
     this.push(OP_TEXT, x, y, size, bold ? 1 : 0, ...parseColor(color), this.texts.length - 1);
+  }
+
+  image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius = 0, opacity = 1) {
+    const id = imageHandle(source);
+    if (id) this.push(OP_IMAGE, x, y, w, h, ...uv, radius, opacity, id);
   }
 
   clip(x: number, y: number, w: number, h: number, radius = 0) {

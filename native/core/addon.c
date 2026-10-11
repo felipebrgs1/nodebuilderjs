@@ -277,6 +277,37 @@ static napi_value js_measure_text(napi_env env, napi_callback_info info) {
   return out;
 }
 
+// createImage(width, height, rgba: Uint8Array) -> id (> 0). Works before the window opens.
+static napi_value js_create_image(napi_env env, napi_callback_info info) {
+  size_t argc = 3;
+  napi_value argv[3];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  int32_t w, h;
+  CHECK(napi_get_value_int32(env, argv[0], &w));
+  CHECK(napi_get_value_int32(env, argv[1], &h));
+  napi_typedarray_type type;
+  size_t length;
+  void *data;
+  CHECK(napi_get_typedarray_info(env, argv[2], &type, &length, &data, NULL, NULL));
+  if (type != napi_uint8_array || w <= 0 || h <= 0 || length < (size_t)w * h * 4) {
+    napi_throw_type_error(env, NULL, "createImage expects width, height and a Uint8Array of width*height*4 bytes");
+    return NULL;
+  }
+  napi_value out;
+  napi_create_int32(env, nb_image_create(w, h, data), &out);
+  return out;
+}
+
+static napi_value js_destroy_image(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  int32_t id;
+  CHECK(napi_get_value_int32(env, argv[0], &id));
+  nb_image_destroy(id);
+  return NULL;
+}
+
 static napi_value js_set_cursor(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value argv[1];
@@ -338,6 +369,8 @@ NAPI_MODULE_INIT() {
       {"close", NULL, js_close, NULL, NULL, NULL, napi_default, NULL},
       {"render", NULL, js_render, NULL, NULL, NULL, napi_default, NULL},
       {"measureText", NULL, js_measure_text, NULL, NULL, NULL, napi_default, NULL},
+      {"createImage", NULL, js_create_image, NULL, NULL, NULL, napi_default, NULL},
+      {"destroyImage", NULL, js_destroy_image, NULL, NULL, NULL, napi_default, NULL},
       {"setCursor", NULL, js_set_cursor, NULL, NULL, NULL, napi_default, NULL},
       {"setTitle", NULL, js_set_title, NULL, NULL, NULL, napi_default, NULL},
       {"move", NULL, js_move, NULL, NULL, NULL, napi_default, NULL},

@@ -50,11 +50,27 @@ código como o Claude Code.
   `background={() => (ativo() ? "#3584e4" : "#ffffff")}`.
 - **Estilo são props, não CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
   `radius`, `color`, `fontSize`... O layout é flexbox.
-- **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Button`, `TextField`,
-  `Checkbox`, `Card`, `Divider`, `Spacer`, além de `<For>` e `<Show>` para listas e condições.
+- **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Button`,
+  `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`, além de `<For>` e `<Show>` para listas
+  e condições.
 
-Exemplos completos em [`examples/`](examples): contador, lista de tarefas e um painel com
-abas, tabela e gráfico.
+Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens e um painel
+com abas, tabela e gráfico.
+
+### Imagens
+
+```tsx
+import logo from "./logo.png" with { type: "file" };
+
+<Image src={logo} width={64} />                                   // altura segue a proporção
+<Image src={foto} width={200} height={120} fit="cover" radius={12} opacity={0.8} />
+```
+
+`fit` pode ser `contain` (padrão: a imagem inteira, centralizada), `cover` (preenche e corta)
+ou `fill` (estica). Sem `width`/`height`, a imagem usa o próprio tamanho em pixels. O
+`with { type: "file" }` faz o `nodebuilder package` embutir o arquivo no executável; `src`
+também aceita um caminho, uma `URL` `file:`, os bytes do arquivo (`Uint8Array`) ou pixels
+já decodificados (`{ width, height, data }` em RGBA). Por enquanto, só PNG.
 
 ## Distribuir
 
@@ -167,7 +183,8 @@ Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#me
 - Só Linux x64 (arm64, Windows e macOS estão no roadmap).
 - Texto sem quebra de linha e com uma fonte só (emojis não aparecem).
 - Campo de texto sem seleção, área de transferência e desfazer.
-- Sem imagens, animações, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).
+- Imagens só em PNG (JPEG e SVG estão no roadmap).
+- Sem animações, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).
 
 ## Contribuir
 
