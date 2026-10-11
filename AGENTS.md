@@ -103,6 +103,8 @@ lib/             JS + .d.ts para o Node (gerado por scripts/npm.ts, fora do git)
 test/            core.test.tsx (bun:test; bunfig.toml limita o bun test a test/)
 compare/electron bench e dashboard em Electron + DOM puro (baseline; SCENE=dashboard)
 compare/tauri    os mesmos HTML/JS do Electron numa casca Tauri 2 (Rust, WebKitGTK)
+compare/flutter  as duas cenas em Flutter (Dart, lib/main.dart)
+compare/egui     as duas cenas em egui/eframe (Rust, src/main.rs)
 scripts/         build-native.sh, measure.sh, compare.sh, npm.ts
 ```
 
@@ -227,45 +229,53 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
   desenho). No X11 o ritmo é por timer (não alinhado ao vsync; ver limitações).
   Tolerância de 1,5 ms para 144 Hz não cair para 72.
 - `requestAnimationFrame(cb)` existe (app.ts) e é ritmado pelo compositor.
-- **Referências medidas** (2026-10-11, i7-12700H, Intel Iris Xe, KWin, monitor 240 Hz;
-  Electron 44, Tauri 2.12 + WebKitGTK 2.54; células = fps · CPU · PSS somada). Electron e
-  Tauri rodam o **mesmo** frontend em DOM puro (`compare/electron/*.html|js`). O WebKitGTK
-  limita o `requestAnimationFrame` a 60 fps, então a comparação principal é com teto 60:
+- **Referências medidas** (2026-10-11, uma sessão só, i7-12700H, Intel Iris Xe, KWin,
+  monitor 240 Hz; Electron 44, Tauri 2.12 + WebKitGTK 2.54, Flutter 3.47, egui/eframe 0.36
+  com wgpu; células = fps · CPU · PSS somada). Electron e Tauri rodam o **mesmo** frontend em
+  DOM puro (`compare/electron/*.html|js`); Flutter (`compare/flutter`) e egui
+  (`compare/egui`) são ports das duas cenas com os mesmos dados (mesmo RNG). Tauri e
+  Flutter não passam de 60 fps no Linux, então a comparação principal é com teto 60:
 
-| Cena (teto 60) | Electron | Tauri | nodebuilder |
+| Cena (teto 60) | Electron | Tauri | Flutter | egui | nodebuilder |
+|---|---|---|---|---|---|
+| Dashboard: visão geral (~190 nós) | 59 · 58% · 337 | 60 · 66% · 267 | 59 · 45% · 126 | 59 · 27% · 105 | 59 · 33% · 91 |
+| Dashboard: tabela (~6000 nós, 500 linhas) | 59 · 64% · 383 | 59 · 62% · 292 | 59 · 41% · 133¹ | 54 · 72% · 112 | **49** · 54% · 161 |
+| Dashboard: logs (~1700 nós) | 59 · 94% · 408 | 59 · 142% · 298 | 59 · 47% · 135¹ | 59 · 42% · 108 | 56 · 45% · 157 |
+| Dashboard: configurações | 59 · 44% · 308 | 60 · 51% · 267 | 60 · 38% · 123 | 60 · 23% · 105 | 59 · 24% · 83 |
+| Dashboard: `CYCLE=30` | 58 · 70% · 384 | 59 · 85% · 321 | 59 · 45% · 141 | 58 · 45% · 114 | 55 · 43% · 166 |
+| 1000 células, parado | 0% · 310 | 0% · 216 | 0% · 147 | 0% · 106 | 1% · 81 |
+| 1000 células, 1 texto muda | 58 · 58% · 321 | 60 · 37% · 228 | 59 · 51% · 155 | 59 · 49% · 108 | 57 · 39% · 110 |
+| 1000 células, todas mudam | 59 · 128% · 413 | 29 · 147% · 277 | 21 · 96% · 173 | 59 · 68% · 113 | 58 · 44% · 139 |
+| 3000 células, todas mudam | 49 · 172% · 447 | 20 · 123% · 351 | 7 · 140% · 243 | 46 · 84% · 128 | 50 · 94% · 194 |
+
+  ¹ Flutter com `ListView.builder` (virtualizado, o idiomático); os outros têm todas as linhas.
+  egui é immediate mode: refaz a UI inteira a cada frame, mas só pinta o que está visível.
+
+| Cena (teto 120) | Electron | egui | nodebuilder |
 |---|---|---|---|
-| Dashboard: visão geral (~190 nós) | 59 · 59% · 311 MB | 60 · 71% · 274 MB | 57 · 29% · 87 MB |
-| Dashboard: tabela (~6000 nós, 500 linhas) | 59 · 64% · 357 MB | 59 · 64% · 293 MB | **48** · 55% · 155 MB |
-| Dashboard: logs (~1700 nós, 2 linhas/frame) | 59 · 94% · 385 MB | 59 · 143% · 297 MB | 52 · 41% · 139 MB |
-| Dashboard: configurações (~130 nós) | 59 · 44% · 280 MB | 60 · 48% · 263 MB | 58 · 19% · 82 MB |
-| Dashboard: `CYCLE=30` | 58 · 66% · 359 MB | 58 · 84% · 322 MB | 52 · 40% · 142 MB |
-| 1000 células, parado | 0% · 283 MB | 0% · 250 MB | 0,6% · 77 MB |
-| 1000 células, 1 texto muda | 59 · 52% · 291 MB | 60 · 37% · 260 MB | 57 · 40% · 99 MB |
-| 1000 células, todas mudam | 59 · 123% · 390 MB | 31 · 144% · 316 MB | 57 · 46% · 129 MB |
-| 3000 células, todas mudam | 51 · 177% · 412 MB | 21 · 122% · 368 MB | 49 · 93% · 199 MB |
-
-| Cena (teto 120) | Electron | nodebuilder |
-|---|---|---|
-| Dashboard: visão geral | 118 · 86% · 347 MB | 91 · 37% · 87 MB |
-| Dashboard: tabela | 116 · 78% · 356 MB | **77** · 81% · 156 MB |
-| Dashboard: logs | 104 · 150% · 430 MB | 116 · 68% · 154 MB |
-| Dashboard: configurações | 117 · 68% · 289 MB | 89 · 23% · 84 MB |
-| Dashboard: `CYCLE=30` | 112 · 97% · 393 MB | 87 · 57% · 160 MB |
-| 1000 células, 1 texto muda | 117 · 73% · 288 MB | 106 · 41% · 103 MB |
-| 1000 células, todas mudam | 113 · 234% · 391 MB | 111 · 66% · 138 MB |
-| 3000 células, todas mudam | 50 · 172% · 397 MB | 50 · 94% · 204 MB |
+| Dashboard: visão geral | 117 · 84% · 365 | 119 · 21% · 105 | 111 · 39% · 90 |
+| Dashboard: tabela | 116 · 80% · 382 | 102 · 71% · 113 | **80** · 83% · 152 |
+| Dashboard: logs | 107 · 155% · 446 | 117 · 42% · 108 | 118 · 71% · 172 |
+| Dashboard: configurações | 116 · 67% · 311 | 118 · 23% · 105 | 104 · 22% · 89 |
+| Dashboard: `CYCLE=30` | 111 · 99% · 413 | 112 · 38% · 114 | 100 · 62% · 152 |
+| 1000 células, 1 texto muda | 117 · 71% · 312 | 117 · 47% · 107 | 103 · 44% · 109 |
+| 1000 células, todas mudam | 112 · 237% · 414 | 116 · 72% · 113 | 117 · 69% · 147 |
+| 3000 células, todas mudam | 50 · 173% · 427 | 45 · 81% · 128 | 51 · 96% · 190 |
 
   Comandos: `scripts/compare.sh <rótulo> 3 5 -- <cmd>` com, para o Electron,
   `compare/electron/node_modules/.bin/electron --ozone-platform=wayland compare/electron` e,
   para o Tauri, `compare/tauri/target/release/nodebuilder-tauri-baseline` (compile antes com
-  `cargo build --release` em `compare/tauri`). Mesmas variáveis nos três (`N`, `MODE`,
-  `SCENE=dashboard`, `TAB`, `CYCLE`, `NB_MAX_FPS`).
+  `cargo build --release` em `compare/tauri`); Flutter:
+  `compare/flutter/build/linux/x64/release/bundle/nodebuilder_flutter_baseline`
+  (`/opt/flutter/bin/flutter build linux --release` em `compare/flutter`); egui:
+  `compare/egui/target/release/nodebuilder-egui-baseline` (`cargo build --release`). Mesmas
+  variáveis em todos (`N`, `MODE`, `SCENE=dashboard`, `TAB`, `CYCLE`, `NB_MAX_FPS`).
 
   Onde perdemos: a tabela. ~470 linhas fora da tela entram no layout, na pintura e no
   shaping todo frame (gargalos 1–3 abaixo); Chromium e WebKit só trabalham no que é visível.
   Ainda sem explicação: com teto 60 o nodebuilder fica em 52–58 fps em cenas leves (o
   agendamento perde vblanks de vez em quando) e, com teto 120, a visão geral oscilou entre
-  91 e 105 fps de uma rodada para outra. Vale investigar junto com o item 7 (latência).
+  91 e 111 fps de uma rodada para outra. Vale investigar junto com o item 7 (latência).
   O Tauri levou mais de 3 s para ficar ocioso depois de abrir: meça com aquecimento ≥ 8 s
   quando a cena é estática.
   Por que o Tauri fica perto do Electron (detalhe no README): o processo da página

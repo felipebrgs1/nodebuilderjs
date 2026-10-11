@@ -14,17 +14,17 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - Roda no Bun e no Node
 - `bun create nodebuilderjs`, helpers de teste sem janela, `AGENTS.md` no template
 - `nodebuilder package`: AppImage, `.deb`, `.rpm` e `.tar.gz` (glibc 2.34+)
-- Benchmarks contra Electron e Tauri com a mesma cena
+- Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 
 ## Desempenho
 
-O nodebuilder já usa bem menos CPU e memória que o Electron e o Tauri na maioria das cenas, mas perde
+O nodebuilder já usa bem menos CPU e memória que o Electron e o Tauri, e fica no nível do egui, mas perde
 em listas longas. A ordem abaixo é a dos gargalos medidos (detalhes no
 [AGENTS.md](AGENTS.md#performance)).
 
 1. **Culling:** não pintar nem medir o que está fora da área visível. Na tabela de 500 linhas,
-   é o que separa os 48 fps do nodebuilder dos 59 do Electron e do Tauri (teto de 60), e os
-   77 dos 116 do Electron (teto de 120).
+   é o que separa os 49 fps do nodebuilder dos 54 a 59 dos outros (teto de 60), e os 80 dos
+   116 do Electron (teto de 120).
 2. **Layout incremental:** recalcular só os nós marcados como sujos, em vez da árvore toda.
 3. **Cache de shaping no C:** hoje o HarfBuzz refaz o shaping de todo texto a cada frame.
 4. **Desenho parcial:** redesenhar só a região que mudou (`EGL_KHR_partial_update`).

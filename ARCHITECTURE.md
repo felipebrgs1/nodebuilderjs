@@ -221,8 +221,18 @@ SCENE=dashboard scripts/compare.sh "electron" 3 5 -- \
 SCENE=dashboard scripts/compare.sh "tauri" 3 5 -- compare/tauri/target/release/nodebuilder-tauri-baseline
 ```
 
-No Linux o Tauri não passa de 60 fps (limite do `requestAnimationFrame` do WebKitGTK); para
-comparar o mesmo trabalho, rode os outros dois com `NB_MAX_FPS=60`.
+Flutter (`compare/flutter/`) e egui (`compare/egui/`) têm ports das duas cenas, com os
+mesmos dados e as mesmas atualizações por frame:
+
+```sh
+(cd compare/flutter && /opt/flutter/bin/flutter build linux --release)
+scripts/compare.sh "flutter" 3 5 -- compare/flutter/build/linux/x64/release/bundle/nodebuilder_flutter_baseline
+(cd compare/egui && cargo build --release)
+scripts/compare.sh "egui" 3 5 -- compare/egui/target/release/nodebuilder-egui-baseline
+```
+
+No Linux, Tauri e Flutter não passam de 60 fps; para comparar o mesmo trabalho, rode os
+outros com `NB_MAX_FPS=60`.
 
 Quebra da memória do nodebuilder: Bun vazio ~15 MB, texto (FreeType/HarfBuzz) ~26 MB, janela
 GL ~108 MB (quase tudo é driver de vídeo), framework ~15 MB.

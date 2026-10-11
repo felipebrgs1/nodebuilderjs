@@ -68,43 +68,64 @@ Ubuntu 22.04+, Debian 12+, Fedora, RHEL 9+ e derivados.
 
 ## Benchmarks
 
-A mesma cena feita três vezes: em nodebuilder, em **Electron 44** e em **Tauri 2**. Nos dois
-últimos, o frontend é idêntico (HTML e JavaScript puros, sem framework); muda só o runtime:
-Chromium no Electron, o WebKitGTK do sistema no Tauri. Máquina: i7-12700H, Intel Iris Xe,
-KDE Plasma (Wayland), monitor de 240 Hz.
+As mesmas duas cenas feitas em cinco tecnologias, medidas na mesma sessão:
 
-O Tauri usa o `requestAnimationFrame` do WebKitGTK, que no Linux não passa de **60 fps**.
-Para comparar o mesmo trabalho, a tabela abaixo limita os três a 60 fps.
+| | Linguagem | Como desenha |
+|---|---|---|
+| **Electron 44** | JS + HTML/CSS | Chromium embutido |
+| **Tauri 2** | JS + HTML/CSS (Rust só na casca) | WebKitGTK do sistema |
+| **Flutter 3.47** | Dart | motor próprio (OpenGL ES) |
+| **egui 0.36** | Rust | immediate mode, wgpu (Vulkan) |
+| **nodebuilder** | TypeScript | núcleo próprio (OpenGL ES) |
 
-Cada célula: **fps · CPU · memória**. CPU de 100% é um núcleo inteiro; memória é a PSS
-somada de todos os processos do app.
+Electron e Tauri rodam exatamente o mesmo HTML/JS, sem framework. Máquina: i7-12700H,
+Intel Iris Xe, KDE Plasma (Wayland), monitor de 240 Hz.
 
-| Cena | Electron | Tauri | nodebuilder |
-|---|---|---|---|
-| **Painel** ([dashboard.tsx](examples/dashboard.tsx)): visão geral | 59 · 59% · 311 MB | 60 · 71% · 274 MB | 57 · **29% · 87 MB** |
-| Painel: tabela com 500 linhas | 59 · 64% · 357 MB | 59 · 64% · 293 MB | 48 · **55% · 155 MB** |
-| Painel: logs ao vivo | 59 · 94% · 385 MB | 59 · 143% · 297 MB | 52 · **41% · 139 MB** |
-| Painel: configurações | 59 · 44% · 280 MB | 60 · 48% · 263 MB | 58 · **19% · 82 MB** |
-| Painel: troca de aba a cada 30 frames | 58 · 66% · 359 MB | 58 · 84% · 322 MB | 52 · **40% · 142 MB** |
-| **Grade** ([bench.tsx](examples/bench.tsx)): 1000 células paradas | 0% · 283 MB | 0% · 250 MB | 0,6% · **77 MB** |
-| Grade: 1000 células, um texto muda | 59 · 52% · 291 MB | 60 · **37%** · 260 MB | 57 · 40% · **99 MB** |
-| Grade: 1000 células, todas mudam | 59 · 123% · 390 MB | 31 · 144% · 316 MB | 57 · **46% · 129 MB** |
-| Grade: 3000 células, todas mudam | 51 · 177% · 412 MB | 21 · 122% · 368 MB | 49 · **93% · 199 MB** |
+**Tauri e Flutter não passam de 60 fps no Linux**, mesmo em monitor de 240 Hz. Para
+comparar o mesmo trabalho, a tabela limita todos a 60 fps. Cada célula: **fps · CPU ·
+memória**; CPU de 100% é um núcleo inteiro, memória é a PSS somada de todos os processos.
+
+| Cena | Electron | Tauri | Flutter | egui | nodebuilder |
+|---|---|---|---|---|---|
+| **Painel** ([dashboard.tsx](examples/dashboard.tsx)): visão geral | 59 · 58% · 337 MB | 60 · 66% · 267 MB | 59 · 45% · 126 MB | 59 · 27% · 105 MB | 59 · 33% · 91 MB |
+| Painel: tabela com 500 linhas | 59 · 64% · 383 MB | 59 · 62% · 292 MB | 59 · 41% · 133 MB¹ | 54 · 72% · 112 MB | 49 · 54% · 161 MB |
+| Painel: logs ao vivo | 59 · 94% · 408 MB | 59 · 142% · 298 MB | 59 · 47% · 135 MB¹ | 59 · 42% · 108 MB | 56 · 45% · 157 MB |
+| Painel: configurações | 59 · 44% · 308 MB | 60 · 51% · 267 MB | 60 · 38% · 123 MB | 60 · 23% · 105 MB | 59 · 24% · 83 MB |
+| Painel: troca de aba a cada 30 frames | 58 · 70% · 384 MB | 59 · 85% · 321 MB | 59 · 45% · 141 MB | 58 · 45% · 114 MB | 55 · 43% · 166 MB |
+| **Grade** ([bench.tsx](examples/bench.tsx)): 1000 células paradas | 0% · 310 MB | 0% · 216 MB | 0% · 147 MB | 0% · 106 MB | 1% · 81 MB |
+| Grade: 1000 células, um texto muda | 58 · 58% · 321 MB | 60 · 37% · 228 MB | 59 · 51% · 155 MB | 59 · 49% · 108 MB | 57 · 39% · 110 MB |
+| Grade: 1000 células, todas mudam | 59 · 128% · 413 MB | 29 · 147% · 277 MB | 21 · 96% · 173 MB | 59 · 68% · 113 MB | 58 · 44% · 139 MB |
+| Grade: 3000 células, todas mudam | 49 · 172% · 447 MB | 20 · 123% · 351 MB | 7 · 140% · 243 MB | 46 · 84% · 128 MB | 50 · 94% · 194 MB |
+
+¹ O Flutter usa listas virtualizadas (`ListView.builder`), o padrão dele: só constrói as
+linhas visíveis. Nas outras quatro, todas as linhas existem.
 
 **Em resumo:**
-- **Memória:** o nodebuilder usa de 27% a 48% da memória do Electron e de 31% a 54% da do
-  Tauri. Parado, ocupa 77 MB, contra 250 MB do Tauri e 283 MB do Electron.
-- **CPU:** o nodebuilder gasta menos que o Electron em todas as cenas animadas (de 37% a 86%
-  do que ele gasta; em metade delas, menos da metade). O Tauri fica perto do Electron e gasta
-  mais nas cenas com muito texto mudando.
-- **fps:** o Tauri não sustenta 60 fps quando muitos textos mudam a cada frame (31 e 21 fps).
-  Com teto de 120 fps, o Electron fica entre 104 e 118 fps e o nodebuilder entre 77 e 116
-  (com 3000 células, 50 fps nos dois).
-- **Onde o nodebuilder perde:** listas longas. Ele ainda mede e desenha o que está fora da
-  tela (48 fps na tabela de 500 linhas, contra 59 dos outros). É o primeiro item do
-  [roadmap](ROADMAP.md).
-- **Onde o Tauri ganha:** tamanho. O binário tem 5,7 MB porque usa o WebKit do sistema; o
-  executável do nodebuilder tem ~91 MB (~31 MB compactado), e o Electron ~280 MB.
+- **Os dois runtimes web são os mais pesados:** 216 a 447 MB, e muito mais CPU quando muito
+  texto muda. O Tauri usa de 13% a 33% menos memória que o Electron, mas não sustenta 60 fps
+  nas cenas mais pesadas (29 e 20 fps).
+- **O egui é o rival mais próximo** do nodebuilder: memória quase constante (105 a 128 MB,
+  sem coletor de lixo) e a menor CPU nas abas leves do painel. Por ser immediate mode, ele
+  refaz a interface inteira a cada frame, e isso pesa quando há muitos elementos: perde na
+  tabela (72% contra 54%) e quando 1000 textos mudam (68% contra 44%).
+- **O Flutter** gasta pouca memória e pouca CPU no painel, mas trava em 60 fps e cai para
+  21 e 7 fps quando milhares de textos mudam a cada frame.
+- **O nodebuilder** tem a menor memória parado (81 MB) e nas abas leves do painel, e a
+  menor CPU quando 1000 textos mudam a cada frame (44%; com 3000, o egui gasta menos, mas a
+  46 fps contra 50). Perde fps na tabela de 500 linhas (49 contra 54 a 59) porque ainda mede
+  e desenha o que está fora da tela, o primeiro item do [roadmap](ROADMAP.md). Na tabela, nos
+  logs e na troca de abas usa mais memória que egui e Flutter (157 a 166 MB): é o heap do
+  JavaScript.
+- **Com teto de 120 fps**, só Electron, egui e nodebuilder passam de 60: o Electron fica
+  entre 107 e 117 fps, o egui entre 102 e 119 e o nodebuilder entre 80 e 118 (com 3000
+  células, todos em 45–51 fps).
+- **Tamanho:** o Tauri tem 5,7 MB (usa o WebKit do sistema), o egui 15 MB, o Flutter 23 MB,
+  o nodebuilder ~91 MB (~31 MB compactado, quase tudo é o runtime do Bun) e o Electron
+  ~280 MB.
+
+E a ergonomia conta: no egui você escreve Rust; no Flutter, Dart; no Electron e no Tauri,
+HTML/CSS/JS (com Rust para a parte nativa do Tauri); no nodebuilder, TypeScript com JSX, que
+é o que a maioria dos devs web (e dos LLMs) já escreve.
 
 ### Por que o Tauri fica tão perto do Electron?
 
@@ -120,7 +141,7 @@ a janela. Medindo processo por processo na cena de logs:
 | GPU, rede e utilitários | 33 MB (1 processo) | 115 MB (5 processos) |
 
 - **Memória:** o processo da página custa quase o mesmo nos dois. O Tauri economiza só nos
-  processos auxiliares, o que dá de 6% a 23% menos memória que o Electron nas cenas medidas.
+  processos auxiliares, o que dá de 13% a 33% menos memória que o Electron nas cenas medidas.
 - **CPU:** o WebKitGTK desenha a página na CPU (threads `SkiaCPUWorker`, ~45% de um núcleo),
   enquanto o Chromium desenha na GPU. Por isso o Tauri gasta mais justamente quando muito
   texto muda a cada frame.
