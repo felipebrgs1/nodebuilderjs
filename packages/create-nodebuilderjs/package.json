@@ -1,6 +1,6 @@
 {
   "name": "create-nodebuilderjs",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Cria um app nodebuilder: bun create nodebuilderjs meu-app",
   "type": "module",
   "license": "MIT",

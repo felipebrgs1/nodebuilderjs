@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 (2026-10-11)
+
+- **Apps criados com `bun create nodebuilderjs`** vêm com um exemplo maior: contador, lista
+  de tarefas, gráfico ao vivo, ícones, o estado num módulo e testes que clicam e digitam
+  com `interact()`. A 0.2.0 foi publicada antes dessa mudança.
+- Nenhuma mudança no core em relação à 0.2.0.
+
 ## 0.2.0 (2026-10-11)
 
 ### Novidades
@@ -18,9 +25,8 @@
   nó), e arrastar continua chegando ao nó onde o clique começou.
 - **Testes de apps:** `interact(root)` em `@nodebuilderjs/core/testing` simula mouse e
   teclado sem janela (`hover`, `press`, `drag`, `scroll`, `key`, `type`).
-- **Apps criados com `bun create nodebuilderjs`** vêm com um exemplo maior (contador, lista
-  de tarefas, gráfico ao vivo, ícones, estado num módulo e testes com `interact()`) e com
-  skills para agentes (`.agents/skills/`, com links em `.claude/skills/`).
+- **Apps criados com `bun create nodebuilderjs`** vêm com skills para agentes
+  (`.agents/skills/`, com links em `.claude/skills/`).
 
 ### Desempenho
 - Culling: o que está fora da área visível de um `Scroll` não é posicionado, pintado nem
