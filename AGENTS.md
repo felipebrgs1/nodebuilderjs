@@ -79,7 +79,7 @@ de desenho, pixels), não dos detalhes internos, para que refatorar não quebre 
 |---|---|
 | Reatividade, `For`/`Show` | signals e effects direto; conte execuções e descartes |
 | Widgets e layout | monte com `mount` (`@nodebuilderjs/core/testing`) ou `insert` num `UINode` raiz, rode `layout()` e confira `x`/`y`/`width`/`height` ou `debugTree()`. Métricas falsas: 8 px por caractere, linha de 20 px |
-| Pintura e command buffer | `paintTree(node, new CommandBuffer())` e leia os opcodes (formato abaixo). Primitiva de desenho nova começa aqui, com o teste dos floats emitidos |
+| Pintura e command buffer | `drawCommands(node)` / `decode(buffer)` de `test/helpers.ts` devolvem os comandos com nome (`{ op: "line", x0, ... }`). Primitiva de desenho nova começa aqui |
 | Imagens e texturas | `setImageBackend({ create, destroy })` registra criação e liberação de texturas |
 | Decodificadores e rasterizadores | testes "golden": a saída da referência (libjpeg-turbo, libwebp, librsvg, ImageMagick) fica em `test/fixtures/`, gerada uma vez; compare byte a byte ou com tolerância explícita. Depois, fuzzing com bytes trocados e arquivos truncados: todo erro é uma mensagem do formato (nunca um TypeError), e dimensões absurdas são recusadas antes de alocar (limite de 2^28 pixels) |
 | Addon (o que roda sem janela) | chame a função nativa pelo `loadNative()` num teste; use `test.skipIf` quando depender de algo opcional do sistema (ex.: libheif) |
@@ -97,9 +97,9 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
 
 ### Organização dos testes
 
-- Um arquivo por módulo de `src/`: `test/<módulo>.test.ts(x)`. Hoje: `core` (reatividade,
-  árvore, layout, culling), `image`, `jpeg`, `webp` e `svg` (inclui `geometry/` e o
-  `<Icon>`). Módulo novo ganha arquivo novo; quando o `core` crescer, divida-o por módulo.
+- Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `image`, `jpeg`,
+  `webp`, `svg` (+ `<Icon>`), `geometry` (triangulação), `draw` (primitivas e `shapes.ts`) e
+  `canvas`. Assunto novo ganha arquivo novo; quando o `core` crescer, divida-o.
 - Testes rápidos e determinísticos: sem rede, sem relógio, sem janela. A suíte toda roda em
   ~0,1 s; um teste que precise de mais que isso deve ter um motivo.
 - Fixtures pequenas (poucos KB). Registre de onde vieram (ferramenta e versão, como em
@@ -131,13 +131,14 @@ src/                   um módulo por pasta; imports relativos com `.js`
     node.ts            UINode (árvore retida), Style, handlers, invalidate(), measureText(), displayScale()
     layout.ts          flexbox simplificado + culling
     paint.ts           árvore -> CommandBuffer (Float32Array) + parseColor
+    shapes.ts          polyline (segmentos LINE) e fillPolygon (triangulação + franja de AA)
   runtime/
     app.ts             run(), eventos, foco, hover, agendamento de frames, NB_STATS
     native.ts          carrega native/build/<plataforma>-<arch>/nodebuilder.node (require literais)
   widgets/             um arquivo por widget; index.ts reexporta
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps, inherited, interaction
     containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
-    text.ts image.ts icon.ts button.ts checkbox.ts text-field.ts window.ts
+    text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
   image/
     source.ts          fontes de imagem: cache por caminho, contagem de uso, handle na GPU
     decode.ts          decodeImage: escolhe o decodificador pela assinatura do arquivo
@@ -151,6 +152,7 @@ src/                   um módulo por pasta; imports relativos com `.js`
     path.ts            path data, curvas e arcos achatados em polilinhas
     stroke.ts          contorno -> polígonos (pontas, junções, miter)
     raster.ts          rasterização por linhas de varredura com AA (nonzero/evenodd)
+    triangulate.ts     ear clipping de polígonos simples (null se cruzar a si mesmo)
 native/
   include/nb.h          API portável: eventos, texto, renderer, imagens, opcodes
   include/nb_platform.h CONTRATO que cada SO implementa (janela, event pump, fontes, codecs)
@@ -170,8 +172,9 @@ native/
     protocols/          xdg-shell.xml (vendorizado; wayland-protocols não está instalado)
   build/<platform>-<arch>/  saída (nomes de process.platform/arch: linux-x64, ...)
 test/            um arquivo por módulo (bun:test; bunfig.toml limita o bun test a test/)
+  helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> comandos com nome
   fixtures/      entradas e saídas de referência (.raw, .pnm do djpeg, PNG do librsvg...)
-examples/        counter, todo, images, icons, bench, dashboard (.tsx) + assets/
+examples/        counter, todo, images, icons, drawing, bench, dashboard (.tsx) + assets/
 cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.ts
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces publicados junto com o core (veja "Publicação no npm")
@@ -278,9 +281,12 @@ Mantenha **`native/include/nb.h`, `src/render/paint.ts` e `native/core/render_gl
 | UNCLIP | 4 | (nenhum) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
 | IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tinta; a = opacidade) · radius · id (de `createImage`) |
+| LINE | 7 | x0 y0 x1 y1 · width · r g b a · capStart capEnd (0 butt, 1 round) |
+| TRIANGLES | 8 | n · r g b a · n × (x y cobertura) |
+| ARC | 9 | cx cy · outer inner · start sweep (radianos; 0 = cima, horário) · r g b a |
 
-Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica). Os testes que leem o buffer
-(`test/image.test.tsx`, `test/svg.test.tsx`) têm o tamanho de cada op: atualize-os junto.
+Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica). Op novo também entra no
+`decode()` de `test/helpers.ts`, que os testes usam para ler o buffer.
 
 ### Layout (render/layout.ts)
 - Flex: `direction` (padrão column em `Column`/`Box`), `gap`, `padding`, `grow`,
@@ -382,6 +388,10 @@ todos com a versão do `package.json` da raiz:
 
 - TextField: sem seleção, clipboard, undo; Text: sem quebra de linha; uma fonte só
   (sem fallback: emojis não aparecem).
+- `<Canvas>`: polígono que cruza a si mesmo não é desenhado; linhas translúcidas escurecem
+  nas junções (cada segmento é desenhado à parte); fatias vizinhas de pizza mostram uma
+  emenda clara fina (as duas bordas antialiasadas, como em navegadores); triangular formas
+  radiais com milhares de pontos é lento (~80 ms para 2000 pontos).
 - SVG só para ícones: sem gradientes, padrões, texto, filtros, máscaras, `<use>`, tracejado
   e CSS em `<style>`; opacidade de grupo aplicada por forma.
 - Imagens: AVIF/HEIC só com a `libheif` do sistema; decodificação síncrona na thread do JS

@@ -114,6 +114,9 @@ cruza a fronteira N-API uma vez por frame, junto com um array de textos.
 | UNCLIP | 4 | (nenhum) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
 | IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tinta; a = opacidade) · radius · id da imagem |
+| LINE | 7 | x0 y0 x1 y1 · largura · r g b a · ponta inicial, ponta final (0 reta, 1 redonda) |
+| TRIANGLES | 8 | n · r g b a · n × (x y cobertura) |
+| ARC | 9 | cx cy · raio externo, raio interno · início, varredura (radianos; 0 = cima, horário) · r g b a |
 
 O formato existe em três lugares que precisam ficar em sincronia: `native/include/nb.h`,
 `src/render/paint.ts` e `native/core/render_gles2.c`.
@@ -155,6 +158,16 @@ cobertura exata na horizontal, com 16 amostras por pixel na vertical. O `<Icon>`
 no tamanho físico (tamanho lógico × escala), alinhado aos pixels. Se todas as cores do SVG
 são `currentColor`, ele rasteriza em branco uma vez, e a cor entra como tinta no comando
 IMAGE: o shader multiplica os texels por ela, e trocar a cor não refaz o ícone.
+
+Primitivas de desenho (`<Canvas>`): cada segmento de linha é um retângulo orientado ao
+longo do segmento; o shader recebe a posição nesse referencial e calcula a distância ao
+segmento (pontas redondas ou retas), de onde sai o antialiasing. Arcos fazem o mesmo com a
+distância a um setor de anel. Polígonos são triangulados em TypeScript
+(`src/geometry/triangulate.ts`, ear clipping) e ganham uma franja de 1 pixel da tela cuja
+cobertura vai de 1 a 0 (técnica do NanoVG); o GPU interpola a cobertura e o resultado é uma
+borda suave. Tudo isso entra no mesmo lote dos retângulos e textos. O `<Canvas>` grava as
+chamadas de `draw` quando um signal lido muda (ou o tamanho e a escala mudam), já
+convertidas em segmentos e triângulos; pintar só desloca essa gravação.
 
 Coordenadas: o TypeScript trabalha em pixels lógicos; o C multiplica pela escala inteira da
 tela (Wayland: `preferred_buffer_scale`; X11: `Xft.dpi / 96`).

@@ -4,7 +4,7 @@ import { Column, Image, Show, UINode, createRoot, createSignal, decodeImage, lay
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
 import { setImageBackend } from "../src/image/source.js";
 import { loadNative } from "../src/runtime/native.js";
-import { CommandBuffer, paintTree } from "../src/render/paint.js";
+import { commandsOf } from "./helpers.js";
 
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
 
@@ -81,20 +81,6 @@ function mount(view: () => any, width = 400, height = 300) {
   return { node, dispose };
 }
 
-function images(node: UINode) {
-  const buffer = new CommandBuffer();
-  paintTree(node, buffer);
-  const out: number[][] = [];
-  const d = buffer.commands;
-  for (let i = 0; i < d.length; ) {
-    const op = d[i]!;
-    const size = op === 1 ? 14 : op === 2 ? 8 : op === 3 ? 5 : op === 4 ? 0 : op === 5 ? 10 : 14;
-    if (op === 6) out.push(Array.from(d.subarray(i + 1, i + 1 + size), (v) => Math.round(v * 1000) / 1000));
-    i += 1 + size;
-  }
-  return out;
-}
-
 test("Image sizes itself from the file and keeps the aspect ratio", () => {
   const { node } = mount(() => (
     <Column align="start">
@@ -114,13 +100,12 @@ test("Image fit: contain centers, cover crops, fill stretches", () => {
       <Image src={fixture("rgba8.png")} width={26} height={36} fit="fill" />
     </Column>
   ));
-  const [contain, cover, fill] = images(node);
-  // x y w h  u0 v0 u1 v1  r g b a  radius id
-  expect(contain!.slice(0, 8)).toEqual([0, 9, 26, 18, 0, 0, 1, 1]);
+  const [contain, cover, fill] = commandsOf(node, "image");
+  expect(contain).toMatchObject({ x: 0, y: 9, w: 26, h: 18, uv: [0, 0, 1, 1] });
   // 13x9 scaled by 4 to cover 26x36 -> 52x36, half the width shows.
-  expect(cover!.slice(0, 13)).toEqual([0, 36, 26, 36, 0.25, 0, 0.75, 1, 1, 1, 1, 0.5, 4]);
-  expect(fill!.slice(0, 8)).toEqual([0, 72, 26, 36, 0, 0, 1, 1]);
-  expect(new Set([contain![13], cover![13], fill![13]]).size).toBe(1); // one texture for one file
+  expect(cover).toMatchObject({ x: 0, y: 36, w: 26, h: 36, uv: [0.25, 0, 0.75, 1], tint: [1, 1, 1, 0.5], radius: 4 });
+  expect(fill).toMatchObject({ x: 0, y: 72, w: 26, h: 36, uv: [0, 0, 1, 1] });
+  expect(new Set([contain!.id, cover!.id, fill!.id]).size).toBe(1); // one texture for one file
 });
 
 test("Image textures are shared and freed with the last user", () => {
@@ -138,14 +123,14 @@ test("Image textures are shared and freed with the last user", () => {
       </Show>
     </Column>
   ));
-  images(node);
+  commandsOf(node, "image");
   expect(created).toEqual([100]);
   setShow(false);
   expect(destroyed).toEqual([]); // still shown by the first Image
   setSrc(fixture("gray1.png"));
   expect(destroyed).toEqual([100]);
   layout(node, 400, 300);
-  images(node);
+  commandsOf(node, "image");
   expect(created).toEqual([100, 101]);
   dispose();
   expect(destroyed).toEqual([100, 101]);
@@ -157,7 +142,7 @@ test("a missing image draws nothing and does not throw", () => {
   console.warn = (msg: string) => warnings.push(msg);
   try {
     const { node } = mount(() => <Column><Image src="does-not-exist.png" width={20} height={20} /></Column>);
-    expect(images(node)).toEqual([]);
+    expect(commandsOf(node, "image")).toEqual([]);
     expect(node.children[0]!.height).toBe(20);
     expect(warnings[0]).toMatch(/could not load .*does-not-exist\.png/);
   } finally {

@@ -50,11 +50,12 @@ código como o Claude Code.
   `background={() => (ativo() ? "#3584e4" : "#ffffff")}`.
 - **Estilo são props, não CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
   `radius`, `color`, `fontSize`... O layout é flexbox.
-- **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Button`,
-  `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`, além de `<For>` e `<Show>` para listas
-  e condições.
+- **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
+  `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`, além de `<For>` e `<Show>`
+  para listas e condições.
 
-Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens, ícones e um painel
+Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens, ícones,
+desenho livre e um painel
 com abas, tabela e gráfico.
 
 ### Imagens
@@ -99,6 +100,24 @@ exemplo, não custa nada. `strokeWidth` muda a espessura dos ícones de contorno
 Lucide. Gradientes, texto, filtros, máscaras e `<use>` ainda não são suportados, então
 ilustrações complexas devem virar PNG. Pacotes para React (`lucide-react`,
 `@phosphor-icons/react`) não funcionam: use `lucide-static`, `lucide` ou `@phosphor-icons/core`.
+
+### Desenho livre
+
+```tsx
+<Canvas height={160} draw={(g) => {
+  const pts = dados().flatMap((v, i) => [i * 10, g.height - v]);   // signals lidos aqui redesenham
+  g.polygon([0, g.height, ...pts, g.width, g.height], "#3584e433"); // área
+  g.polyline(pts, theme.accent.base, 2);                            // linha
+  g.arc(80, 80, 60, 40, 0, Math.PI, "#26a269");                     // rosca: raios, início, varredura
+}} />
+```
+
+`<Canvas>` desenha com primitivas da GPU com antialiasing: linhas grossas com pontas
+redondas, retas ou quadradas, polígonos preenchidos (côncavos inclusive), círculos e arcos
+(pizza, rosca, medidores) e texto. As coordenadas são locais ao canvas; `g.width` e `g.height`
+dão o tamanho. Os signals lidos em `draw` são rastreados: mudar um deles redesenha. A
+geometria é calculada quando os dados mudam, não a cada frame. Limites: polígono que cruza a
+si mesmo não é desenhado, e em linhas com cor translúcida as junções ficam mais escuras.
 
 ## Distribuir
 

@@ -115,9 +115,11 @@ Em andamento, nesta ordem:
    `lucide`) e Phosphor (`@phosphor-icons/core`). Ícones de uma cor só são rasterizados uma
    vez e tingidos na GPU, então trocar a cor (hover, tema) não refaz o ícone. Fora do
    escopo inicial: gradientes, texto, filtros, máscaras e `<use>`.
-2. **Primitivas de desenho na GPU:** linhas grossas com antialiasing (calculadas no shader,
-   como os cantos arredondados) e polígonos preenchidos, reaproveitando a geometria do SVG
-   (arcos, curvas, contornos). Base para gráficos e para widgets desenhados à mão.
+2. ~~**Primitivas de desenho na GPU:**~~ **feito** (2026-10-11): `LINE`, `TRIANGLES` e `ARC`,
+   expostas pelo widget `<Canvas>`; área de gráfico com 2000 pontos triangula em ~1,5 ms, e
+   repintar sem mudança de dados custa só o deslocamento da geometria gravada. Linhas
+   grossas com antialiasing calculado no shader, polígonos triangulados com franja de
+   antialiasing e arcos; base para gráficos e para widgets desenhados à mão.
 3. **`@nodebuilderjs/charts`:** gráficos de linha, área, barra e pizza, com eixos, grade,
    legenda e tooltip, com API no formato do Recharts
    (`<LineChart data={...}><Line dataKey="total" /><XAxis dataKey="mes" /></LineChart>`).

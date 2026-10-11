@@ -68,6 +68,9 @@ enum {
   NB_OP_UNCLIP = 4,
   NB_OP_SHADOW = 5,
   NB_OP_IMAGE = 6 /* x y w h  u0 v0 u1 v1  r g b a (tint, a = opacity)  radius id */,
+  NB_OP_LINE = 7 /* x0 y0 x1 y1  width  r g b a  capStart capEnd (0 butt, 1 round) */,
+  NB_OP_TRIANGLES = 8 /* count  r g b a  then count x (x y coverage) */,
+  NB_OP_ARC = 9 /* cx cy  outer inner  start sweep (radians, 0 = up, clockwise)  r g b a */,
 };
 
 // Images: RGBA8 with straight alpha, copied on create. The GL texture is made at the

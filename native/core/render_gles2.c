@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { MODE_RECT = 0, MODE_GLYPH = 1, MODE_SHADOW = 2, MODE_IMAGE = 3 };
+enum { MODE_RECT = 0, MODE_GLYPH = 1, MODE_SHADOW = 2, MODE_IMAGE = 3, MODE_LINE = 4, MODE_SOLID = 5, MODE_ARC = 6 };
 
 // pos(2) local(2) half(2) color(4) border_color(4) params(3: radius, border|blur, mode) uv(2)
 #define VERTEX_FLOATS 19
@@ -42,7 +42,25 @@ static const char *fragment_src =
     "}\n"
     "void main() {\n"
     "  vec4 c;\n"
-    "  if (v_params.z > 2.5) {\n"  // image (premultiplied texels), rounded like a rect
+    "  vec4 pm = vec4(v_color.rgb * v_color.a, v_color.a);\n"
+    "  if (v_params.z > 5.5) {\n"  // ring sector, centered on +y: half aperture (sin, cos) in v_half
+    "    vec2 q = vec2(abs(v_local.x), v_local.y);\n"
+    "    float d = length(q) - v_params.x;\n"
+    "    if (v_half.y > -0.9999) {\n"
+    "      float m = length(q - v_half * clamp(dot(q, v_half), 0.0, v_params.x));\n"
+    "      d = max(d, m * sign(v_half.y * q.x - v_half.x * q.y));\n"
+    "    }\n"
+    "    d = max(d, v_params.y - length(v_local));\n"
+    "    c = pm * clamp(0.5 - d, 0.0, 1.0);\n"
+    "  } else if (v_params.z > 4.5) {\n"  // triangles: coverage is already in the alpha
+    "    c = pm;\n"
+    "  } else if (v_params.z > 3.5) {\n"  // segment along +x from 0 to length; caps in v_half
+    "    float hw = v_params.x, len = v_params.y, d;\n"
+    "    if (v_local.x < 0.0) d = v_half.x > 0.5 ? length(v_local) - hw : max(-v_local.x, abs(v_local.y) - hw);\n"
+    "    else if (v_local.x > len) d = v_half.y > 0.5 ? length(v_local - vec2(len, 0.0)) - hw : max(v_local.x - len, abs(v_local.y) - hw);\n"
+    "    else d = abs(v_local.y) - hw;\n"
+    "    c = pm * clamp(0.5 - d, 0.0, 1.0);\n"
+    "  } else if (v_params.z > 2.5) {\n"  // image (premultiplied texels), rounded like a rect
     "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
     "    c = texture2D(u_image, v_uv) * vec4(v_color.rgb, 1.0) * v_color.a * clamp(0.5 - d, 0.0, 1.0);\n"
     "  } else if (v_params.z > 1.5) {\n"  // shadow
@@ -278,6 +296,18 @@ static bool use_image(int id) {
   return true;
 }
 
+// Quad whose corners are given in a local frame (origin o, axes ux/uy, in pixels): the
+// shader receives the local coordinates, so lines and arcs are evaluated along their axis.
+static void push_local_quad(float ox, float oy, float uxx, float uxy, float uyx, float uyy, float u0, float v0,
+                            float u1, float v1, float hx, float hy, const float *color, float p0, float p1,
+                            float mode) {
+  static const float none[4] = {0, 0, 0, 0};
+#define LV(U, V) push_vertex(ox + uxx * (U) + uyx * (V), oy + uxy * (U) + uyy * (V), U, V, hx, hy, color, none, p0, p1, mode, 0, 0)
+  LV(u0, v0); LV(u1, v0); LV(u1, v1);
+  LV(u0, v0); LV(u1, v1); LV(u0, v1);
+#undef LV
+}
+
 typedef struct { const float *color; } glyph_ctx;
 
 static void emit_glyph(void *ud, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1) {
@@ -351,6 +381,43 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
         float hw = w / 2, hh = h / 2, r = fminf(a[12] * scale, fminf(hw, hh));
         push_quad(x, y, x + w, y + h, x + hw, y + hh, hw, hh, a + 8, none, r, 0, MODE_IMAGE, a[4], a[5], a[6],
                   a[7]);
+        break;
+      }
+      case NB_OP_LINE: {  // x0 y0 x1 y1  width  r g b a  capStart capEnd
+        const float *a = cmd + i;
+        i += 11;
+        float x0 = a[0] * scale, y0 = a[1] * scale, x1 = a[2] * scale, y1 = a[3] * scale;
+        float hw = a[4] * scale / 2, len = hypotf(x1 - x0, y1 - y0);
+        float dx = len > 0 ? (x1 - x0) / len : 1, dy = len > 0 ? (y1 - y0) / len : 0;
+        float pad = hw + 1;  // room for the antialiased edge
+        push_local_quad(x0, y0, dx, dy, -dy, dx, -pad, -pad, len + pad, pad, a[9], a[10], a + 5, hw, len, MODE_LINE);
+        break;
+      }
+      case NB_OP_TRIANGLES: {  // count  r g b a  then count x (x y coverage)
+        size_t n = (size_t)cmd[i];
+        const float *rgba = cmd + i + 1;
+        const float *v = cmd + i + 5;
+        if (i + 5 + n * 3 > count) {  // truncated buffer: stop drawing
+          i = count;
+          break;
+        }
+        i += 5 + n * 3;
+        for (size_t k = 0; k < n; k++) {
+          const float color[4] = {rgba[0], rgba[1], rgba[2], rgba[3] * v[k * 3 + 2]};
+          push_vertex(v[k * 3] * scale, v[k * 3 + 1] * scale, 0, 0, 0, 0, color, none, 0, 0, MODE_SOLID, 0, 0);
+        }
+        break;
+      }
+      case NB_OP_ARC: {  // cx cy  outer inner  start sweep  r g b a
+        const float *a = cmd + i;
+        i += 10;
+        float cx = a[0] * scale, cy = a[1] * scale, outer = a[2] * scale, inner = a[3] * scale;
+        float h = fminf(fabsf(a[5]) / 2, (float)M_PI), mid = a[4] + a[5] / 2;
+        // Local +y points at the middle of the sector (0 = up, clockwise on screen).
+        float yx = sinf(mid), yy = -cosf(mid), xx = -yy, xy = yx;
+        float r = outer + 1;
+        push_local_quad(cx, cy, xx, xy, yx, yy, -r, -r, r, r, sinf(h), h >= (float)M_PI - 1e-4f ? -1.0f : cosf(h), a + 6,
+                        outer, inner, MODE_ARC);
         break;
       }
       case NB_OP_CLIP: {  // x y w h radius

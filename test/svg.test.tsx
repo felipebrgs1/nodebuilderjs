@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { Column, Icon, UINode, createRoot, createSignal, layout, parseSvg, renderSvg, setTextMeasurer } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
 import { setImageBackend } from "../src/image/source.js";
-import { CommandBuffer, paintTree } from "../src/render/paint.js";
 import { decodePng } from "../src/image/png.js";
+import { commandsOf } from "./helpers.js";
 
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
 
@@ -113,21 +113,6 @@ function mount(view: () => any) {
   return { node, dispose };
 }
 
-/** IMAGE commands: x y w h  u0 v0 u1 v1  r g b a  radius id */
-function images(node: UINode) {
-  const buffer = new CommandBuffer();
-  paintTree(node, buffer);
-  const out: number[][] = [];
-  const d = buffer.commands;
-  for (let i = 0; i < d.length; ) {
-    const op = d[i]!;
-    const size = op === 1 ? 14 : op === 2 ? 8 : op === 3 ? 5 : op === 4 ? 0 : op === 5 ? 10 : 14;
-    if (op === 6) out.push(Array.from(d.subarray(i + 1, i + 1 + size), (v) => Math.round(v * 1000) / 1000));
-    i += 1 + size;
-  }
-  return out;
-}
-
 test("Icon: sized like the viewBox, tinted with the inherited color", () => {
   const camera = fixture("svg-lucide-camera.svg").toString();
   const wide = wrap('<rect width="8" height="4" fill="currentColor" />', "0 0 8 4");
@@ -139,9 +124,9 @@ test("Icon: sized like the viewBox, tinted with the inherited color", () => {
     </Column>
   ));
   expect(node.children.map((c) => [c.width, c.height])).toEqual([[20, 20], [32, 32], [20, 10]]);
-  const [a, b] = images(node);
-  expect(a!.slice(8, 12)).toEqual([1, 0, 0, 1]); // red from the Column
-  expect(b!.slice(8, 12)).toEqual([0, 0, 1, 1]);
+  const [a, b] = commandsOf(node, "image");
+  expect(a!.tint).toEqual([1, 0, 0, 1]); // red from the Column
+  expect(b!.tint).toEqual([0, 0, 1, 1]);
 });
 
 test("Icon: changing the color reuses the texture, resizing re-rasterizes, unmounting frees it", () => {
@@ -155,20 +140,20 @@ test("Icon: changing the color reuses the texture, resizing re-rasterizes, unmou
       <Icon svg={fixture("svg-lucide-search.svg").toString()} size={size} color={color} />
     </Column>
   ));
-  const first = images(node)[0]!;
+  const first = commandsOf(node, "image")[0]!;
   setColor("#00ff00");
-  const recolored = images(node)[0]!;
-  expect(recolored[13]).toBe(first[13]!); // same texture
-  expect(recolored.slice(8, 11)).toEqual([0, 1, 0]);
+  const recolored = commandsOf(node, "image")[0]!;
+  expect(recolored.id).toBe(first.id); // same texture
+  expect(recolored.tint).toEqual([0, 1, 0, 1]);
   expect(created).toBe(1);
   setSize(24);
   layout(node, 400, 300);
-  const resized = images(node)[0]!;
-  expect(resized[2]).toBe(24);
+  const resized = commandsOf(node, "image")[0]!;
+  expect(resized.w).toBe(24);
   expect(created).toBe(2);
-  expect(destroyed).toEqual([first[13]!]);
+  expect(destroyed).toEqual([first.id]);
   dispose();
-  expect(destroyed).toEqual([first[13]!, resized[13]!]);
+  expect(destroyed).toEqual([first.id, resized.id]);
 });
 
 test("Icon: a broken SVG warns and draws nothing", () => {
@@ -177,7 +162,7 @@ test("Icon: a broken SVG warns and draws nothing", () => {
   console.warn = (m: string) => warnings.push(m);
   try {
     const { node } = mount(() => <Column><Icon svg="no-such-icon.svg" /></Column>);
-    expect(images(node)).toEqual([]);
+    expect(commandsOf(node, "image")).toEqual([]);
     expect(warnings[0]).toMatch(/could not load icon no-such-icon\.svg/);
   } finally {
     console.warn = warn;

@@ -18,6 +18,7 @@ props planas. Reatividade estilo SolidJS: **só funções são reativas** (veja 
 | `Text` | texto de uma linha (sem quebra automática) | filhos (`{count}`, `"a"`) ou `text={() => ...}` |
 | `Image` | PNG, JPEG, WebP, AVIF | veja a skill `nodebuilder-imagens` |
 | `Icon` | ícone SVG (Lucide, Phosphor), cor herdada como texto | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icones` |
+| `Canvas` | desenho livre: linhas, polígonos, arcos, texto | `draw={(g) => ...}` + tamanho; skill `nodebuilder-desenho` |
 | `Button` | botão com foco e teclado | `label` ou filhos, `variant` (`default`, `primary`, `danger`, `flat`), `disabled`, `onClick` |
 | `TextField` | campo de texto controlado | `value` (accessor), `onInput(valor)`, `onSubmit`, `placeholder` |
 | `Checkbox` | caixa de seleção | `checked` (accessor), `onChange(marcado)`, `label` |

@@ -2,7 +2,7 @@
 // native renderer executes in one go (format: native/include/nb.h, consumer: native/core/render_gles2.c).
 
 import { type ImageSource, imageHandle } from "../image/source.js";
-import type { Color, Painter, UINode } from "./node.js";
+import type { Color, LineCap, Painter, UINode } from "./node.js";
 
 const OP_RECT = 1;
 const OP_TEXT = 2;
@@ -10,6 +10,9 @@ const OP_CLIP = 3;
 const OP_UNCLIP = 4;
 const OP_SHADOW = 5;
 const OP_IMAGE = 6;
+const OP_LINE = 7;
+const OP_TRIANGLES = 8;
+const OP_ARC = 9;
 
 const colorCache = new Map<string, [number, number, number, number]>();
 const named: Record<string, string> = { transparent: "#0000", white: "#fff", black: "#000" };
@@ -36,12 +39,18 @@ export class CommandBuffer implements Painter {
     this.texts = [];
   }
 
+  /** Makes room for `n` more floats. */
+  private reserve(n: number) {
+    if (this.length + n <= this.data.length) return;
+    let size = this.data.length * 2;
+    while (size < this.length + n) size *= 2;
+    const bigger = new Float32Array(size);
+    bigger.set(this.data.subarray(0, this.length));
+    this.data = bigger;
+  }
+
   private push(...values: number[]) {
-    if (this.length + values.length > this.data.length) {
-      const bigger = new Float32Array(this.data.length * 2);
-      bigger.set(this.data);
-      this.data = bigger;
-    }
+    this.reserve(values.length);
     for (const v of values) this.data[this.length++] = v;
   }
 
@@ -64,6 +73,32 @@ export class CommandBuffer implements Painter {
     if (!id) return;
     const [r, g, b, a] = parseColor(tint);
     this.push(OP_IMAGE, x, y, w, h, ...uv, r, g, b, a * opacity, radius, id);
+  }
+
+  line(x0: number, y0: number, x1: number, y1: number, width: number, color: Color, capStart: LineCap = "round", capEnd: LineCap = "round") {
+    this.push(OP_LINE, x0, y0, x1, y1, width, ...parseColor(color), capStart === "round" ? 1 : 0, capEnd === "round" ? 1 : 0);
+  }
+
+  triangles(points: ArrayLike<number>, coverage: ArrayLike<number> | null, color: Color) {
+    const count = (points.length >> 1) - ((points.length >> 1) % 3);
+    if (!count) return;
+    this.reserve(6 + count * 3);
+    const d = this.data;
+    let o = this.length;
+    d[o++] = OP_TRIANGLES;
+    d[o++] = count;
+    const [r, g, b, a] = parseColor(color);
+    d[o++] = r; d[o++] = g; d[o++] = b; d[o++] = a;
+    for (let v = 0; v < count; v++) {
+      d[o++] = points[v * 2]!;
+      d[o++] = points[v * 2 + 1]!;
+      d[o++] = coverage ? coverage[v]! : 1;
+    }
+    this.length = o;
+  }
+
+  arc(cx: number, cy: number, outerRadius: number, innerRadius: number, start: number, sweep: number, color: Color) {
+    this.push(OP_ARC, cx, cy, outerRadius, innerRadius, start, sweep, ...parseColor(color));
   }
 
   clip(x: number, y: number, w: number, h: number, radius = 0) {
