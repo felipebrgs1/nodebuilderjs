@@ -387,7 +387,8 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
         const float *a = cmd + i;
         i += 11;
         float x0 = a[0] * scale, y0 = a[1] * scale, x1 = a[2] * scale, y1 = a[3] * scale;
-        float hw = a[4] * scale / 2, len = hypotf(x1 - x0, y1 - y0);
+        // sqrtf, not hypotf: glibc's current hypotf is 2.35 and the portable addon targets 2.34.
+        float hw = a[4] * scale / 2, len = sqrtf((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
         float dx = len > 0 ? (x1 - x0) / len : 1, dy = len > 0 ? (y1 - y0) / len : 0;
         float pad = hw + 1;  // room for the antialiased edge
         push_local_quad(x0, y0, dx, dy, -dy, dx, -pad, -pad, len + pad, pad, a[9], a[10], a + 5, hw, len, MODE_LINE);

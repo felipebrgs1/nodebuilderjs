@@ -3,13 +3,15 @@
 Para onde o nodebuilder vai. A ordem dentro de cada seção é a prioridade atual; não há
 datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebuilderjs/issues).
 
-## Já existe (0.1)
+## Já existe (0.2)
 
 - Reatividade estilo SolidJS (signals, memos, effects, ownership), JSX próprio, `<For>` e `<Show>`
 - Layout flexbox, rolagem, recorte com cantos arredondados, sombras
 - Widgets: `Window` com decoração própria, `Column`/`Row`/`Box`, `Scroll`, `Text`, `Image`
-  (PNG, JPEG, WebP; AVIF/HEIC via libheif), `Button`, `TextField`, `Checkbox`, `Card`,
-  `Divider`, `Spacer`
+  (PNG, JPEG, WebP; AVIF/HEIC via libheif), `Icon` (SVG: Lucide, Phosphor), `Canvas`
+  (desenho livre na GPU), `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`
+- Gráficos (`@nodebuilderjs/core/charts`) com API no formato do Recharts
+- `onPointerMove` e `interact()` para testar mouse e teclado sem janela
 - `bun create nodebuilderjs` gera o app com `AGENTS.md` e skills para agentes (`.agents/skills`)
 - Núcleo nativo próprio: Wayland e X11 (escolhidos em tempo de execução), OpenGL ES 2,
   HarfBuzz + FreeType, teclas mortas e acentos, escala inteira (HiDPI)
