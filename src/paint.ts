@@ -59,9 +59,11 @@ export class CommandBuffer implements Painter {
     this.push(OP_TEXT, x, y, size, bold ? 1 : 0, ...parseColor(color), this.texts.length - 1);
   }
 
-  image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius = 0, opacity = 1) {
+  image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius = 0, opacity = 1, tint: Color = "#ffffff") {
     const id = imageHandle(source);
-    if (id) this.push(OP_IMAGE, x, y, w, h, ...uv, radius, opacity, id);
+    if (!id) return;
+    const [r, g, b, a] = parseColor(tint);
+    this.push(OP_IMAGE, x, y, w, h, ...uv, r, g, b, a * opacity, radius, id);
   }
 
   clip(x: number, y: number, w: number, h: number, radius = 0) {

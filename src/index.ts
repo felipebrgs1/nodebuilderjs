@@ -6,5 +6,6 @@ export { run, requestAnimationFrame, windowControls, windowState } from "./app.j
 export * from "./widgets.js";
 export { theme } from "./theme.js";
 export { decodeImage, type Bitmap, type ImageInput } from "./image.js";
+export { parseSvg, renderSvg, type IconNode, type Svg } from "./svg.js";
 export { UINode, debugTree, setTextMeasurer, type Style, type Painter, type KeyEvent, type PointerEvent } from "./node.js";
 export { layout } from "./layout.js";

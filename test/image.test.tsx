@@ -88,7 +88,7 @@ function images(node: UINode) {
   const d = buffer.commands;
   for (let i = 0; i < d.length; ) {
     const op = d[i]!;
-    const size = op === 1 ? 14 : op === 2 ? 8 : op === 3 ? 5 : op === 4 ? 0 : op === 5 ? 10 : 11;
+    const size = op === 1 ? 14 : op === 2 ? 8 : op === 3 ? 5 : op === 4 ? 0 : op === 5 ? 10 : 14;
     if (op === 6) out.push(Array.from(d.subarray(i + 1, i + 1 + size), (v) => Math.round(v * 1000) / 1000));
     i += 1 + size;
   }
@@ -115,12 +115,12 @@ test("Image fit: contain centers, cover crops, fill stretches", () => {
     </Column>
   ));
   const [contain, cover, fill] = images(node);
-  // x y w h  u0 v0 u1 v1  radius opacity id
+  // x y w h  u0 v0 u1 v1  r g b a  radius id
   expect(contain!.slice(0, 8)).toEqual([0, 9, 26, 18, 0, 0, 1, 1]);
   // 13x9 scaled by 4 to cover 26x36 -> 52x36, half the width shows.
-  expect(cover!.slice(0, 10)).toEqual([0, 36, 26, 36, 0.25, 0, 0.75, 1, 4, 0.5]);
+  expect(cover!.slice(0, 13)).toEqual([0, 36, 26, 36, 0.25, 0, 0.75, 1, 1, 1, 1, 0.5, 4]);
   expect(fill!.slice(0, 8)).toEqual([0, 72, 26, 36, 0, 0, 1, 1]);
-  expect(new Set([contain![10], cover![10], fill![10]]).size).toBe(1); // one texture for one file
+  expect(new Set([contain![13], cover![13], fill![13]]).size).toBe(1); // one texture for one file
 });
 
 test("Image textures are shared and freed with the last user", () => {

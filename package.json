@@ -65,6 +65,7 @@
     "counter": "bun examples/counter.tsx",
     "todo": "bun examples/todo.tsx",
     "images": "bun examples/images.tsx",
+    "icons": "bun examples/icons.tsx",
     "dev": "bun --watch examples/todo.tsx",
     "bench": "NB_STATS=1 bun examples/bench.tsx",
     "bench:dashboard": "NB_STATS=1 bun examples/dashboard.tsx",

@@ -24,3 +24,8 @@ declare module "*.heic" {
   const path: string;
   export default path;
 }
+declare module "*.svg" {
+  /** The file's path with `with { type: "file" }`, its markup with `with { type: "text" }`. */
+  const value: string;
+  export default value;
+}

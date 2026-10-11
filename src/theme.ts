@@ -1,6 +1,7 @@
 // Default look (light). Widgets read from here; apps may mutate it before run().
 export const theme = {
   font: { size: 14 },
+  icon: { size: 20 },
   radius: 8,
   window: { background: "#fafafa", border: "#00000026", radius: 12, titlebarHeight: 46 },
   text: { primary: "#1f1f24", secondary: "#6b6b76", inverted: "#ffffff" },

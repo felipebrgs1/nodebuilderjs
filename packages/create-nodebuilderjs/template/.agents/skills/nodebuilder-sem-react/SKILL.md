@@ -30,8 +30,8 @@ nem Solid**. O JSX parece o de sempre, mas os elementos são os widgets do
 ## Bibliotecas npm
 
 - **Funcionam:** lógica pura sem DOM (date-fns, zod, lodash, clientes HTTP, SQLite do Bun,
-  parsers). Dados de ícones como `lucide-static` (arquivos SVG) e `@phosphor-icons/core`
-  (só quando o widget de ícones/SVG existir; hoje SVG ainda não é desenhado).
+  parsers). Ícones em SVG puro com o widget `Icon`: `lucide-static`, `lucide` (os dados,
+  não o `createIcons()`) e `@phosphor-icons/core` (skill `nodebuilder-icones`).
 - **Não funcionam:** tudo que renderiza React/Solid/Vue ou mexe no DOM: `lucide-react`,
   `lucide-solid`, `@phosphor-icons/react`, MUI, Chakra, shadcn/ui, Radix, Tailwind,
   styled-components, react-router, bibliotecas de gráficos em canvas/SVG do navegador.

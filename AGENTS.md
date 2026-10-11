@@ -78,6 +78,7 @@ src/
   png.ts         decodificador PNG (todos os tipos de cor, tRNS, Adam7) via node:zlib
   jpeg.ts        JPEG baseline/progressivo, CMYK/YCCK, EXIF; idêntico ao libjpeg-turbo
   webp.ts        WebP VP8 (com perdas), VP8L, alfa, 1º quadro de animação; idêntico ao libwebp
+  svg.ts         SVG para ícones (<Icon>): XML, paths, contornos, rasterização com AA
   assets.d.ts    `declare module "*.png"` (referenciado por index.ts com preserve="true")
   app.ts         run(), eventos, foco, hover, agendamento de frames, NB_STATS
   native.ts      carrega native/build/${process.platform}-${process.arch}/nodebuilder.node
@@ -101,7 +102,7 @@ native/
     build.sh            compilação do backend (chamado por scripts/build-native.sh)
     protocols/          xdg-shell.xml (vendorizado; wayland-protocols não está instalado)
   build/<platform>-<arch>/  saída (nomes de process.platform/arch: linux-x64, ...)
-examples/        counter.tsx, todo.tsx, images.tsx (+ assets/), bench.tsx, dashboard.tsx
+examples/        counter.tsx, todo.tsx, images.tsx, icons.tsx (+ assets/), bench.tsx, dashboard.tsx
   testing.ts     mount/findByText/click para testes de apps (@nodebuilderjs/core/testing)
 cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.ts
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
@@ -210,7 +211,7 @@ Mantenha **`native/include/nb.h`, `src/paint.ts` e `native/core/render_gles2.c` 
 | CLIP | 3 | x y w h radius (scissor + máscara arredondada mais interna) |
 | UNCLIP | 4 | (nenhum) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
-| IMAGE | 6 | x y w h · u0 v0 u1 v1 · radius opacity · id (de `createImage`) |
+| IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tinta; a = opacidade) · radius · id (de `createImage`) |
 
 Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
 
@@ -378,7 +379,9 @@ todos com a versão do `package.json` da raiz:
 
 - TextField: sem seleção, clipboard, undo; Text: sem quebra de linha; uma fonte só
   (sem fallback: emojis não aparecem).
-- Imagens: sem SVG; AVIF/HEIC só com a `libheif` do sistema (Suggests nos pacotes);
+- SVG só para ícones: sem gradientes, padrões, texto, filtros, máscaras, `<use>`, tracejado
+  e CSS em `<style>`; opacidade de grupo aplicada por forma.
+- Imagens: AVIF/HEIC só com a `libheif` do sistema (Suggests nos pacotes);
   decodificação síncrona na thread do JS (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms,
   WebP 105–180 ms); sem mipmaps (reduzir muito uma imagem serrilha) e sem versão @2x.
 - Sem acessibilidade (AT-SPI), animações/transições, tema escuro, multi-janela, IME

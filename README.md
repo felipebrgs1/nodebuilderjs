@@ -50,11 +50,11 @@ código como o Claude Code.
   `background={() => (ativo() ? "#3584e4" : "#ffffff")}`.
 - **Estilo são props, não CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
   `radius`, `color`, `fontSize`... O layout é flexbox.
-- **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Button`,
+- **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Button`,
   `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`, além de `<For>` e `<Show>` para listas
   e condições.
 
-Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens e um painel
+Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens, ícones e um painel
 com abas, tabela e gráfico.
 
 ### Imagens
@@ -75,7 +75,30 @@ já decodificados (`{ width, height, data }` em RGBA).
 Formatos: **PNG, JPEG e WebP** são decodificados em TypeScript (o JPEG respeita a orientação
 do EXIF, e todos dão o mesmo resultado, byte a byte, que libpng, libjpeg-turbo e libwebp).
 **AVIF e HEIC** usam a `libheif` do sistema, carregada só quando necessário: sem ela, apenas
-esses formatos dão erro, e os pacotes gerados a sugerem sem obrigar. SVG ainda não.
+esses formatos dão erro, e os pacotes gerados a sugerem sem obrigar. SVG é desenhado pelo
+`<Icon>` (abaixo).
+
+### Ícones
+
+```tsx
+import camera from "lucide-static/icons/camera.svg" with { type: "text" };  // bun add lucide-static
+import heart from "@phosphor-icons/core/assets/duotone/heart-duotone.svg" with { type: "text" };
+import { Star } from "lucide";                                              // ou os dados do lucide
+
+<Icon svg={camera} />                          // 20 px, cor herdada como a do texto
+<Icon svg={heart} size={32} color="#e01b24" />
+<Button variant="primary"><Icon svg={Star} size={16} /><Text>Favoritar</Text></Button>
+```
+
+`<Icon>` desenha SVG com um renderizador próprio, em TypeScript, feito para ícones: caminhos
+(com arcos e curvas), formas, contorno com pontas e junções, `transform`, opacidade e
+`currentColor`. Lucide e Phosphor saem praticamente iguais ao librsvg (diferença média de 0,8
+em 255 na borda dos traços). Um ícone de uma cor só é rasterizado uma vez, no tamanho exato
+da tela (nítido também em HiDPI), e a cor é aplicada na GPU: trocar a cor, num hover por
+exemplo, não custa nada. `strokeWidth` muda a espessura dos ícones de contorno, como no
+Lucide. Gradientes, texto, filtros, máscaras e `<use>` ainda não são suportados, então
+ilustrações complexas devem virar PNG. Pacotes para React (`lucide-react`,
+`@phosphor-icons/react`) não funcionam: use `lucide-static`, `lucide` ou `@phosphor-icons/core`.
 
 ## Distribuir
 
@@ -188,7 +211,8 @@ Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#me
 - Só Linux x64 (arm64, Windows e macOS estão no roadmap).
 - Texto sem quebra de linha e com uma fonte só (emojis não aparecem).
 - Campo de texto sem seleção, área de transferência e desfazer.
-- Imagens: sem SVG (no roadmap); AVIF/HEIC dependem da `libheif` do sistema.
+- SVG só no subconjunto para ícones (sem gradientes, texto, filtros); AVIF/HEIC dependem da
+  `libheif` do sistema.
 - Sem animações, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).
 
 ## Contribuir

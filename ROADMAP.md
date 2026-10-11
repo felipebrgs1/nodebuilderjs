@@ -98,14 +98,46 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
 
 ## Widgets e visual
 
-- Ícones e SVG: `<Icon>` com um subconjunto de SVG rasterizado em TypeScript (caminhos,
-  formas, contorno, `currentColor`), suficiente para Lucide (`lucide-static`/`lucide`) e
-  Phosphor (`@phosphor-icons/core`), com a cor aplicada na GPU como no texto
+Como no Flutter, o framework traz o que um app precisa pronto, em vez de depender de
+bibliotecas da web (que exigem DOM e CSS e não funcionam aqui). Quando já existe uma API
+popular no React para aquilo, copiamos o formato dela, para quem vem do React e para os
+LLMs, mas implementamos com os nossos widgets e signals. Tamanho não é problema: o
+tree-shaking do `bun build` só leva o que o app importa (um app mínimo carrega 23 KB do
+framework; o executável tem ~91 MB, quase todo do runtime do Bun).
+
+Em andamento, nesta ordem:
+
+1. ~~**Ícones e SVG:**~~ **feito** (2026-10-11: nos ícones de Lucide e Phosphor, diferença
+   média de 0,8/255 para o librsvg, ~0,5 ms por ícone). `<Icon>` com um subconjunto de SVG
+   rasterizado em TypeScript
+   (caminhos com arcos e curvas, formas, contorno com pontas e junções, `fill-rule`,
+   `transform`, opacidade, `currentColor`). Cobre Lucide (`lucide-static` ou os dados do
+   `lucide`) e Phosphor (`@phosphor-icons/core`). Ícones de uma cor só são rasterizados uma
+   vez e tingidos na GPU, então trocar a cor (hover, tema) não refaz o ícone. Fora do
+   escopo inicial: gradientes, texto, filtros, máscaras e `<use>`.
+2. **Primitivas de desenho na GPU:** linhas grossas com antialiasing (calculadas no shader,
+   como os cantos arredondados) e polígonos preenchidos, reaproveitando a geometria do SVG
+   (arcos, curvas, contornos). Base para gráficos e para widgets desenhados à mão.
+3. **`@nodebuilderjs/charts`:** gráficos de linha, área, barra e pizza, com eixos, grade,
+   legenda e tooltip, com API no formato do Recharts
+   (`<LineChart data={...}><Line dataKey="total" /><XAxis dataKey="mes" /></LineChart>`).
+   Dados podem ser signals: um gráfico ao vivo só redesenha o que mudou. Pacote separado,
+   com versão própria.
+
+Depois:
+
+- Novos widgets no core: slider, seleção (dropdown), abas, tooltip, diálogo modal, menu de
+  contexto
 - Imagens: decodificar fora da thread do JS, mipmaps para imagens muito reduzidas, versões
   @2x para HiDPI e animações (GIF, WebP animado)
 - Animações e transições
 - Tema escuro, seguindo a preferência do sistema
-- Novos widgets: slider, seleção (dropdown), abas, tooltip, diálogo modal, menu de contexto
+- **Experimento:** `@nodebuilderjs/react`, um renderer React opcional (via
+  `react-reconciler`, como o React Native e o Ink) mapeando para os mesmos widgets e para
+  `<svg>`. Traria hooks, bibliotecas só de lógica (TanStack Query, Zustand) e ícones como
+  `lucide-react`. Bibliotecas que dependem do DOM e de CSS (MUI, shadcn/Radix, Chakra,
+  Tailwind, Recharts) continuariam fora: isso exigiria emular um navegador. Só vira oficial
+  se os benchmarks mostrarem um custo aceitável em relação aos signals.
 
 ## Integração com o desktop
 

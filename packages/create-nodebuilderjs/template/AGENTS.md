@@ -26,6 +26,7 @@ que suportam skills as carregam sozinhos; os outros devem ler a skill do assunto
 | `nodebuilder-ui` | telas, widgets, props de estilo, layout, `For`/`Show`, tema |
 | `nodebuilder-sem-react` | antes de instalar bibliotecas ou portar código React/web |
 | `nodebuilder-imagens` | imagens (PNG, JPEG, WebP, AVIF), arquivos no app |
+| `nodebuilder-icones` | ícones (Lucide, Phosphor) e SVG com `Icon` |
 | `nodebuilder-testes` | testes sem janela (`mount`, `findByText`, `click`) |
 | `nodebuilder-empacotar` | AppImage/.deb/.rpm, arquivos embutidos, ícone e app id |
 | `nodebuilder-desempenho` | lentidão, listas grandes, dados ao vivo, animação |

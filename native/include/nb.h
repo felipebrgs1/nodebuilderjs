@@ -67,7 +67,7 @@ enum {
   NB_OP_CLIP = 3 /* x y w h radius */,
   NB_OP_UNCLIP = 4,
   NB_OP_SHADOW = 5,
-  NB_OP_IMAGE = 6 /* x y w h  u0 v0 u1 v1  radius opacity id */,
+  NB_OP_IMAGE = 6 /* x y w h  u0 v0 u1 v1  r g b a (tint, a = opacity)  radius id */,
 };
 
 // Images: RGBA8 with straight alpha, copied on create. The GL texture is made at the

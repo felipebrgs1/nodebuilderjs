@@ -89,8 +89,8 @@ export interface Painter {
   rect(x: number, y: number, w: number, h: number, color: Color, radius?: number, borderWidth?: number, borderColor?: Color): void;
   shadow(x: number, y: number, w: number, h: number, color: Color, radius: number, blur: number): void;
   text(x: number, y: number, text: string, size: number, color: Color, bold?: boolean): void;
-  /** Draws `uv` (a sub-rectangle of the image, 0..1) stretched over the box. */
-  image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius?: number, opacity?: number): void;
+  /** Draws `uv` (a sub-rectangle of the image, 0..1) stretched over the box, multiplied by `tint` (default white). */
+  image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius?: number, opacity?: number, tint?: Color): void;
   /** Clips to a (optionally rounded) rect until the matching unclip(). */
   clip(x: number, y: number, w: number, h: number, radius?: number): void;
   unclip(): void;
@@ -122,6 +122,15 @@ export function metricsGeneration() {
 }
 export function textMetricsChanged() {
   generation++;
+}
+
+let scale = 1;
+/** Integer device scale of the window (2 on HiDPI); widgets that rasterize use it to stay sharp. */
+export function displayScale() {
+  return scale;
+}
+export function setDisplayScale(value: number) {
+  scale = value;
 }
 export function measureText(text: string, size: number, bold = false): TextMetrics {
   return measurer(text, size, bold);

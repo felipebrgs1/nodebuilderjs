@@ -17,6 +17,7 @@ props planas. Reatividade estilo SolidJS: **só funções são reativas** (veja 
 | `Scroll` | coluna com rolagem vertical | precisa de `grow={1}` ou `height`; filhos podem ser maiores |
 | `Text` | texto de uma linha (sem quebra automática) | filhos (`{count}`, `"a"`) ou `text={() => ...}` |
 | `Image` | PNG, JPEG, WebP, AVIF | veja a skill `nodebuilder-imagens` |
+| `Icon` | ícone SVG (Lucide, Phosphor), cor herdada como texto | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icones` |
 | `Button` | botão com foco e teclado | `label` ou filhos, `variant` (`default`, `primary`, `danger`, `flat`), `disabled`, `onClick` |
 | `TextField` | campo de texto controlado | `value` (accessor), `onInput(valor)`, `onSubmit`, `placeholder` |
 | `Checkbox` | caixa de seleção | `checked` (accessor), `onChange(marcado)`, `label` |
@@ -64,4 +65,4 @@ const [nome, setNome] = createSignal("");
 - `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`;
   `windowState.width()`, `.height()`, `.maximized()`, `.activated()` são accessors.
 - Ainda não existem: tema escuro, animações, quebra de linha, seleção de texto, IME,
-  várias janelas, imagens SVG.
+  várias janelas.

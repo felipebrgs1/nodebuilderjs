@@ -13,6 +13,7 @@ para as regras e convenções de quem mexe no código, veja o [AGENTS.md](AGENTS
 │ jsx-runtime   JSX -> descrições preguiçosas; control.ts: <For>, <Show>       │
 │ widgets.ts    Window, Column, Text, Image, Button... criam UINodes           │
 │ image.ts      fontes de imagem; png.ts, jpeg.ts, webp.ts: decodificadores    │
+│ svg.ts        SVG para ícones: geometria, contornos e rasterização           │
 │ node.ts       árvore retida (UINode) + estilo; mudanças chamam invalidate()  │
 │ layout.ts     flexbox simplificado                                           │
 │ paint.ts      árvore -> command buffer (Float32Array + textos)               │
@@ -114,7 +115,7 @@ cruza a fronteira N-API uma vez por frame, junto com um array de textos.
 | CLIP | 3 | x y w h radius (scissor + máscara arredondada mais interna) |
 | UNCLIP | 4 | (nenhum) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
-| IMAGE | 6 | x y w h · u0 v0 u1 v1 · radius opacity · id da imagem |
+| IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tinta; a = opacidade) · radius · id da imagem |
 
 O formato existe em três lugares que precisam ficar em sincronia: `native/include/nb.h`,
 `src/paint.ts` e `native/core/render_gles2.c`.
@@ -147,6 +148,15 @@ dentro de um frame fecha o batch, então muitas imagens diferentes custam uma ch
 desenho cada. `src/image.ts` divide uma decodificação entre todos os `<Image>` do mesmo
 arquivo (por caminho) e libera a textura quando o último sai da árvore. Uma imagem que não
 carrega mostra um aviso no console e não desenha nada.
+
+Ícones (`src/svg.ts`): o SVG vira polígonos no espaço do usuário. Curvas e arcos são
+achatados com erro de 0,1 pixel da tela, e cada contorno vira um polígono por segmento,
+junção e ponta, todos no mesmo sentido, para que um preenchimento "nonzero" faça a união
+sem desenhar duas vezes onde se sobrepõem. Um rasterizador de linhas de varredura calcula a
+cobertura exata na horizontal, com 16 amostras por pixel na vertical. O `<Icon>` rasteriza
+no tamanho físico (tamanho lógico × escala), alinhado aos pixels. Se todas as cores do SVG
+são `currentColor`, ele rasteriza em branco uma vez, e a cor entra como tinta no comando
+IMAGE: o shader multiplica os texels por ela, e trocar a cor não refaz o ícone.
 
 Coordenadas: o TypeScript trabalha em pixels lógicos; o C multiplica pela escala inteira da
 tela (Wayland: `preferred_buffer_scale`; X11: `Xft.dpi / 96`).

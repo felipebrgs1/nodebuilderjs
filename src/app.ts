@@ -5,7 +5,7 @@ import { type Child, insert } from "./jsx-runtime.js";
 import { setImageBackend } from "./image.js";
 import { layout } from "./layout.js";
 import { type Native, type NativeEvent, type NativeKeyEvent, loadNative } from "./native.js";
-import { type KeyEvent, type PointerEvent, UINode, invalidate, setFrameScheduler, setTextMeasurer, textMetricsChanged } from "./node.js";
+import { type KeyEvent, type PointerEvent, UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer, textMetricsChanged } from "./node.js";
 import { CommandBuffer, paintTree } from "./paint.js";
 import { batch, createRoot, createSignal } from "./reactive.js";
 
@@ -322,6 +322,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
           currentScale = ev.scale;
           metrics.clear();
           textMetricsChanged();
+          setDisplayScale(ev.scale);
         }
         configured = true;
         schedule();

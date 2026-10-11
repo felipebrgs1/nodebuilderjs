@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-imagens
-description: Mostrar imagens (PNG, JPEG, WebP, AVIF, HEIC) com o widget Image do nodebuilder, incluir os arquivos no app empacotado e saber o que ainda não é suportado (SVG/ícones). Use ao adicionar fotos, logos, avatares, ícones ou qualquer arquivo de imagem à interface.
+description: Mostrar imagens (PNG, JPEG, WebP, AVIF, HEIC) com o widget Image do nodebuilder e incluir os arquivos no app empacotado. Use ao adicionar fotos, logos, avatares, miniaturas ou qualquer arquivo de imagem à interface. Para ícones e SVG, use a skill nodebuilder-icones.
 ---
 
 # Imagens
@@ -37,7 +37,7 @@ import logo from "./assets/logo.png" with { type: "file" };
 |---|---|---|
 | PNG, JPEG, WebP | decodificados em TypeScript | sempre funcionam; JPEG respeita a orientação do EXIF |
 | AVIF, HEIC | biblioteca do sistema `libheif` | sem ela, só esses dão erro ("needs libheif"); o pacote `.deb`/`.rpm` a sugere, mas não instala. Prefira WebP/PNG/JPEG para imagens do próprio app |
-| SVG | **ainda não suportado** | converta para PNG (2x) por enquanto |
+| SVG | pelo widget `Icon` (skill `nodebuilder-icones`) | subconjunto para ícones; ilustrações com gradiente/texto: exporte PNG 2x |
 | GIF animado, vídeo | não suportado | |
 
 ## Cuidados

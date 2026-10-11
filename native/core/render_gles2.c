@@ -44,7 +44,7 @@ static const char *fragment_src =
     "  vec4 c;\n"
     "  if (v_params.z > 2.5) {\n"  // image (premultiplied texels), rounded like a rect
     "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
-    "    c = texture2D(u_image, v_uv) * v_color.a * clamp(0.5 - d, 0.0, 1.0);\n"
+    "    c = texture2D(u_image, v_uv) * vec4(v_color.rgb, 1.0) * v_color.a * clamp(0.5 - d, 0.0, 1.0);\n"
     "  } else if (v_params.z > 1.5) {\n"  // shadow
     "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
     "    c = vec4(v_color.rgb, 1.0) * v_color.a * (1.0 - smoothstep(-v_params.y, v_params.y, d));\n"
@@ -342,14 +342,14 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
                      roundf(a[1] * scale), emit_glyph, &ctx);
         break;
       }
-      case NB_OP_IMAGE: {  // x y w h  u0 v0 u1 v1  radius opacity id
+      case NB_OP_IMAGE: {  // x y w h  u0 v0 u1 v1  r g b a  radius id
+        // The tint multiplies the texels: white for pictures, the color for white icon masks.
         const float *a = cmd + i;
-        i += 11;
-        if (!use_image((int)a[10])) break;
+        i += 14;
+        if (!use_image((int)a[13])) break;
         float x = a[0] * scale, y = a[1] * scale, w = a[2] * scale, h = a[3] * scale;
-        float hw = w / 2, hh = h / 2, r = fminf(a[8] * scale, fminf(hw, hh));
-        const float tint[4] = {1, 1, 1, a[9]};
-        push_quad(x, y, x + w, y + h, x + hw, y + hh, hw, hh, tint, none, r, 0, MODE_IMAGE, a[4], a[5], a[6],
+        float hw = w / 2, hh = h / 2, r = fminf(a[12] * scale, fminf(hw, hh));
+        push_quad(x, y, x + w, y + h, x + hw, y + hh, hw, hh, a + 8, none, r, 0, MODE_IMAGE, a[4], a[5], a[6],
                   a[7]);
         break;
       }
