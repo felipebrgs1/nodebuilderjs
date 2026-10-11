@@ -137,3 +137,34 @@ describe("fillPolygon", () => {
     expect(fill([0, 0, 10, 10])).toEqual([]);
   });
 });
+
+describe("dashed polylines", () => {
+  const segments = (points: number[], dash: number[], options: Parameters<typeof polyline>[4] = {}) => {
+    const b = new CommandBuffer();
+    polyline(b, points, 2, "#000", { ...options, dash });
+    return (decode(b) as Extract<ReturnType<typeof decode>[number], { op: "line" }>[]).map((s) => [s.x0, s.y0, s.x1, s.y1]);
+  };
+
+  test("dashes and gaps along a straight line; a partial last dash", () => {
+    expect(segments([0, 0, 20, 0], [4, 2])).toEqual([[0, 0, 4, 0], [6, 0, 10, 0], [12, 0, 16, 0], [18, 0, 20, 0]]);
+  });
+
+  test("the pattern continues around corners", () => {
+    // 5 along x, then 5 down: dash 0..4, gap 4..6 (turns the corner), dash 6..10.
+    expect(segments([0, 0, 5, 0, 5, 5], [4, 2])).toEqual([[0, 0, 4, 0], [5, 1, 5, 5]]);
+    // A dash that turns the corner keeps both pieces (and a round joint between them).
+    expect(segments([0, 0, 5, 0, 5, 5], [6, 2])).toEqual([[0, 0, 5, 0], [5, 0, 5, 1], [5, 3, 5, 5]]);
+  });
+
+  test("dashes are flat-ended unless the cap says otherwise", () => {
+    const b = new CommandBuffer();
+    polyline(b, [0, 0, 20, 0], 2, "#000", { dash: [4, 2] });
+    const caps = (decode(b) as Extract<ReturnType<typeof decode>[number], { op: "line" }>[]).map((s) => s.capStart + s.capEnd);
+    expect(new Set(caps)).toEqual(new Set(["buttbutt"]));
+  });
+
+  test("an empty or zero pattern draws a solid line", () => {
+    expect(segments([0, 0, 20, 0], [])).toEqual([[0, 0, 20, 0]]);
+    expect(segments([0, 0, 20, 0], [0, 0])).toEqual([[0, 0, 20, 0]]);
+  });
+});

@@ -55,13 +55,14 @@ export const graficos = () => (
 | Componente | Props |
 |---|---|
 | `LineChart`, `AreaChart`, `BarChart`, `ComposedChart` (mistura) | `data` (array ou signal), `height` (240), `width` ou `grow` e as props de estilo |
-| `Line` | `dataKey`, `name`, `stroke`, `strokeWidth` (2), `dot` (true), `type` (`linear`/`monotone`) |
-| `Area` | `dataKey`, `name`, `stroke`, `fill`, `fillOpacity` (0,25), `type` |
-| `Bar` | `dataKey`, `name`, `fill`, `radius` |
+| `Line` | `dataKey`, `name`, `stroke`, `strokeWidth` (2), `strokeDasharray` (`"6 4"`), `dot` (true), `type` (`linear`/`monotone`) |
+| `Area` | `dataKey`, `name`, `stroke`, `fill`, `fillOpacity` (0,25), `type`, `stackId` |
+| `Bar` | `dataKey`, `name`, `fill`, `radius`, `stackId`, `label` (true ou `(valor) => texto`) |
 | `XAxis` | `dataKey`, `tickFormatter`, `hide` |
 | `YAxis` | `domain={[min, max]}`, `tickCount`, `tickFormatter`, `hide` |
-| `CartesianGrid` | `horizontal`, `vertical`, `stroke` |
-| `PieChart` + `Pie` | `data`, `dataKey`, `nameKey`, `innerRadius`, `outerRadius` (px ou `"80%"`), `paddingAngle` (graus); `<Cell fill>` por fatia |
+| `CartesianGrid` | `horizontal`, `vertical`, `stroke`, `strokeDasharray` |
+| `PieChart` + `Pie` | `data`, `dataKey`, `nameKey`, `innerRadius`, `outerRadius` (px ou `"80%"`), `paddingAngle` (graus), `label` (true ou `({ name, value, percent }) => texto`); `<Cell fill>` por fatia |
+| `Tooltip` | `formatter(valor, nome)`, `labelFormatter(categoria)`; linha-guia na categoria sob o mouse (na pizza: a fatia) |
 | `Legend` | sem props (embaixo, centralizada) |
 
 `dataKey` é o nome do campo ou uma função `(linha) => valor`.
@@ -69,10 +70,13 @@ export const graficos = () => (
 ## Diferenças do Recharts
 
 - **Sem `ResponsiveContainer`:** o gráfico já ocupa a largura do pai; dê `height`.
-- **`Tooltip` é aceito e ignorado** (ainda não há hover). Mostre o valor atual em um `Text`.
-- Não existem ainda: `stackId` (empilhar), `strokeDasharray`, `label` nas fatias, `Brush`,
-  `ReferenceLine`, `ScatterChart`, `RadarChart`, eixos secundários, animações.
-- Pizza começa no topo e gira no sentido horário (`startAngle`/`endAngle` não existem).
+- Séries com o mesmo `stackId` se empilham (barras numa coluna só, áreas uma sobre a outra);
+  o eixo y considera os totais.
+- O eixo x omite rótulos que se sobreporiam, mantendo o último (como `interval="preserveEnd"`).
+- Não existem ainda: `Brush`, `ReferenceLine`, `ScatterChart`, `RadarChart`, eixos
+  secundários, animações; em `Line`, o `label`.
+- Pizza começa no topo e gira no sentido horário (`startAngle`/`endAngle` não existem); os
+  rótulos ficam fora das fatias, então deixe `outerRadius` em ~70% para caberem.
 - Cores: sem `stroke`/`fill`, cada série pega a próxima cor da paleta (a primeira é
   `theme.accent.base`).
 - Para algo fora disso, desenhe com `<Canvas>` (skill `nodebuilder-desenho`).

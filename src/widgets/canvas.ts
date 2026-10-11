@@ -18,7 +18,8 @@ export interface DrawContext {
   readonly width: number;
   readonly height: number;
   rect(x: number, y: number, w: number, h: number, color: Color, radius?: number): void;
-  line(x0: number, y0: number, x1: number, y1: number, color: Color, width?: number, cap?: "round" | "butt" | "square"): void;
+  /** `dash`: dash and gap lengths, like SVG's stroke-dasharray. */
+  line(x0: number, y0: number, x1: number, y1: number, color: Color, width?: number, cap?: "round" | "butt" | "square", dash?: readonly number[]): void;
   polyline(points: ArrayLike<number>, color: Color, width?: number, options?: PolylineOptions): void;
   /** Filled simple polygon (concave allowed; self-intersecting draws nothing). */
   polygon(points: ArrayLike<number>, color: Color): void;
@@ -63,7 +64,8 @@ function record(width: number, height: number, scale: number, ops: Op[]): DrawCo
     width,
     height,
     rect: (x, y, w, h, color, radius = 0) => ops.push((p, ox, oy) => p.rect(x + ox, y + oy, w, h, color, radius)),
-    line: (x0, y0, x1, y1, color, width = 1, cap = "round") => ops.push(geometry((p) => polyline(p, [x0, y0, x1, y1], width, color, { cap }))),
+    line: (x0, y0, x1, y1, color, width = 1, cap, dash) =>
+      ops.push(geometry((p) => polyline(p, [x0, y0, x1, y1], width, color, { cap: cap ?? (dash ? "butt" : "round"), dash }))),
     polyline: (points, color, width = 1, options) => ops.push(geometry((p) => polyline(p, points, width, color, options))),
     polygon: (points, color) => ops.push(geometry((p) => fillPolygon(p, points, color, scale))),
     circle: (cx, cy, radius, color) => ops.push((p, ox, oy) => p.arc(cx + ox, cy + oy, radius, 0, 0, 2 * Math.PI, color)),

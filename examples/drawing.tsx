@@ -1,6 +1,6 @@
 // <Canvas>: lines, filled polygons and arcs drawn by the GPU with antialiasing.
 // LIVE=0 freezes the data (for screenshots and measurements).
-import { Card, Canvas, Column, Row, Scroll, Text, Window, createSignal, requestAnimationFrame, run, theme } from "@nodebuilderjs/core";
+import { Card, Canvas, Row, Scroll, Text, Window, createSignal, requestAnimationFrame, run, theme } from "@nodebuilderjs/core";
 
 const LIVE = process.env.LIVE !== "0";
 const POINTS = 60;

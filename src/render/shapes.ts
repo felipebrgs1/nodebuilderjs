@@ -9,6 +9,8 @@ export interface PolylineOptions {
   cap?: LineCap | "square";
   /** Joins the last point back to the first. */
   closed?: boolean;
+  /** Dash pattern: lengths of dash, gap, dash, gap... (like SVG's stroke-dasharray). */
+  dash?: readonly number[];
 }
 
 /** Points without consecutive repeats (and without a closing repeat of the first). */
@@ -27,6 +29,14 @@ function distinct(points: ArrayLike<number>): number[] {
  * which is exact for opaque colors; with a translucent color the joints look darker.
  */
 export function polyline(p: Pick<Painter, "line">, points: ArrayLike<number>, width: number, color: Color, options: PolylineOptions = {}) {
+  const pattern = options.dash && options.dash.length && options.dash.every((v) => v >= 0) && options.dash.some((v) => v > 0)
+    ? options.dash.length % 2 ? [...options.dash, ...options.dash] : options.dash
+    : null;
+  if (pattern) {
+    const solid = { cap: options.cap ?? "butt" } as const; // dashes are flat-ended by default
+    for (const piece of dashes(distinct(points), options.closed ?? false, pattern)) polyline(p, piece, width, color, solid);
+    return;
+  }
   const cap = options.cap ?? "round";
   const pts = distinct(points);
   const n = pts.length / 2;
@@ -51,6 +61,35 @@ export function polyline(p: Pick<Painter, "line">, points: ArrayLike<number>, wi
     const end = cap === "round" ? "round" : "butt";
     p.line(x0, y0, x1, y1, width, color, first ? end : "round", last ? end : "round");
   }
+}
+
+/** Splits a polyline into the "on" pieces of a dash pattern; the pattern runs on across corners. */
+function dashes(pts: number[], closed: boolean, pattern: readonly number[]): number[][] {
+  const out: number[][] = [];
+  if (closed && pts.length >= 6) pts = [...pts, pts[0]!, pts[1]!];
+  let index = 0;
+  let left = pattern[0]!; // length still to go in the current dash or gap
+  let piece: number[] | null = [pts[0]!, pts[1]!];
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    const x0 = pts[i]!, y0 = pts[i + 1]!, x1 = pts[i + 2]!, y1 = pts[i + 3]!;
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    let t = 0;
+    while (len - t > left) {
+      t += left;
+      const x = x0 + ((x1 - x0) * t) / len, y = y0 + ((y1 - y0) * t) / len;
+      if (piece) {
+        piece.push(x, y);
+        out.push(piece);
+        piece = null;
+      } else piece = [x, y];
+      index = (index + 1) % pattern.length;
+      left = pattern[index]!;
+    }
+    left -= len - t;
+    if (piece) piece.push(x1, y1);
+  }
+  if (piece && piece.length >= 4) out.push(piece);
+  return out;
 }
 
 /**

@@ -130,14 +130,11 @@ Em andamento, nesta ordem:
    captura enquanto o botão está pressionado; `interact()` em `@nodebuilderjs/core/testing`
    para os apps testarem mouse e teclado (inclusive digitar num `TextField`).
    Base para tooltips, arrastar e sliders.
-5. **Gráficos, segunda etapa:**
-   - `<Tooltip>` de verdade: linha-guia no ponto mais próximo do ponteiro e uma caixa com os
-     valores das séries (usa o item 4);
-   - empilhamento de barras e áreas (`stackId`);
-   - linhas tracejadas (`strokeDasharray` em `Line` e `CartesianGrid`), cortando a
-     polilinha em segmentos no TypeScript;
-   - rótulos nas fatias da pizza (`label`) e valores sobre as barras;
-   - eixo x com muitos rótulos: omitir os que se sobrepõem (e, depois, rotação).
+5. ~~**Gráficos, segunda etapa:**~~ **feito** (2026-10-11): `<Tooltip>` (linha-guia e
+   valores na categoria mais próxima; na pizza, a fatia sob o ponteiro, com `formatter` e
+   `labelFormatter`), `stackId` em barras e áreas, `strokeDasharray` em linhas e grade
+   (o padrão continua nos cantos), `label` em fatias e barras e omissão dos rótulos do eixo
+   x que se sobrepõem. Próximos: `ReferenceLine`, dispersão, eixos secundários, animações.
 
 Depois:
 

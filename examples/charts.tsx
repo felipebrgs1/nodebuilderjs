@@ -1,5 +1,5 @@
 // @nodebuilderjs/core/charts: the Recharts API shape, drawn by nodebuilder. LIVE=0 freezes the data.
-import { Card, Column, Row, Scroll, Text, Window, createSignal, requestAnimationFrame, run } from "@nodebuilderjs/core";
+import { Card, Row, Scroll, Text, Window, createSignal, requestAnimationFrame, run } from "@nodebuilderjs/core";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, Tooltip, XAxis, YAxis,
 } from "@nodebuilderjs/core/charts";
@@ -26,11 +26,11 @@ run(() => (
       <Card gap={8}>
         <Text bold>Vendas x meta</Text>
         <LineChart data={sales} height={220}>
-          <CartesianGrid vertical={false} />
+          <CartesianGrid vertical={false} strokeDasharray="3 3" />
           <XAxis dataKey="mes" />
           <YAxis />
           <Line dataKey="vendas" name="Vendas" />
-          <Line dataKey="meta" name="Meta" stroke="#e5a50a" dot={false} />
+          <Line dataKey="meta" name="Meta" stroke="#e5a50a" strokeDasharray="6 4" dot={false} />
           <Tooltip />
           <Legend />
         </LineChart>
@@ -42,25 +42,27 @@ run(() => (
             <CartesianGrid vertical={false} />
             <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
             <Area dataKey="cpu" type="monotone" stroke="#26a269" />
+            <Tooltip formatter={(v) => `${Math.round(Number(v))}%`} />
           </AreaChart>
         </Card>
         <Card gap={8} width={300}>
           <Text bold>Canais</Text>
           <PieChart height={180}>
-            <Pie data={share} dataKey="valor" nameKey="canal" innerRadius="45%" paddingAngle={2} />
-            <Legend />
+            <Pie data={share} dataKey="valor" nameKey="canal" innerRadius="45%" outerRadius="70%" paddingAngle={2} label={({ percent }) => `${Math.round(percent * 100)}%`} />
+            <Tooltip />
           </PieChart>
         </Card>
       </Row>
       <Row gap={16}>
         <Card gap={8} grow={1}>
-          <Text bold>Receita e custo por mês</Text>
-          <BarChart data={sales.slice(0, 6)} height={200}>
+          <Text bold>Custo e lucro por mês (empilhados)</Text>
+          <BarChart data={sales.slice(0, 6).map((r) => ({ ...r, lucro: r.vendas - r.custo }))} height={200}>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="mes" />
             <YAxis />
-            <Bar dataKey="vendas" name="Receita" radius={3} />
-            <Bar dataKey="custo" name="Custo" fill="#e01b24" radius={3} />
+            <Bar dataKey="custo" name="Custo" stackId="r" fill="#e01b24" />
+            <Bar dataKey="lucro" name="Lucro" stackId="r" fill="#26a269" radius={3} label />
+            <Tooltip />
             <Legend />
           </BarChart>
         </Card>

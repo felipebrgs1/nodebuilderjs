@@ -2,6 +2,7 @@
 
 import { type ElementDesc, isElement } from "../jsx-runtime.js";
 import { theme } from "../theme.js";
+import type { DrawContext } from "../widgets/canvas.js";
 import type { DataKey, Row } from "./components.js";
 
 /** Default series colors, in order. */
@@ -57,3 +58,41 @@ export function radius(r: number | string | undefined, half: number, fallback: n
 }
 
 export const LEGEND_HEIGHT = 24;
+
+/** "4 2" or [4, 2] as numbers; undefined when there is no usable pattern. */
+export function dashArray(d: string | readonly number[] | undefined): number[] | undefined {
+  if (d === undefined) return undefined;
+  const list = typeof d === "string" ? d.split(/[\s,]+/).filter(Boolean).map(Number) : [...d];
+  return list.length && list.every((v) => Number.isFinite(v) && v >= 0) && list.some((v) => v > 0) ? list : undefined;
+}
+
+export const formatValue = (v: unknown) => (typeof v === "number" ? new Intl.NumberFormat().format(v) : String(v ?? ""));
+
+/**
+ * A tooltip box next to (x, y), flipped to stay inside the canvas: an optional title and
+ * one row per item, each with its color swatch.
+ */
+export function tooltipBox(g: DrawContext, x: number, y: number, title: string | null, rows: { text: string; color: string }[]) {
+  const font = 12, pad = 8, swatch = 10;
+  const lh = g.measureText("0", font).height;
+  const widths = [...(title !== null ? [g.measureText(title, font, true).width] : []), ...rows.map((r) => swatch + 6 + g.measureText(r.text, font).width)];
+  const w = Math.max(...widths) + pad * 2;
+  const h = (rows.length + (title !== null ? 1 : 0)) * lh + pad * 2;
+  let bx = x + 12, by = y + 12;
+  if (bx + w > g.width) bx = x - 12 - w;
+  if (by + h > g.height) by = y - 12 - h;
+  bx = Math.max(0, bx);
+  by = Math.max(0, by);
+  g.rect(bx - 1, by - 1, w + 2, h + 2, "#00000026", 7); // border
+  g.rect(bx, by, w, h, theme.card.background, 6);
+  let ty = by + pad;
+  if (title !== null) {
+    g.text(title, bx + pad, ty, theme.text.primary, font, true);
+    ty += lh;
+  }
+  for (const r of rows) {
+    g.rect(bx + pad, ty + (lh - swatch) / 2, swatch, swatch, r.color, 2);
+    g.text(r.text, bx + pad + swatch + 6, ty, theme.text.secondary, font);
+    ty += lh;
+  }
+}

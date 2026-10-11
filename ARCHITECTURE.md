@@ -175,7 +175,7 @@ outros são um `<Canvas>`. Os filhos (`<Line>`, `<XAxis>`...) não renderizam na
 para saber o que desenhar, sem instanciá-los. Os passos dos eixos seguem o algoritmo do d3
 (1, 2 ou 5 vezes uma potência de 10). Ficam num subcaminho para que nomes como `Tooltip` e
 `Line` não colidam com widgets de interface; quem não importa não leva nada no bundle, e
-quem usa paga ~11 KB.
+quem usa paga ~15 KB.
 
 Coordenadas: o TypeScript trabalha em pixels lógicos; o C multiplica pela escala inteira da
 tela (Wayland: `preferred_buffer_scale`; X11: `Xft.dpi / 96`).

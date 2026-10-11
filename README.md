@@ -138,11 +138,12 @@ import { LineChart, Line, Area, AreaChart, BarChart, Bar, PieChart, Pie, Cell,
 A API segue o formato do Recharts: `LineChart`, `AreaChart`, `BarChart`, `ComposedChart` e
 `PieChart`, com `Line`, `Area`, `Bar`, `Pie`/`Cell`, `XAxis`, `YAxis`, `CartesianGrid` e
 `Legend` como filhos. Os eixos têm passos redondos (como o d3), o eixo y inclui o zero, e
-`type="monotone"` suaviza a curva. Tudo é desenhado com o `<Canvas>`, pela GPU, e vem no
-próprio core: quem não importa `@nodebuilderjs/core/charts` não leva nada no executável
-(quem usa, ~11 KB). Ainda não há
-tooltip ao passar o mouse (`<Tooltip>` é aceito e ignorado), barras/áreas empilhadas,
-linhas tracejadas nem rótulos nas fatias.
+`type="monotone"` suaviza a curva. Também há `<Tooltip>` (linha-guia e valores da categoria
+sob o mouse; na pizza, a fatia), empilhamento com `stackId`, `strokeDasharray` em linhas e
+grade, `label` em fatias e barras, e o eixo x omite rótulos que se sobrepõem. Tudo é
+desenhado com o `<Canvas>`, pela GPU, e vem no próprio core: quem não importa
+`@nodebuilderjs/core/charts` não leva nada no executável (quem usa, ~15 KB). Ainda não
+existem gráficos de dispersão e radar, `ReferenceLine`, `Brush` nem eixos secundários.
 
 ## Distribuir
 
