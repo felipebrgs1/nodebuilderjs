@@ -1,6 +1,7 @@
 import { edges } from "../render/layout.js";
 import { type Style, UINode, invalidate, measureText } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, createSignal, onCleanup, read, untrack } from "../reactive/signals.js";
+import { clipboard } from "../runtime/clipboard.js";
 import { theme } from "../theme.js";
 import { type StyleProps, applyProps, inherited, interaction } from "./props.js";
 
@@ -104,9 +105,23 @@ export function TextField(
     restartBlink();
   };
 
+  // Single line: breaks and tabs become spaces, other control characters go away.
+  const paste = async () => {
+    const text = (await clipboard.readText()).replace(/\r\n|[\r\n\t]/g, " ").replace(/[\x00-\x1f\x7f]/g, "");
+    if (!text) return;
+    const cs = chars(); // the value may have changed while waiting for the clipboard
+    const at = Math.min(untrack(caret), cs.length);
+    const pasted = Array.from(text);
+    edit([...cs.slice(0, at), ...pasted, ...cs.slice(at)], at + pasted.length);
+  };
+
   node.handlers.onKeyDown = (e) => {
     const cs = chars();
     const at = Math.min(caret(), cs.length);
+    if ((e.ctrl && (e.key === "v" || e.key === "V")) || (e.shift && e.key === "Insert")) {
+      void paste();
+      return e.stop();
+    }
     switch (e.key) {
       case "BackSpace":
         if (at > 0) edit([...cs.slice(0, at - 1), ...cs.slice(at)], at - 1);

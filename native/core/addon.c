@@ -36,6 +36,11 @@ void nb_push_event(const nb_event *e) {
   queue[queue_len++] = *e;
 }
 
+static void clear_queue(void) {
+  for (size_t i = 0; i < queue_len; i++) free(queue[i].data);
+  queue_len = 0;
+}
+
 static const char *type_name(int t) {
   switch (t) {
     case NB_EV_CONFIGURE: return "configure";
@@ -49,6 +54,7 @@ static const char *type_name(int t) {
     case NB_EV_KEY_DOWN: return "keydown";
     case NB_EV_KEY_UP: return "keyup";
     case NB_EV_FOCUS: return "focus";
+    case NB_EV_CLIPBOARD: return "clipboard";
   }
   return "unknown";
 }
@@ -110,6 +116,9 @@ static napi_value event_to_js(napi_env env, const nb_event *e) {
     case NB_EV_FOCUS:
       set_bool(env, o, "focused", e->focused);
       break;
+    case NB_EV_CLIPBOARD:
+      set_str(env, o, "text", e->data ? e->data : "");
+      break;
   }
   return o;
 }
@@ -119,7 +128,7 @@ static void deliver(napi_env env, napi_value callback) {
   napi_value arr, global, result;
   napi_create_array_with_length(env, queue_len, &arr);
   for (size_t i = 0; i < queue_len; i++) napi_set_element(env, arr, i, event_to_js(env, &queue[i]));
-  queue_len = 0;
+  clear_queue();
   napi_get_global(env, &global);
   napi_call_function(env, global, callback, 1, &arr, &result);
 }
@@ -205,7 +214,7 @@ static napi_value js_close(napi_env env, napi_callback_info info) {
   nb_platform_pump_stop();
   napi_release_threadsafe_function(g_tsfn, napi_tsfn_abort);
   nb_platform_close();
-  queue_len = 0;
+  clear_queue();
   return NULL;
 }
 
@@ -399,6 +408,29 @@ static napi_value js_minimize(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
+// writeClipboard(text)
+static napi_value js_write_clipboard(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  char *text = get_string(env, argv[0]);
+  if (g_open && text) {
+    nb_platform_clipboard_write(text);
+    nb_platform_flush();
+  }
+  free(text);
+  return NULL;
+}
+
+// readClipboard(): the text arrives as a "clipboard" event.
+static napi_value js_read_clipboard(napi_env env, napi_callback_info info) {
+  if (!g_open) return NULL;
+  nb_platform_clipboard_read();
+  nb_platform_flush();
+  request_delivery();  // answered right away when the clipboard is ours
+  return NULL;
+}
+
 NAPI_MODULE_INIT() {
   napi_property_descriptor props[] = {
       {"open", NULL, js_open, NULL, NULL, NULL, napi_default, NULL},
@@ -415,6 +447,8 @@ NAPI_MODULE_INIT() {
       {"setMaximized", NULL, js_set_maximized, NULL, NULL, NULL, napi_default, NULL},
       {"minimize", NULL, js_minimize, NULL, NULL, NULL, napi_default, NULL},
       {"requestFrame", NULL, js_request_frame, NULL, NULL, NULL, napi_default, NULL},
+      {"writeClipboard", NULL, js_write_clipboard, NULL, NULL, NULL, napi_default, NULL},
+      {"readClipboard", NULL, js_read_clipboard, NULL, NULL, NULL, napi_default, NULL},
   };
   napi_define_properties(env, exports, sizeof props / sizeof props[0], props);
   return exports;

@@ -10,7 +10,8 @@ export type NativeEvent =
   | { type: "pointermove" | "pointerdown" | "pointerup"; x: number; y: number; button: number }
   | { type: "scroll"; x: number; y: number; dx: number; dy: number }
   | NativeKeyEvent
-  | { type: "focus"; focused: boolean };
+  | { type: "focus"; focused: boolean }
+  | { type: "clipboard"; text: string };
 
 export interface Native {
   open(options: { title: string; appId: string; width: number; height: number }, onEvents: (events: NativeEvent[]) => void): void;
@@ -31,6 +32,10 @@ export interface Native {
   minimize(): void;
   /** Requests a frame callback (next vblank) without drawing anything. */
   requestFrame(): void;
+  /** Offers `text` as the system clipboard's content (needs a recent key or button press on Wayland). */
+  writeClipboard(text: string): void;
+  /** Asks for the clipboard's text; the answer comes as a "clipboard" event ("" if there is no text). */
+  readClipboard(): void;
 }
 
 let native: Native | null = null;

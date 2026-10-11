@@ -24,6 +24,7 @@ enum nb_event_type {
   NB_EV_KEY_DOWN,
   NB_EV_KEY_UP,
   NB_EV_FOCUS,
+  NB_EV_CLIPBOARD,  // answer to nb_platform_clipboard_read: `data` holds the text
 };
 
 enum nb_mod { NB_MOD_CTRL = 1, NB_MOD_SHIFT = 2, NB_MOD_ALT = 4, NB_MOD_SUPER = 8 };
@@ -39,6 +40,7 @@ typedef struct {
   int mods;
   char key[64];    // xkb keysym name, e.g. "Return", "a", "BackSpace"
   char text[32];   // UTF-8 produced by the key (after compose / dead keys)
+  char *data;      // malloc'd payload (NB_EV_CLIPBOARD text, NULL = empty); the core frees it
 } nb_event;
 
 // Implemented by core/addon.c; platforms call it from the JS thread.

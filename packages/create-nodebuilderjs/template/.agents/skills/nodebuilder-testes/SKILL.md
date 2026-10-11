@@ -35,7 +35,7 @@ test("adiciona uma tarefa", () => {
 - `click(node)`: dispara o `onClick` do nó ou do ancestral mais próximo (atalho rápido).
 - `interact(root)`: mouse e teclado entregues como no app de verdade (hover, foco, captura
   ao arrastar, Tab): `hover(n)`, `press(n)`, `release(n)`, `drag(n, dx, dy)`, `move(x, y)`,
-  `scroll(n, dy)`, `key("Return")`, `type("texto")` e `focused`.
+  `scroll(n, dy)`, `key("Return")`, `key("c", { ctrl: true })`, `type("texto")` e `focused`.
 
 ```tsx
 const ui = interact(root);
@@ -46,9 +46,37 @@ ui.drag(slider, 80, 0);     // arrasta 80 px para a direita
 ```
 - `debugTree(node)` (de `@nodebuilderjs/core`): árvore com posições, ótimo para ver o layout.
 
+## Área de transferência e seleção
+
+Nos testes, `clipboard` é uma área em memória (sem janela, sem sistema). Para conferir uma
+cópia, leia de volta; ler é assíncrono, então o teste vira `async`:
+
+```tsx
+import { expect, test } from "bun:test";
+import { Column, Text, clipboard } from "@nodebuilderjs/core";
+import { interact, mount } from "@nodebuilderjs/core/testing";
+
+test("copia o id selecionando o texto", async () => {
+  const { root } = mount(() => <Column align="start"><Text selectable>id-42</Text></Column>);
+  const ui = interact(root);
+  const id = root.children[0]!.children[0]!;
+  ui.press(id);                 // o clique dá o foco ao texto
+  ui.release(id);
+  ui.key("a", { ctrl: true });  // Ctrl+A: tudo (ou ui.drag(id, dx, 0) para um trecho)
+  ui.key("c", { ctrl: true });
+  expect(await clipboard.readText()).toBe("id-42");
+});
+```
+
+Para testar colar num `TextField`, escreva antes com `clipboard.writeText(...)`, foque o
+campo, `ui.key("v", { ctrl: true })` e espere uma volta do loop
+(`await new Promise((r) => setImmediate(r))`) antes de conferir o valor. A área em memória
+é compartilhada no arquivo: escreva o valor esperado no começo de cada teste.
+
 ## Dicas
 
-- Estado muda na hora (signals são síncronos); não há `await` nem `act()`.
+- Estado muda na hora (signals são síncronos); não há `await` nem `act()` (a exceção é
+  ler a área de transferência, acima).
 - Prefira `interact` a chamar handlers à mão: ele testa também foco, hover e propagação.
   Depois de mudanças que movem nós, chame `relayout()` antes de interagir de novo.
 - Teste cálculos de layout com tamanhos fixos (`width`, `height`) para não depender das

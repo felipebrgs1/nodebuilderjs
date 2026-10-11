@@ -163,6 +163,8 @@ export class UINode {
   private flat: UINode[] | null = [];
 
   focusable = false;
+  /** Reached with Tab (when focusable). False for things focused only by clicking, like selectable text. */
+  tabStop = true;
   /** Children may overflow vertically and are scrolled by `scrollY`. */
   scrollable = false;
   /** Pressing here (outside clickable children) moves the window. */

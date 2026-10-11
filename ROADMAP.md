@@ -12,6 +12,8 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   (desenho livre na GPU), `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`
 - Gráficos (`@nodebuilderjs/core/charts`) com API no formato do Recharts
 - `onPointerMove` e `interact()` para testar mouse e teclado sem janela
+- Área de transferência do sistema (texto, Wayland e X11): `clipboard`, colar no `TextField`,
+  `<Text selectable>` para selecionar e copiar texto fixo
 - `bun create nodebuilderjs` gera o app com `AGENTS.md` e skills para agentes (`.agents/skills`)
 - Núcleo nativo próprio: Wayland e X11 (escolhidos em tempo de execução), OpenGL ES 2,
   HarfBuzz + FreeType, teclas mortas e acentos, escala inteira (HiDPI)
@@ -95,7 +97,9 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
 
 - Quebra de linha e texto com várias linhas
 - Fallback de fontes (emojis, CJK) e escolha de família de fonte
-- `TextField`: seleção, área de transferência, desfazer/refazer, campo de várias linhas
+- Seleção no `TextField` (com Ctrl+C/Ctrl+X); seleção primária (colar com o botão do meio);
+  Shift+clique e setas para estender a seleção do `<Text selectable>`
+- `TextField`: desfazer/refazer, campo de várias linhas
 - IME (`text-input-v3`) para teclados de idiomas asiáticos
 
 ## Widgets e visual

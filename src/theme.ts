@@ -11,5 +11,6 @@ export const theme = {
   field: { background: "#ffffff", border: "#00000024", focus: "#3584e4", placeholder: "#9a9aa4" },
   card: { background: "#ffffff", border: "#00000014" },
   focusRing: "#3584e480",
+  selection: "#3584e44d",
   divider: "#0000001a",
 };

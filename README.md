@@ -145,6 +145,25 @@ desenhado com o `<Canvas>`, pela GPU, e vem no próprio core: quem não importa
 `@nodebuilderjs/core/charts` não leva nada no executável (quem usa, ~15 KB). Ainda não
 existem gráficos de dispersão e radar, `ReferenceLine`, `Brush` nem eixos secundários.
 
+### Área de transferência
+
+```tsx
+import { Button, clipboard, createSignal } from "@nodebuilderjs/core";
+
+const [texto, setTexto] = createSignal("");
+<Button label="Copiar" onClick={() => clipboard.writeText(texto())} />
+<Button label="Colar" onClick={async () => setTexto(await clipboard.readText())} /> // "" se não houver texto
+```
+
+Texto fixo pode ser selecionado e copiado com `<Text selectable>`: arrastar seleciona,
+clique duplo pega a palavra, clique triplo a linha, Ctrl+A tudo e Ctrl+C copia. Fica
+desligado por padrão, para rótulos e botões não selecionarem sem querer.
+
+É a área de transferência do sistema (Wayland e X11), só texto. O `TextField` cola com
+Ctrl+V ou Shift+Insert (quebras de linha viram espaços). Sem janela, como nos testes, é uma
+área de transferência em memória. No Wayland, o compositor só aceita a cópia logo depois de
+uma tecla ou clique (o normal: Ctrl+C, botão "Copiar").
+
 ## Distribuir
 
 ```sh
@@ -255,7 +274,7 @@ Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#me
 
 - Só Linux x64 (arm64, Windows e macOS estão no roadmap).
 - Texto sem quebra de linha e com uma fonte só (emojis não aparecem).
-- Campo de texto sem seleção, área de transferência e desfazer.
+- Campo de texto sem seleção, cópia e desfazer (colar funciona).
 - SVG só no subconjunto para ícones (sem gradientes, texto, filtros); AVIF/HEIC dependem da
   `libheif` do sistema.
 - Sem animações, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).

@@ -101,7 +101,7 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
 ### Organização dos testes
 
 - Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `input` (eventos),
-  `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
+  `clipboard`, `text-selection`, `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulação), `draw` (primitivas e `shapes.ts`), `canvas` e `charts/`. Assunto novo ganha arquivo novo; quando o `core` crescer, divida-o.
 - Testes rápidos e determinísticos: sem rede, sem relógio, sem janela. A suíte toda roda em
   ~0,1 s; um teste que precise de mais que isso deve ter um motivo.
@@ -139,10 +139,12 @@ src/                   um módulo por pasta; imports relativos com `.js`
     app.ts             run(): janela, agendamento de frames, NB_STATS; liga o input ao addon
     input.ts           eventos -> UI: hit test, hover, cursor, foco, cliques, captura, rolagem, teclado
     native.ts          carrega native/build/<plataforma>-<arch>/nodebuilder.node (require literais)
+    clipboard.ts       clipboard (texto): em memória sem janela, nativo com run(); leitura por evento
   widgets/             um arquivo por widget; index.ts reexporta
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps, inherited, interaction
     containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
     text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
+    text-selection.ts  posições de caracteres, palavra sob o clique (Text selectable; TextField)
   image/
     source.ts          fontes de imagem: cache por caminho, contagem de uso, handle na GPU
     decode.ts          decodeImage: escolhe o decodificador pela assinatura do arquivo
@@ -232,6 +234,8 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
 - **Ao adicionar um campo em `Style`**, inclua-o também em `STYLE_KEYS` (`widgets/props.ts`);
   handlers novos vão em `Handlers` (`render/node.ts`) e `HANDLER_KEYS`.
 - Herdáveis via árvore: `color`, `fontSize`, `bold` (função `inherited`).
+- Foco só pelo clique (ex.: `<Text selectable>`, que precisa do foco para o Ctrl+C):
+  `focusable = true` e `tabStop = false`, para não entrar na ordem do Tab.
 - Defaults de cor/tamanho vêm de `theme.ts`, não hard-coded nos widgets.
 - Comentários e identificadores em **inglês**; textos de UI, README e este arquivo em
   **português**. Comentários são curtos e explicam o porquê, não o quê.
@@ -257,8 +261,11 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
   fd do display, no timerfd de repetição e num eventfd de saída) e chama `wake()`; o núcleo
   acorda o JS via `napi_threadsafe_function` e chama `nb_platform_pump_process()`, onde
   acontece toda a leitura/dispatch. O pump do Linux faz `poll()` nos fds que
-  `backend->fds()` devolve (fd *i* = bit *i* de `ready`) e chama `backend->process(ready)`
-  na thread do JS. `nb_wl_dispatch()` nunca bloqueia (prepare_read/read_events/cancel_read).
+  `backend->fds()` devolve (`struct pollfd`, com POLLIN/POLLOUT) e chama
+  `backend->process(ready, n)` na thread do JS com os que ficaram prontos. A lista é pedida de
+  novo a cada volta, na thread do JS; mudou fora do `process` (ex.: começou uma colagem)?
+  Chame `nb_linux_pump_refresh()`. Um fd pronto pode ter sido fechado e o número reusado:
+  todo fd do backend é não bloqueante. `nb_wl_dispatch()` nunca bloqueia (prepare_read/read_events/cancel_read).
 - Eventos para o JS: preencher `nb_event` e chamar `nb_push_event()` **na thread do JS**.
 - Depois de chamadas que possam receber eventos (ex.: `eglSwapBuffers`), o núcleo chama
   `nb_platform_flush()` e pede uma entrega (`request_delivery()`).
@@ -396,7 +403,8 @@ todos com a versão do `package.json` da raiz:
 
 ## Limitações atuais
 
-- TextField: sem seleção, clipboard, undo; Text: sem quebra de linha; uma fonte só
+- TextField: sem seleção, cópia, undo (colar existe); Text: sem quebra de linha (seleção só
+  com `selectable`, sem Shift+clique nem teclado); uma fonte só
   (sem fallback: emojis não aparecem).
 - `<Canvas>`: polígono que cruza a si mesmo não é desenhado; linhas translúcidas escurecem
   nas junções (cada segmento é desenhado à parte); fatias vizinhas de pizza mostram uma

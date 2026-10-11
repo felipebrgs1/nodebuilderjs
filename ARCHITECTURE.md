@@ -185,7 +185,10 @@ tela (Wayland: `preferred_buffer_scale`; X11: `Xft.dpi / 96`).
 O Bun não implementa a libuv, então o addon não pode usá-la. Em vez disso:
 
 1. Uma thread do backend só espera: no Linux, um `poll()` no socket do display, no timer de
-   repetição de teclas e num eventfd de saída.
+   repetição de teclas, nos pipes da área de transferência e num eventfd de controle. A
+   lista de fds é entregue pela thread do JS a cada volta (`backend->fds()`); quando muda
+   fora dela (uma colagem começou), `nb_linux_pump_refresh()` acorda o `poll()` pelo
+   eventfd para pegar a lista nova.
 2. Quando há algo, ela chama `wake()`, e o núcleo acorda o JS por uma
    `napi_threadsafe_function`.
 3. Já na thread do JS, `nb_platform_pump_process()` lê e despacha tudo (no Wayland,
@@ -211,6 +214,26 @@ A janela sempre desenha a própria decoração (barra de título, botões, borda
 redimensionar). No X11, a decoração do gerenciador de janelas é desligada e mover/maximizar
 usam as mensagens EWMH; sem compositor, a janela perde a transparência e os cantos
 arredondados.
+
+### Área de transferência
+
+Só texto, pelo contrato `nb_platform_clipboard_write/read`. Ler é assíncrono em todo SO (quem
+tem o conteúdo é outro programa): `readClipboard()` pede, e a resposta chega como um evento
+`clipboard`, que `runtime/clipboard.ts` entrega a todas as leituras pendentes. Quando o
+conteúdo é nosso, a resposta sai na hora, sem passar pelo servidor.
+
+- **Wayland:** copiar cria um `wl_data_source` (`text/plain;charset=utf-8`, `UTF8_STRING`...)
+  e chama `set_selection` com o serial da última tecla ou clique; cada colagem em outro app
+  manda um pipe, que escrevemos sem bloquear (POLLOUT na thread de bombeamento). Colar pede
+  ao dono da seleção que escreva num pipe nosso, lido aos pedaços até o EOF (até 64 MB). O
+  compositor só informa a seleção enquanto temos o foco do teclado. Escrever num pipe
+  fechado gera SIGPIPE: se ninguém o trata, o backend passa a ignorá-lo (o Node já faz isso).
+- **X11:** seleção `CLIPBOARD`. Copiar é virar dono e responder `SelectionRequest` (`TARGETS`,
+  `UTF8_STRING`, `TEXT`, `STRING`), com um handler de erro temporário porque o outro programa
+  pode sumir no meio (o handler padrão do Xlib encerra o processo). Colar é
+  `XConvertSelection` + `SelectionNotify`, com o protocolo INCR para textos grandes (pedaços
+  via `PropertyNotify`). Enviar com INCR não existe: textos acima do tamanho máximo de
+  requisição (~16 MB com BIG-REQUESTS) são recusados.
 
 ## Portabilidade para outros sistemas
 

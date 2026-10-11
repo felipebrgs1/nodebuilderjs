@@ -12,6 +12,7 @@
 #include <X11/Xresource.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/Xrandr.h>
+#include <limits.h>
 #include <locale.h>
 #include <math.h>
 #include <stdio.h>
@@ -36,7 +37,7 @@ static struct {
   char cursor_name[64];
 
   Atom wm_protocols, wm_delete, net_wm_name, utf8_string, net_wm_state, net_wm_state_max_v,
-      net_wm_state_max_h, net_wm_moveresize, motif_hints;
+      net_wm_state_max_h, net_wm_moveresize, motif_hints, clipboard, targets, incr_atom, text_atom, paste_prop;
 
   EGLDisplay egl_display;
   EGLContext egl_context;
@@ -52,6 +53,12 @@ static struct {
 
   int root_x, root_y, last_button;  // last press, for _NET_WM_MOVERESIZE
   uint8_t keys_down[32];            // keycode bitset: X auto-repeat detection
+  Time last_time;                   // of the last input event, for selection requests
+
+  char *clip_text;  // our CLIPBOARD content while we own it
+  bool pasting, incr;
+  char *paste;
+  size_t paste_len;
 } X;
 
 // ---- helpers ----------------------------------------------------------------
@@ -158,6 +165,108 @@ static int mods_of(unsigned int state) {
   return m;
 }
 
+// ---- clipboard --------------------------------------------------------------
+// The CLIPBOARD selection: owning it means answering SelectionRequests from other
+// clients; pasting means XConvertSelection and waiting for SelectionNotify (and, for
+// big transfers, INCR chunks through PropertyNotify). Everything rides on the
+// display connection, so no extra fds.
+
+static int ignore_x_error(Display *dpy, XErrorEvent *e) { return 0; }
+
+static void answer_request(XSelectionRequestEvent *r) {
+  XSelectionEvent reply = {.type = SelectionNotify, .requestor = r->requestor, .selection = r->selection,
+                           .target = r->target, .property = None, .time = r->time};
+  Atom property = r->property != None ? r->property : r->target;  // obsolete clients pass None
+  long max = XExtendedMaxRequestSize(X.dpy) ? XExtendedMaxRequestSize(X.dpy) : XMaxRequestSize(X.dpy);
+  size_t len = X.clip_text ? strlen(X.clip_text) : 0;
+  // The requestor may vanish meanwhile; Xlib's default error handler would exit the process.
+  XSync(X.dpy, False);
+  XErrorHandler previous = XSetErrorHandler(ignore_x_error);
+  if (X.clip_text && r->selection == X.clipboard) {
+    if (r->target == X.targets) {
+      Atom list[] = {X.targets, X.utf8_string, X.text_atom, XA_STRING};
+      XChangeProperty(X.dpy, r->requestor, property, XA_ATOM, 32, PropModeReplace, (unsigned char *)list, 4);
+      reply.property = property;
+    } else if ((r->target == X.utf8_string || r->target == X.text_atom || r->target == XA_STRING) &&
+               len < (size_t)max * 4 - 1024) {  // no INCR when sending: bigger texts are refused
+      Atom type = r->target == XA_STRING ? XA_STRING : X.utf8_string;
+      XChangeProperty(X.dpy, r->requestor, property, type, 8, PropModeReplace, (unsigned char *)X.clip_text, (int)len);
+      reply.property = property;
+    }
+  }
+  XSendEvent(X.dpy, r->requestor, False, 0, (XEvent *)&reply);
+  XSync(X.dpy, False);
+  XSetErrorHandler(previous);
+}
+
+static void end_paste(bool answer) {
+  if (answer) nb_linux_clipboard_answer(X.paste, X.paste_len);
+  free(X.paste);
+  X.paste = NULL;
+  X.paste_len = 0;
+  X.pasting = X.incr = false;
+}
+
+/** Reads (and deletes) our paste property; false when it was empty. */
+static bool take_paste_property(Atom *type) {
+  int format;
+  unsigned long count, after;
+  unsigned char *data = NULL;
+  if (XGetWindowProperty(X.dpy, X.win, X.paste_prop, 0, LONG_MAX / 4, True, AnyPropertyType, type, &format, &count,
+                         &after, &data) != Success)
+    return false;
+  size_t bytes = count * (format / 8);
+  if (data && bytes && *type != X.incr_atom) {
+    X.paste = realloc(X.paste, X.paste_len + bytes);
+    memcpy(X.paste + X.paste_len, data, bytes);
+    X.paste_len += bytes;
+  }
+  if (data) XFree(data);
+  return *type == X.incr_atom || bytes > 0;
+}
+
+static void selection_notify(XSelectionEvent *e) {
+  if (!X.pasting || e->selection != X.clipboard) return;
+  Atom type = None;
+  if (e->property != None && take_paste_property(&type) && type == X.incr_atom)
+    X.incr = true;  // deleting the property asked for the first chunk
+  else
+    end_paste(true);
+}
+
+static void incr_chunk(void) {
+  Atom type;
+  if (!take_paste_property(&type)) end_paste(true);  // an empty chunk ends the transfer
+}
+
+static void x_clipboard_write(const char *utf8) {
+  if (!X.dpy) return;
+  free(X.clip_text);
+  X.clip_text = strdup(utf8);
+  XSetSelectionOwner(X.dpy, X.clipboard, X.win, X.last_time ? X.last_time : CurrentTime);
+  if (XGetSelectionOwner(X.dpy, X.clipboard) != X.win) {
+    free(X.clip_text);
+    X.clip_text = NULL;
+  }
+}
+
+static void x_clipboard_read(void) {
+  if (!X.dpy) return;
+  end_paste(false);
+  if (X.clip_text) {  // ours
+    nb_linux_clipboard_answer(X.clip_text, strlen(X.clip_text));
+    return;
+  }
+  if (XGetSelectionOwner(X.dpy, X.clipboard) == None) {
+    nb_linux_clipboard_answer(NULL, 0);
+    return;
+  }
+  XDeleteProperty(X.dpy, X.win, X.paste_prop);
+  XConvertSelection(X.dpy, X.clipboard, X.utf8_string, X.paste_prop, X.win, X.last_time ? X.last_time : CurrentTime);
+  X.pasting = true;
+  XFlush(X.dpy);
+}
+
 // ---- events -----------------------------------------------------------------
 
 static void handle_key(XKeyEvent *k, bool pressed) {
@@ -210,7 +319,20 @@ static void handle_event(XEvent *ev) {
         nb_push_event(&e);
       }
       break;
+    case SelectionRequest:
+      answer_request(&ev->xselectionrequest);
+      break;
+    case SelectionClear:
+      if (ev->xselectionclear.selection == X.clipboard) {
+        free(X.clip_text);
+        X.clip_text = NULL;
+      }
+      break;
+    case SelectionNotify:
+      selection_notify(&ev->xselection);
+      break;
     case PropertyNotify:
+      if (X.incr && ev->xproperty.atom == X.paste_prop && ev->xproperty.state == PropertyNewValue) incr_chunk();
       if (ev->xproperty.atom == X.net_wm_state) {
         bool max = read_maximized();
         if (max != X.maximized) {
@@ -261,6 +383,7 @@ static void handle_event(XEvent *ev) {
         break;
       }
       if (ev->type == ButtonPress) {
+        X.last_time = b->time;
         X.root_x = b->x_root;
         X.root_y = b->y_root;
         X.last_button = b->button;
@@ -273,6 +396,7 @@ static void handle_event(XEvent *ev) {
     }
     case KeyPress:
     case KeyRelease:
+      if (ev->type == KeyPress) X.last_time = ev->xkey.time;
       handle_key(&ev->xkey, ev->type == KeyPress);
       break;
   }
@@ -353,6 +477,11 @@ static bool x_open(const nb_window_options *o) {
   X.net_wm_state_max_h = XInternAtom(X.dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
   X.net_wm_moveresize = XInternAtom(X.dpy, "_NET_WM_MOVERESIZE", False);
   X.motif_hints = XInternAtom(X.dpy, "_MOTIF_WM_HINTS", False);
+  X.clipboard = XInternAtom(X.dpy, "CLIPBOARD", False);
+  X.targets = XInternAtom(X.dpy, "TARGETS", False);
+  X.incr_atom = XInternAtom(X.dpy, "INCR", False);
+  X.text_atom = XInternAtom(X.dpy, "TEXT", False);
+  X.paste_prop = XInternAtom(X.dpy, "NB_CLIPBOARD", False);
 
   X.egl_display = eglGetPlatformDisplay(EGL_PLATFORM_X11_KHR, X.dpy, NULL);
   if (X.egl_display == EGL_NO_DISPLAY || !eglInitialize(X.egl_display, NULL, NULL)) return false;
@@ -411,6 +540,8 @@ static bool x_open(const nb_window_options *o) {
 }
 
 static void x_close(void) {
+  end_paste(false);
+  free(X.clip_text);
   if (X.egl_display) {
     eglMakeCurrent(X.egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     if (X.egl_surface) eglDestroySurface(X.egl_display, X.egl_surface);
@@ -510,18 +641,16 @@ static void x_minimize(void) {
 
 // ---- pump -------------------------------------------------------------------
 
-enum { FD_DISPLAY = 1, FD_FRAME = 2 };
-
-static int x_fds(int *out, int max) {
-  out[0] = ConnectionNumber(X.dpy);
-  out[1] = X.frame_fd;
+static int x_fds(struct pollfd *out, int max) {
+  out[0] = (struct pollfd){.fd = ConnectionNumber(X.dpy), .events = POLLIN};
+  out[1] = (struct pollfd){.fd = X.frame_fd, .events = POLLIN};
   return 2;
 }
 
-static int x_process(int ready) {
-  if (ready & FD_FRAME) {
+static int x_process(const struct pollfd *ready, int count) {
+  for (int i = 0; i < count; i++) {
     uint64_t expirations;
-    if (read(X.frame_fd, &expirations, sizeof expirations) == sizeof expirations) {
+    if (ready[i].fd == X.frame_fd && read(X.frame_fd, &expirations, sizeof expirations) == sizeof expirations) {
       X.frame_armed = false;
       nb_event e = {.type = NB_EV_FRAME};
       nb_push_event(&e);
@@ -545,6 +674,8 @@ const nb_linux_backend nb_x11_backend = {
     .resize = x_resize,
     .set_maximized = x_set_maximized,
     .minimize = x_minimize,
+    .clipboard_write = x_clipboard_write,
+    .clipboard_read = x_clipboard_read,
     .fds = x_fds,
     .process = x_process,
     .flush = x_flush,

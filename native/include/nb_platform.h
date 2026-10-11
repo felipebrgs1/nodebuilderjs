@@ -40,6 +40,17 @@ void nb_platform_resize(uint32_t edges);        // interactive resize (NB_EDGE_*
 void nb_platform_set_maximized(bool maximized);
 void nb_platform_minimize(void);
 
+// ---- clipboard (plain text) ------------------------------------------------
+
+/** Offers `utf8` (copied) as the clipboard's content until another client takes it over. */
+void nb_platform_clipboard_write(const char *utf8);
+/**
+ * Asks for the clipboard's text. The answer is an NB_EV_CLIPBOARD, possibly pushed before
+ * this returns (when we own the clipboard); empty when there is no text. A new request
+ * replaces one still in flight.
+ */
+void nb_platform_clipboard_read(void);
+
 // ---- event loop -------------------------------------------------------------
 
 typedef void (*nb_wake_fn)(void);

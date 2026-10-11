@@ -23,12 +23,12 @@ que suportam skills as carregam sozinhos; os outros devem ler a skill do assunto
 
 | Skill | Quando |
 |---|---|
-| `nodebuilder-ui` | telas, widgets, props de estilo, layout, `For`/`Show`, tema |
+| `nodebuilder-ui` | telas, widgets, props de estilo, layout, `For`/`Show`, tema, texto selecionável, copiar/colar |
 | `nodebuilder-sem-react` | antes de instalar bibliotecas ou portar código React/web |
 | `nodebuilder-imagens` | imagens (PNG, JPEG, WebP, AVIF), arquivos no app |
 | `nodebuilder-icones` | ícones (Lucide, Phosphor) e SVG com `Icon` |
 | `nodebuilder-graficos` | gráficos prontos (`@nodebuilderjs/core/charts`, API do Recharts) |
 | `nodebuilder-desenho` | desenho livre com `Canvas` |
-| `nodebuilder-testes` | testes sem janela (`mount`, `findByText`, `click`) |
+| `nodebuilder-testes` | testes sem janela (`mount`, `findByText`, `click`, `interact`, área de transferência) |
 | `nodebuilder-empacotar` | AppImage/.deb/.rpm, arquivos embutidos, ícone e app id |
 | `nodebuilder-desempenho` | lentidão, listas grandes, dados ao vivo, animação |

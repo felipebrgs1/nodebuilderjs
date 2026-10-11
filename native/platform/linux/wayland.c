@@ -5,14 +5,16 @@
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <linux/input-event-codes.h>
 #include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <signal.h>
 #include <unistd.h>
-#include <poll.h>
 #include <sys/timerfd.h>
 #include <wayland-client.h>
 #include <wayland-cursor.h>
@@ -26,6 +28,16 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
+#define MAX_SENDS 4                // clipboard transfers to other clients at once
+#define MAX_PASTE (64 << 20)       // bytes; a bigger paste is cut here
+
+// A clipboard transfer to another client: our text written into its pipe.
+typedef struct {
+  int fd;  // > 0 while in use
+  char *text;
+  size_t len, sent;
+} clip_send;
+
 static struct {
   struct wl_display *display;
   struct wl_registry *registry;
@@ -36,6 +48,9 @@ static struct {
   struct wl_shm *shm;
   struct wl_pointer *pointer;
   struct wl_keyboard *keyboard;
+  struct wl_data_device_manager *data_manager;
+  struct wl_data_device *data_device;
+  uint32_t data_manager_version;
 
   struct wl_cursor_theme *cursor_theme;
   int cursor_theme_scale;
@@ -44,6 +59,15 @@ static struct {
   char cursor_name[64];
   double px, py;
   uint32_t last_serial;
+  uint32_t input_serial;  // last key or button press: set_selection needs one
+
+  struct wl_data_offer *selection, *dnd_offer;  // what other clients offer
+  struct wl_data_source *source;                // our clipboard content, while we own it
+  char *source_text;
+  int paste_fd;  // > 0 while reading another client's clipboard
+  char *paste;
+  size_t paste_len, paste_cap;
+  clip_send sends[MAX_SENDS];
 
   struct xkb_context *xkb;
   struct xkb_keymap *keymap;
@@ -153,6 +177,7 @@ static void pointer_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixe
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t time,
                            uint32_t button, uint32_t state) {
   S.last_serial = serial;
+  if (state == WL_POINTER_BUTTON_STATE_PRESSED) S.input_serial = serial;
   int b = button == BTN_LEFT ? 0 : button == BTN_MIDDLE ? 1 : button == BTN_RIGHT ? 2 : 3;
   nb_event e = {.type = state == WL_POINTER_BUTTON_STATE_PRESSED ? NB_EV_POINTER_DOWN : NB_EV_POINTER_UP,
                 .x = S.px, .y = S.py, .button = b};
@@ -274,6 +299,7 @@ static void kb_leave(void *d, struct wl_keyboard *k, uint32_t serial, struct wl_
 
 static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t time, uint32_t key, uint32_t state) {
   bool pressed = state == WL_KEYBOARD_KEY_STATE_PRESSED;
+  if (pressed) S.input_serial = serial;
   emit_key(key, pressed, false);
   if (pressed && S.repeat_rate > 0 && S.keymap && xkb_keymap_key_repeats(S.keymap, key + 8)) {
     S.repeat_key = key;
@@ -301,6 +327,182 @@ static const struct wl_keyboard_listener keyboard_listener = {
     .modifiers = kb_modifiers,
     .repeat_info = kb_repeat_info,
 };
+
+// ---- clipboard --------------------------------------------------------------
+// Copy: a wl_data_source offering our text; each paste elsewhere sends us a pipe to
+// write it into. Paste: the compositor tells us the current selection (only while we
+// have keyboard focus); we ask its owner to write into our pipe. Both pipes are
+// polled by the pump, so a slow or stuck client never blocks the JS thread.
+
+static const char *const text_mimes[] = {"text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "TEXT", "STRING"};
+enum { TEXT_MIMES = sizeof text_mimes / sizeof text_mimes[0] };
+
+/** Per wl_data_offer: the best text type it has (index in text_mimes, TEXT_MIMES = none). */
+typedef struct {
+  int mime;
+} offer_info;
+
+static void offer_offer(void *d, struct wl_data_offer *o, const char *mime) {
+  offer_info *info = d;
+  for (int i = 0; i < info->mime && i < TEXT_MIMES; i++)
+    if (!strcmp(mime, text_mimes[i])) info->mime = i;
+}
+static void offer_source_actions(void *d, struct wl_data_offer *o, uint32_t actions) {}
+static void offer_action(void *d, struct wl_data_offer *o, uint32_t action) {}
+
+static const struct wl_data_offer_listener offer_listener = {
+    .offer = offer_offer, .source_actions = offer_source_actions, .action = offer_action};
+
+static void destroy_offer(struct wl_data_offer *o) {
+  if (!o) return;
+  free(wl_data_offer_get_user_data(o));
+  wl_data_offer_destroy(o);
+}
+
+static void device_data_offer(void *d, struct wl_data_device *dev, struct wl_data_offer *o) {
+  offer_info *info = calloc(1, sizeof *info);
+  info->mime = TEXT_MIMES;
+  wl_data_offer_add_listener(o, &offer_listener, info);
+}
+
+// Drag and drop isn't supported: offers that come with a drag are dropped right away.
+static void device_enter(void *d, struct wl_data_device *dev, uint32_t serial, struct wl_surface *s, wl_fixed_t x,
+                         wl_fixed_t y, struct wl_data_offer *o) {
+  destroy_offer(S.dnd_offer);
+  S.dnd_offer = o;
+}
+static void device_leave(void *d, struct wl_data_device *dev) {
+  destroy_offer(S.dnd_offer);
+  S.dnd_offer = NULL;
+}
+static void device_motion(void *d, struct wl_data_device *dev, uint32_t time, wl_fixed_t x, wl_fixed_t y) {}
+static void device_drop(void *d, struct wl_data_device *dev) {}
+
+static void device_selection(void *d, struct wl_data_device *dev, struct wl_data_offer *o) {
+  if (S.selection != o) destroy_offer(S.selection);
+  S.selection = o;
+}
+
+static const struct wl_data_device_listener device_listener = {
+    .data_offer = device_data_offer,
+    .enter = device_enter,
+    .leave = device_leave,
+    .motion = device_motion,
+    .drop = device_drop,
+    .selection = device_selection,
+};
+
+static void close_send(clip_send *c) {
+  close(c->fd);
+  free(c->text);
+  *c = (clip_send){0};
+}
+
+static void source_target(void *d, struct wl_data_source *src, const char *mime) {}
+
+static void source_send(void *d, struct wl_data_source *src, const char *mime, int32_t fd) {
+  clip_send *slot = NULL;
+  for (int i = 0; i < MAX_SENDS && !slot; i++)
+    if (S.sends[i].fd <= 0) slot = &S.sends[i];
+  if (!slot || !S.source_text || fd <= 0) {
+    close(fd);
+    return;
+  }
+  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+  *slot = (clip_send){.fd = fd, .text = strdup(S.source_text), .len = strlen(S.source_text)};
+  nb_linux_pump_refresh();
+}
+
+static void source_cancelled(void *d, struct wl_data_source *src) {
+  if (src == S.source) {
+    S.source = NULL;
+    free(S.source_text);
+    S.source_text = NULL;
+  }
+  wl_data_source_destroy(src);
+}
+
+static void source_dnd_drop_performed(void *d, struct wl_data_source *src) {}
+static void source_dnd_finished(void *d, struct wl_data_source *src) {}
+static void source_action(void *d, struct wl_data_source *src, uint32_t action) {}
+
+static const struct wl_data_source_listener source_listener = {
+    .target = source_target,
+    .send = source_send,
+    .cancelled = source_cancelled,
+    .dnd_drop_performed = source_dnd_drop_performed,
+    .dnd_finished = source_dnd_finished,
+    .action = source_action,
+};
+
+static void wl_clipboard_write(const char *utf8) {
+  if (!S.data_device) return;
+  if (S.source) wl_data_source_destroy(S.source);
+  free(S.source_text);
+  S.source_text = strdup(utf8);
+  S.source = wl_data_device_manager_create_data_source(S.data_manager);
+  wl_data_source_add_listener(S.source, &source_listener, NULL);
+  for (int i = 0; i < TEXT_MIMES; i++) wl_data_source_offer(S.source, text_mimes[i]);
+  wl_data_device_set_selection(S.data_device, S.source, S.input_serial);
+  wl_display_flush(S.display);
+}
+
+static void end_paste(bool answer) {
+  if (answer) nb_linux_clipboard_answer(S.paste, S.paste_len);
+  if (S.paste_fd > 0) close(S.paste_fd);
+  free(S.paste);
+  S.paste_fd = 0;
+  S.paste = NULL;
+  S.paste_len = S.paste_cap = 0;
+}
+
+static void wl_clipboard_read(void) {
+  end_paste(false);
+  if (S.source) {  // ours: no round trip through the compositor
+    nb_linux_clipboard_answer(S.source_text, strlen(S.source_text));
+    return;
+  }
+  offer_info *info = S.selection ? wl_data_offer_get_user_data(S.selection) : NULL;
+  int pipe_fds[2];
+  if (!info || info->mime == TEXT_MIMES || pipe2(pipe_fds, O_CLOEXEC | O_NONBLOCK) < 0) {
+    nb_linux_clipboard_answer(NULL, 0);
+    return;
+  }
+  wl_data_offer_receive(S.selection, text_mimes[info->mime], pipe_fds[1]);
+  wl_display_flush(S.display);
+  close(pipe_fds[1]);  // the request carries its own copy
+  S.paste_fd = pipe_fds[0];
+  nb_linux_pump_refresh();
+}
+
+static void paste_readable(void) {
+  for (;;) {
+    if (S.paste_cap - S.paste_len < 4096) {
+      S.paste_cap = S.paste_cap ? S.paste_cap * 2 : 16384;
+      S.paste = realloc(S.paste, S.paste_cap);
+    }
+    ssize_t n = read(S.paste_fd, S.paste + S.paste_len, S.paste_cap - S.paste_len);
+    if (n > 0 && S.paste_len + n < MAX_PASTE) {
+      S.paste_len += n;
+      continue;
+    }
+    if (n < 0 && errno == EINTR) continue;
+    if (n < 0 && errno == EAGAIN) return;  // more later
+    end_paste(true);                       // end of data, an error or too big
+    return;
+  }
+}
+
+static void send_writable(clip_send *c) {
+  while (c->sent < c->len) {
+    ssize_t n = write(c->fd, c->text + c->sent, c->len - c->sent);
+    if (n < 0 && errno == EINTR) continue;
+    if (n < 0 && errno == EAGAIN) return;  // the reader is behind; wait for POLLOUT
+    if (n <= 0) break;                     // the reader went away
+    c->sent += n;
+  }
+  close_send(c);
+}
 
 // ---- seat / registry --------------------------------------------------------
 
@@ -336,6 +538,9 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
     wl_seat_add_listener(S.seat, &seat_listener, NULL);
   } else if (!strcmp(iface, wl_shm_interface.name)) {
     S.shm = wl_registry_bind(r, name, &wl_shm_interface, 1);
+  } else if (!strcmp(iface, wl_data_device_manager_interface.name)) {
+    S.data_manager_version = MIN(version, 3);
+    S.data_manager = wl_registry_bind(r, name, &wl_data_device_manager_interface, S.data_manager_version);
   }
 }
 
@@ -475,6 +680,14 @@ static bool wl_open(const nb_window_options *options) {
     fprintf(stderr, "nodebuilder: compositor lacks wl_compositor or xdg_wm_base\n");
     return false;
   }
+  if (S.data_manager && S.seat) {
+    S.data_device = wl_data_device_manager_get_data_device(S.data_manager, S.seat);
+    wl_data_device_add_listener(S.data_device, &device_listener, NULL);
+  }
+  // Writing to a clipboard pipe whose reader left raises SIGPIPE, which kills the
+  // process by default (Node ignores it already; not every runtime does).
+  struct sigaction pipe_action;
+  if (sigaction(SIGPIPE, NULL, &pipe_action) == 0 && pipe_action.sa_handler == SIG_DFL) signal(SIGPIPE, SIG_IGN);
 
   S.surface = wl_compositor_create_surface(S.compositor);
   wl_proxy_add_listener((struct wl_proxy *)S.surface, (void (**)(void))surface_listener, NULL);
@@ -500,6 +713,18 @@ static bool wl_open(const nb_window_options *options) {
 static void wl_close(void) {
   stop_repeat();
   if (S.repeat_fd > 0) close(S.repeat_fd);
+  end_paste(false);
+  for (int i = 0; i < MAX_SENDS; i++)
+    if (S.sends[i].fd > 0) close_send(&S.sends[i]);
+  free(S.source_text);
+  if (S.source) wl_data_source_destroy(S.source);
+  destroy_offer(S.selection);
+  destroy_offer(S.dnd_offer);
+  if (S.data_device) {
+    if (S.data_manager_version >= 2) wl_data_device_release(S.data_device);
+    else wl_data_device_destroy(S.data_device);
+  }
+  if (S.data_manager) wl_data_device_manager_destroy(S.data_manager);
   if (S.egl_display) {
     eglMakeCurrent(S.egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     if (S.egl_surface) eglDestroySurface(S.egl_display, S.egl_surface);
@@ -587,17 +812,29 @@ static void wl_set_maximized(bool maximized) {
 
 // ---- backend vtable ---------------------------------------------------------
 
-enum { FD_DISPLAY = 1, FD_REPEAT = 2 };
-
-static int wl_fds(int *out, int max) {
-  out[0] = wl_display_get_fd(S.display);
-  out[1] = S.repeat_fd;
-  return 2;
+static int wl_fds(struct pollfd *out, int max) {
+  int n = 0;
+  out[n++] = (struct pollfd){.fd = wl_display_get_fd(S.display), .events = POLLIN};
+  out[n++] = (struct pollfd){.fd = S.repeat_fd, .events = POLLIN};
+  if (S.paste_fd > 0) out[n++] = (struct pollfd){.fd = S.paste_fd, .events = POLLIN};
+  for (int i = 0; i < MAX_SENDS && n < max; i++)
+    if (S.sends[i].fd > 0) out[n++] = (struct pollfd){.fd = S.sends[i].fd, .events = POLLOUT};
+  return n;
 }
 
-static int wl_process(int ready) {
-  if (ready & FD_REPEAT) repeat_tick();
-  if ((ready & FD_DISPLAY) && dispatch() < 0) return -1;
+static int wl_process(const struct pollfd *ready, int count) {
+  bool display = false;
+  for (int i = 0; i < count; i++) {
+    int fd = ready[i].fd;
+    if (ready[i].revents & POLLNVAL) continue;
+    if (fd == S.repeat_fd) repeat_tick();
+    else if (fd == wl_display_get_fd(S.display)) display = true;
+    else if (fd == S.paste_fd) paste_readable();
+    else
+      for (int j = 0; j < MAX_SENDS; j++)
+        if (S.sends[j].fd == fd) send_writable(&S.sends[j]);
+  }
+  if (display && dispatch() < 0) return -1;
   return 0;
 }
 
@@ -615,6 +852,8 @@ const nb_linux_backend nb_wayland_backend = {
     .resize = wl_resize,
     .set_maximized = wl_set_maximized,
     .minimize = wl_minimize,
+    .clipboard_write = wl_clipboard_write,
+    .clipboard_read = wl_clipboard_read,
     .fds = wl_fds,
     .process = wl_process,
     .flush = wl_flush,

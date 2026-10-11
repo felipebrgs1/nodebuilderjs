@@ -4,6 +4,7 @@
 import { type Child, insert } from "../jsx-runtime.js";
 import { setImageBackend } from "../image/source.js";
 import { layout } from "../render/layout.js";
+import { nativeClipboard, setClipboardBackend } from "./clipboard.js";
 import { createInput } from "./input.js";
 import { type Native, type NativeEvent, loadNative } from "./native.js";
 import { UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer, textMetricsChanged } from "../render/node.js";
@@ -218,14 +219,20 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
       case "keydown":
         input.keyDown(ev);
         break;
+      case "clipboard":
+        clip.received(ev.text);
+        break;
     }
   }
 
   let currentScale = 1;
+  const clip = nativeClipboard(nat);
   closeRequest = () => {
     if (!open || options.onClose?.() === false) return;
     open = false;
     nat.close();
+    setClipboardBackend(null);
+    clip.close();
     dispose();
   };
 
@@ -233,4 +240,5 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
     { title: options.title, appId: options.appId ?? process.env.NB_APP_ID ?? "dev.nodebuilder.app", width: options.width ?? 800, height: options.height ?? 600 },
     (events) => batch(() => events.forEach(handle)),
   );
+  setClipboardBackend(clip);
 }

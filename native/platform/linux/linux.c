@@ -60,3 +60,15 @@ void nb_platform_resize(uint32_t edges) { FORWARD(active->resize(edges)); }
 void nb_platform_set_maximized(bool maximized) { FORWARD(active->set_maximized(maximized)); }
 void nb_platform_minimize(void) { FORWARD(active->minimize()); }
 void nb_platform_flush(void) { FORWARD(active->flush()); }
+void nb_platform_clipboard_write(const char *utf8) { FORWARD(active->clipboard_write(utf8)); }
+void nb_platform_clipboard_read(void) { FORWARD(active->clipboard_read()); }
+
+void nb_linux_clipboard_answer(const char *text, size_t len) {
+  nb_event e = {.type = NB_EV_CLIPBOARD};
+  if (text && len) {
+    e.data = malloc(len + 1);
+    memcpy(e.data, text, len);
+    e.data[len] = 0;
+  }
+  nb_push_event(&e);
+}

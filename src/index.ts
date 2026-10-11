@@ -3,6 +3,7 @@ export * from "./reactive/signals.js";
 export { Show, For } from "./reactive/control.js";
 export { type Child, type Component, Fragment } from "./jsx-runtime.js";
 export { run, requestAnimationFrame, windowControls, windowState } from "./runtime/app.js";
+export { clipboard } from "./runtime/clipboard.js";
 export * from "./widgets/index.js";
 export { theme } from "./theme.js";
 export { decodeImage } from "./image/decode.js";

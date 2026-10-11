@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Show, theme). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, ou quando um elemento não aparece, não cresce ou não rola como esperado.
+description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Show, theme), texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
 ---
 
 # Interface com nodebuilder
@@ -15,7 +15,7 @@ props planas. Reatividade estilo SolidJS: **só funções são reativas** (veja 
 | `Window` | raiz, uma por app, com barra de título própria | `title`, `width`, `height` (tamanho inicial), `appId`, `onClose` (retorne `false` para não fechar) |
 | `Column` / `Row` / `Box` | contêiner flex (coluna, linha; `Box` é coluna) | estilo + eventos |
 | `Scroll` | coluna com rolagem vertical | precisa de `grow={1}` ou `height`; filhos podem ser maiores |
-| `Text` | texto de uma linha (sem quebra automática) | filhos (`{count}`, `"a"`) ou `text={() => ...}` |
+| `Text` | texto de uma linha (sem quebra automática) | filhos (`{count}`, `"a"`) ou `text={() => ...}`, `selectable` (o usuário seleciona e copia) |
 | `Image` | PNG, JPEG, WebP, AVIF | veja a skill `nodebuilder-imagens` |
 | `Icon` | ícone SVG (Lucide, Phosphor), cor herdada como texto | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icones` |
 | `Canvas` | desenho livre: linhas, polígonos, arcos, texto | `draw={(g) => ...}` + tamanho; skill `nodebuilder-desenho` |
@@ -68,5 +68,37 @@ const [nome, setNome] = createSignal("");
   `theme.danger.base`, `theme.divider`...). Mude `theme` antes de `run()` para personalizar.
 - `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`;
   `windowState.width()`, `.height()`, `.maximized()`, `.activated()` são accessors.
-- Ainda não existem: tema escuro, animações, quebra de linha, seleção de texto, IME,
-  várias janelas.
+- Ainda não existem: tema escuro, animações, quebra de linha, seleção no `TextField`
+  (e Ctrl+C nele), IME, várias janelas.
+
+## Selecionar e copiar texto
+
+Texto comum **não seleciona**, de propósito (rótulos, botões, títulos). Texto que o usuário
+pode querer copiar (ids, links, caminhos, mensagens de erro, resultados) leva `selectable`:
+
+```tsx
+<Text selectable>{pedido.id}</Text>
+<Text selectable color={theme.danger.base}>{erro}</Text>
+```
+
+Com `selectable`: arrastar seleciona, clique duplo pega a palavra, clique triplo a linha,
+Ctrl+A tudo e Ctrl+C copia; o cursor vira o de texto. Não entra na ordem do Tab, e dentro
+da barra de título seleciona em vez de arrastar a janela. A seleção é de um `Text` por vez
+(não atravessa vários) e ainda não tem Shift+clique nem Shift+setas.
+
+A área de transferência do sistema (só texto) fica em `clipboard`:
+
+```tsx
+import { Button, clipboard, createSignal } from "@nodebuilderjs/core";
+
+const [link, setLink] = createSignal("https://exemplo.com");
+<Button label="Copiar link" onClick={() => clipboard.writeText(link())} />
+<Button label="Colar" onClick={async () => setLink(await clipboard.readText())} />
+```
+
+- `readText()` é assíncrono (quem tem o conteúdo é outro programa) e devolve `""` se não
+  houver texto.
+- Copie a partir de um clique ou tecla (como acima): no Wayland o sistema ignora cópias que
+  não vêm logo depois de uma interação do usuário (um `setTimeout` não serve).
+- O `TextField` já cola com Ctrl+V / Shift+Insert (quebras de linha viram espaços), mas
+  ainda não seleciona nem copia.
