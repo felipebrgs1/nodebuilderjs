@@ -15,14 +15,14 @@
     },
     "packages/create-nodebuilderjs": {
       "name": "create-nodebuilderjs",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "create-nodebuilderjs": "./index.js",
       },
     },
     "packages/linux-x64": {
       "name": "@nodebuilderjs/linux-x64",
-      "version": "0.1.0",
+      "version": "0.1.1",
     },
   },
   "packages": {

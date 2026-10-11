@@ -47,6 +47,8 @@ if (opts["skip-build"]) {
     const pkg = readJson(p);
     if (pkg.version !== version) writeJson(p, { ...pkg, version });
   }
+  // bun pm pack resolves workspace:* from bun.lock, so refresh it after a version change.
+  await $`bun install --silent`.cwd(ROOT);
   console.log(`• versão ${version} em todos os pacotes`);
 
   // ---- lib/: JS + declarations for Node (Bun uses src/ through the "bun" export condition) ----
