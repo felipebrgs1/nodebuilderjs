@@ -4,8 +4,24 @@
   "description": "Cria um app nodebuilder: bun create nodebuilderjs meu-app",
   "type": "module",
   "license": "MIT",
-  "bin": { "create-nodebuilderjs": "./index.js" },
-  "files": ["index.js", "template"],
-  "engines": { "node": ">=20" },
-  "publishConfig": { "access": "public" }
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/felipebrgs1/nodebuilderjs.git",
+    "directory": "packages/create-nodebuilderjs"
+  },
+  "homepage": "https://github.com/felipebrgs1/nodebuilderjs#readme",
+  "bugs": "https://github.com/felipebrgs1/nodebuilderjs/issues",
+  "bin": {
+    "create-nodebuilderjs": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "template"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

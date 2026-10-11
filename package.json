@@ -16,6 +16,12 @@
   ],
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/felipebrgs1/nodebuilderjs.git"
+  },
+  "homepage": "https://github.com/felipebrgs1/nodebuilderjs#readme",
+  "bugs": "https://github.com/felipebrgs1/nodebuilderjs/issues",
   "bin": {
     "nodebuilder": "./cli/nodebuilder.ts"
   },
@@ -46,7 +52,8 @@
     "src",
     "lib",
     "cli",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "workspaces": [
     "packages/*"

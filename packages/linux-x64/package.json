@@ -3,10 +3,30 @@
   "version": "0.1.0",
   "description": "Núcleo nativo do nodebuilder para Linux x64 (glibc 2.34+). Instalado automaticamente por @nodebuilderjs/core.",
   "license": "MIT",
-  "os": ["linux"],
-  "cpu": ["x64"],
-  "libc": ["glibc"],
-  "files": ["nodebuilder.node"],
-  "exports": { "./nodebuilder.node": "./nodebuilder.node", "./package.json": "./package.json" },
-  "publishConfig": { "access": "public" }
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/felipebrgs1/nodebuilderjs.git",
+    "directory": "packages/linux-x64"
+  },
+  "homepage": "https://github.com/felipebrgs1/nodebuilderjs#readme",
+  "bugs": "https://github.com/felipebrgs1/nodebuilderjs/issues",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "glibc"
+  ],
+  "files": [
+    "nodebuilder.node"
+  ],
+  "exports": {
+    "./nodebuilder.node": "./nodebuilder.node",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
