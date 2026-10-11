@@ -268,6 +268,10 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica).
   91 e 105 fps de uma rodada para outra. Vale investigar junto com o item 7 (latência).
   O Tauri levou mais de 3 s para ficar ocioso depois de abrir: meça com aquecimento ≥ 8 s
   quando a cena é estática.
+  Por que o Tauri fica perto do Electron (detalhe no README): o processo da página
+  (WebKitWebProcess) custa quase o mesmo que o renderer do Chromium, e o WebKitGTK rasteriza
+  na CPU (threads `SkiaCPUWorker`). `WEBKIT_SKIA_ENABLE_CPU_RENDERING=0` e
+  `WEBKIT_SKIA_CPU_PAINTING_THREADS=0` não mudaram isso no WebKitGTK 2.54.1.
 
 - Quebra da RAM do nodebuilder: Bun vazio 15 MB, + texto 26 MB, + janela GL 108 MB;
   o framework em si ~15 MB. O resto é driver.

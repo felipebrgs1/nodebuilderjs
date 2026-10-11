@@ -106,6 +106,34 @@ somada de todos os processos do app.
 - **Onde o Tauri ganha:** tamanho. O binário tem 5,7 MB porque usa o WebKit do sistema; o
   executável do nodebuilder tem ~91 MB (~31 MB compactado), e o Electron ~280 MB.
 
+### Por que o Tauri fica tão perto do Electron?
+
+O Tauri troca o navegador do Electron (Chromium) pelo do sistema (no Linux, o WebKitGTK),
+mas continua sendo um navegador. O trabalho caro, que é rodar o JS, aplicar o CSS, fazer o
+layout do DOM e desenhar, acontece num motor completo nos dois casos; o Rust do Tauri só abre
+a janela. Medindo processo por processo na cena de logs:
+
+| Processo | Tauri | Electron |
+|---|---|---|
+| Página (JS, DOM, CSS, layout, pintura) | 172 MB · 131% CPU | 163 MB · 82% CPU |
+| Janela / processo principal | 87 MB | 86 MB |
+| GPU, rede e utilitários | 33 MB (1 processo) | 115 MB (5 processos) |
+
+- **Memória:** o processo da página custa quase o mesmo nos dois. O Tauri economiza só nos
+  processos auxiliares, o que dá de 6% a 23% menos memória que o Electron nas cenas medidas.
+- **CPU:** o WebKitGTK desenha a página na CPU (threads `SkiaCPUWorker`, ~45% de um núcleo),
+  enquanto o Chromium desenha na GPU. Por isso o Tauri gasta mais justamente quando muito
+  texto muda a cada frame.
+- **O "Tauri é leve"** se refere principalmente ao tamanho do download: ele não leva um
+  navegador junto.
+
+O nodebuilder não tem motor de navegador: não há cascata de CSS nem DOM para recalcular, um
+signal atualiza direto o nó que mudou, tudo é desenhado na GPU com um draw call por frame, e
+é um processo só. Em troca, oferece menos recursos que a web (ver limitações abaixo).
+
+Estes números valem para o Linux. No Windows o Tauri usa o WebView2 (Chromium) e no macOS o
+WebKit do sistema; lá o resultado pode ser diferente.
+
 Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#medindo-desempenho).
 
 ## Limitações atuais
