@@ -3,7 +3,7 @@
 // Headers carry an immutable region (tags 62/63) and SHA-256 digests, as rpm >= 4.16 expects.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type PackageContext, RPM_SONAMES, xz } from "./common.js";
+import { type PackageContext, RPM_SONAMES, RPM_SUGGESTS, xz } from "./common.js";
 
 const T = { CHAR: 1, INT16: 3, INT32: 4, STRING: 6, BIN: 7, STRING_ARRAY: 8, I18NSTRING: 9 } as const;
 type TagType = (typeof T)[keyof typeof T];
@@ -73,6 +73,9 @@ export async function buildRpm({ app, files, out }: PackageContext): Promise<str
     { tag: 1096, type: T.INT32, value: files.map((_, i) => i + 1) }, // FILEINODES
     { tag: 1097, type: T.STRING_ARRAY, value: files.map(() => "") }, // FILELANGS
     { tag: 1112, type: T.INT32, value: [EQUAL, EQUAL] }, // PROVIDEFLAGS
+    { tag: 5049, type: T.STRING_ARRAY, value: RPM_SUGGESTS.map((s) => `${s}()${lib64}`) }, // SUGGESTNAME
+    { tag: 5050, type: T.STRING_ARRAY, value: RPM_SUGGESTS.map(() => "") }, // SUGGESTVERSION
+    { tag: 5051, type: T.INT32, value: RPM_SUGGESTS.map(() => 0) }, // SUGGESTFLAGS
     { tag: 1113, type: T.STRING_ARRAY, value: [evr, evr] }, // PROVIDEVERSION
     { tag: 1116, type: T.INT32, value: dirIndexes }, // DIRINDEXES
     { tag: 1117, type: T.STRING_ARRAY, value: files.map((f) => f.path.slice(f.path.lastIndexOf("/") + 1)) }, // BASENAMES

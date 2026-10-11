@@ -73,6 +73,8 @@ src/
                  Checkbox, TextField, Card
   image.ts       fontes de imagem: cache por caminho, contagem de uso, handle na GPU
   png.ts         decodificador PNG (todos os tipos de cor, tRNS, Adam7) via node:zlib
+  jpeg.ts        JPEG baseline/progressivo, CMYK/YCCK, EXIF; idêntico ao libjpeg-turbo
+  webp.ts        WebP VP8 (com perdas), VP8L, alfa, 1º quadro de animação; idêntico ao libwebp
   assets.d.ts    `declare module "*.png"` (referenciado por index.ts com preserve="true")
   app.ts         run(), eventos, foco, hover, agendamento de frames, NB_STATS
   native.ts      carrega native/build/${process.platform}-${process.arch}/nodebuilder.node
@@ -92,6 +94,7 @@ native/
     x11.c               X11 (Xlib + EWMH), EGL, XIM (teclas mortas), Xcursor, XRandR
     pump.c              thread de poll() sobre os fds do backend ativo + eventfd de saída
     fonts.c             descoberta de fontes via fontconfig
+    codecs.c            AVIF/HEIC via libheif (dlopen; declarações próprias, sem header)
     build.sh            compilação do backend (chamado por scripts/build-native.sh)
     protocols/          xdg-shell.xml (vendorizado; wayland-protocols não está instalado)
   build/<platform>-<arch>/  saída (nomes de process.platform/arch: linux-x64, ...)
@@ -103,8 +106,8 @@ packages/        workspaces publicados junto com o core (ver "Publicação no np
   linux-x64/     @nodebuilderjs/linux-x64: só o addon pré-compilado (gerado, fora do git)
   create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/
 lib/             JS + .d.ts para o Node (gerado por scripts/npm.ts, fora do git)
-test/            core.test.tsx, image.test.tsx (bun:test; bunfig.toml limita o bun test a test/)
-  fixtures/      PNGs de teste (ImageMagick; paletas com alfa parcial feitas à mão) + .raw esperados
+test/            core, image, jpeg e webp (bun:test; bunfig.toml limita o bun test a test/)
+  fixtures/      imagens de teste + saída esperada (.raw, .pnm do djpeg, SHA-256 do libwebp)
 compare/electron bench e dashboard em Electron + DOM puro (baseline; SCENE=dashboard)
 compare/tauri    os mesmos HTML/JS do Electron numa casca Tauri 2 (Rust, WebKitGTK)
 compare/flutter  as duas cenas em Flutter (Dart, lib/main.dart)
@@ -370,8 +373,9 @@ todos com a versão do `package.json` da raiz:
 
 - TextField: sem seleção, clipboard, undo; Text: sem quebra de linha; uma fonte só
   (sem fallback: emojis não aparecem).
-- Imagens: só PNG; decodificação síncrona na thread do JS (~80–130 ms para 4 megapixels);
-  sem mipmaps (reduzir muito uma imagem serrilha) e sem versão @2x para HiDPI.
+- Imagens: sem SVG; AVIF/HEIC só com a `libheif` do sistema (Suggests nos pacotes);
+  decodificação síncrona na thread do JS (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms,
+  WebP 105–180 ms); sem mipmaps (reduzir muito uma imagem serrilha) e sem versão @2x.
 - Sem acessibilidade (AT-SPI), animações/transições, tema escuro, multi-janela, IME
   (text-input-v3), DnD, escala fracionária real (KDE 125% renderiza em 2x e reduz).
 - Janela sempre com decoração própria (CSD): barra de título, mover, maximizar,
@@ -415,3 +419,7 @@ todos com a versão do `package.json` da raiz:
   `declare module "*.png"` não chegaria a quem usa o pacote pelo `lib/`.
 - O `PNG8:` do ImageMagick reduz o alfa da paleta a 0/255; por isso as fixtures de paleta
   com alfa parcial são escritas à mão (e conferidas com o próprio `magick`).
+- Decodificadores novos: compare byte a byte com a biblioteca de referência (`djpeg -pnm`,
+  `magick x.webp rgba:-`) e faça fuzzing com bytes trocados e arquivos truncados: todo erro
+  deve ser uma mensagem do formato, nunca um TypeError, e dimensões absurdas no cabeçalho
+  devem ser recusadas antes de alocar (limite de 2^28 pixels).

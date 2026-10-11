@@ -20,6 +20,8 @@ export interface Native {
   /** Copies straight-alpha RGBA pixels; returns an id (> 0) for draw commands. */
   createImage(width: number, height: number, rgba: Uint8Array): number;
   destroyImage(id: number): void;
+  /** Decodes formats only the OS can (AVIF, HEIC); throws with the reason. Works without a window. */
+  decodeImage(bytes: Uint8Array): { width: number; height: number; data: Uint8Array };
   setCursor(name: string): void;
   setTitle(title: string): void;
   move(): void;

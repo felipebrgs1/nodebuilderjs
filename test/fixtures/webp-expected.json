@@ -1,0 +1,87 @@
+{
+  "webp-alpha-filter1.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "a5e7716c2e051f153b7a7a507746db2e23cb777d1c52b7f523eb2d1008320aff"
+  },
+  "webp-alpha-filter2.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "a5e7716c2e051f153b7a7a507746db2e23cb777d1c52b7f523eb2d1008320aff"
+  },
+  "webp-alpha-filter3.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "a5e7716c2e051f153b7a7a507746db2e23cb777d1c52b7f523eb2d1008320aff"
+  },
+  "webp-anim-offset.webp": {
+    "width": 51,
+    "height": 35,
+    "sha256": "6b998e7dfeecfe3ccf7235d0fd335888efecedfc4ab24c1d655c36f9525198db"
+  },
+  "webp-anim.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "a658ba0e22db0dfa79e912d6d9a7910380040317cc07a393c57f1cefdba73f9a"
+  },
+  "webp-crafted-palette.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "7ae9267f87d609f45a9d776ef2d566f38793df45f1fb2a68017e141cc03ab81c"
+  },
+  "webp-crafted-transforms.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "a658ba0e22db0dfa79e912d6d9a7910380040317cc07a393c57f1cefdba73f9a"
+  },
+  "webp-lossless-meta.webp": {
+    "width": 65,
+    "height": 41,
+    "sha256": "27dc40be385ae073bd835e8b0e1130e429d344f5d80907f7d5246833d7696f13"
+  },
+  "webp-lossless.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "a658ba0e22db0dfa79e912d6d9a7910380040317cc07a393c57f1cefdba73f9a"
+  },
+  "webp-lossy-alpha.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "c12864bf0c769796da6c1e0960e0822781ed063e493c164813b3a1bcf90e5e1b"
+  },
+  "webp-lossy-parts4-simple.webp": {
+    "width": 161,
+    "height": 97,
+    "sha256": "6b56aecd73e61541def7b1dd2a5ef5fa2fb3d2d5655366012fa365788fe96c62"
+  },
+  "webp-lossy-sharp.webp": {
+    "width": 161,
+    "height": 97,
+    "sha256": "d29e3ef3c4dfa5f5b968bd51cadbc2052f7bc875d2c45414a81d27e210df2005"
+  },
+  "webp-lossy-skip-parts8.webp": {
+    "width": 161,
+    "height": 97,
+    "sha256": "dd51b7f229b12ce0dd8820532efb120e13eceba9c28fa0e2fef93a1a9e20d3a3"
+  },
+  "webp-lossy.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "c6891258f2b21767acafad8319f73e75022960fa83b5aa3f3b54397ac0310ab1"
+  },
+  "webp-palette16.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "edbb0b0030740da3f1ee77dd5784e0d4cf6ac97e9d7480405f200fa797af70c9"
+  },
+  "webp-palette2.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "5511a3fef60beee7703be6a10cae769cfdcbbff9223282d32965e2e98e66a634"
+  },
+  "webp-palette4.webp": {
+    "width": 37,
+    "height": 23,
+    "sha256": "da81020311802a1175315d2456f87178ec9a06ad64cb793d71b039b26a4c3730"
+  }
+}

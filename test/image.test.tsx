@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { Column, Image, Show, UINode, createRoot, createSignal, decodeImage, layout, setTextMeasurer } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
 import { setImageBackend } from "../src/image.js";
+import { loadNative } from "../src/native.js";
 import { CommandBuffer, paintTree } from "../src/paint.js";
 
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
@@ -44,9 +45,28 @@ test.each([
   same(bitmap.data, expected(raw, channels));
 });
 
-test("PNG decoder rejects other formats", () => {
-  expect(() => decodeImage(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toThrow(/JPEG/);
+test("decodeImage picks the decoder from the file's signature", () => {
+  expect(decodeImage(read("jpeg-s420.jpg")).width).toBe(37);
+  expect(decodeImage(read("webp-lossy.webp")).width).toBe(37);
   expect(() => decodeImage(new Uint8Array([1, 2, 3]))).toThrow(/unknown image format/);
+});
+
+// AVIF/HEIC go through the system's libheif via the addon; skipped where either is missing.
+const heif = (() => {
+  try {
+    loadNative().decodeImage(read("avif-lossless.avif"));
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+test.skipIf(!heif)("AVIF and HEIC (libheif), lossless round trip", () => {
+  for (const file of ["avif-lossless.avif", "heic-lossless.heic"]) {
+    const bitmap = decodeImage(read(file));
+    expect([bitmap.width, bitmap.height]).toEqual([13, 9]);
+    same(bitmap.data, expected("rgba.raw", 4));
+  }
 });
 
 function mount(view: () => any, width = 400, height = 300) {

@@ -70,7 +70,12 @@ import logo from "./logo.png" with { type: "file" };
 ou `fill` (estica). Sem `width`/`height`, a imagem usa o próprio tamanho em pixels. O
 `with { type: "file" }` faz o `nodebuilder package` embutir o arquivo no executável; `src`
 também aceita um caminho, uma `URL` `file:`, os bytes do arquivo (`Uint8Array`) ou pixels
-já decodificados (`{ width, height, data }` em RGBA). Por enquanto, só PNG.
+já decodificados (`{ width, height, data }` em RGBA).
+
+Formatos: **PNG, JPEG e WebP** são decodificados em TypeScript (o JPEG respeita a orientação
+do EXIF, e todos dão o mesmo resultado, byte a byte, que libpng, libjpeg-turbo e libwebp).
+**AVIF e HEIC** usam a `libheif` do sistema, carregada só quando necessário: sem ela, apenas
+esses formatos dão erro, e os pacotes gerados a sugerem sem obrigar. SVG ainda não.
 
 ## Distribuir
 
@@ -183,7 +188,7 @@ Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#me
 - Só Linux x64 (arm64, Windows e macOS estão no roadmap).
 - Texto sem quebra de linha e com uma fonte só (emojis não aparecem).
 - Campo de texto sem seleção, área de transferência e desfazer.
-- Imagens só em PNG (JPEG e SVG estão no roadmap).
+- Imagens: sem SVG (no roadmap); AVIF/HEIC dependem da `libheif` do sistema.
 - Sem animações, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).
 
 ## Contribuir

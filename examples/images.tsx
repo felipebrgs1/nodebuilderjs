@@ -4,6 +4,17 @@
 import { Button, Card, Column, Image, Row, Scroll, Text, Window, createSignal, run, theme } from "@nodebuilderjs/core";
 import logo from "./assets/logo.png" with { type: "file" };
 import photo from "./assets/plasma.png" with { type: "file" };
+import photoJpeg from "./assets/photo.jpg" with { type: "file" };
+import photoWebp from "./assets/photo.webp" with { type: "file" };
+import photoAvif from "./assets/photo.avif" with { type: "file" };
+
+// PNG, JPEG and WebP are decoded in TypeScript; AVIF (and HEIC) by the system's libheif.
+const FORMATS = [
+  { label: "PNG", src: photo },
+  { label: "JPEG", src: photoJpeg },
+  { label: "WebP", src: photoWebp },
+  { label: "AVIF", src: photoAvif },
+];
 
 function Sample(props: { label: string; fit: "contain" | "cover" | "fill" }) {
   return (
@@ -23,9 +34,20 @@ function App() {
           <Image src={logo} width={64} />
           <Column gap={4}>
             <Text fontSize={22} bold>Imagens</Text>
-            <Text color={theme.text.secondary}>PNG decodificado em TypeScript, desenhado pela GPU</Text>
+            <Text color={theme.text.secondary}>PNG, JPEG, WebP e AVIF, desenhados pela GPU</Text>
           </Column>
         </Row>
+        <Card gap={12}>
+          <Text bold>Formatos</Text>
+          <Row gap={16}>
+            {FORMATS.map((f) => (
+              <Column gap={8} align="start">
+                <Image src={f.src} width={140} height={93} fit="cover" radius={8} />
+                <Text fontSize={12} color={theme.text.secondary}>{f.label}</Text>
+              </Column>
+            ))}
+          </Row>
+        </Card>
         <Card gap={12}>
           <Text bold>Modos de ajuste (fit)</Text>
           <Row gap={16}>

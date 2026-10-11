@@ -57,6 +57,11 @@ export const RPM_SONAMES = [
   "libfontconfig.so.1",
 ];
 
+// Loaded with dlopen only to show AVIF/HEIC images (native/platform/linux/codecs.c). Suggested,
+// not recommended: apt installs recommendations by default, and libheif pulls in many codecs.
+export const DEB_SUGGESTS = ["libheif1"];
+export const RPM_SUGGESTS = ["libheif.so.1"];
+
 /** xz-compresses with the system `xz` (multithreaded). */
 export async function xz(data: Uint8Array): Promise<Uint8Array> {
   const proc = Bun.spawn(["xz", "-c", "-6", "-T0"], { stdin: data, stdout: "pipe" });

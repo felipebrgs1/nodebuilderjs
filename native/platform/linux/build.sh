@@ -11,6 +11,6 @@ wayland-scanner private-code "$HERE/protocols/xdg-shell.xml" "$GEN/xdg-shell-pro
 
 ${CC:-cc} -O2 -g -std=gnu11 -fPIC -shared -pthread -Wall -Wno-unused-parameter \
   -I"$NAPI_INCLUDE" -I"$CORE_INCLUDE" -I"$HERE" -I"$GEN" $(pkg-config --cflags $PKGS) \
-  $CORE_SOURCES "$HERE/linux.c" "$HERE/wayland.c" "$HERE/x11.c" "$HERE/pump.c" "$HERE/fonts.c" "$GEN/xdg-shell-protocol.c" \
-  $(pkg-config --libs $PKGS) -lm \
+  $CORE_SOURCES "$HERE/linux.c" "$HERE/wayland.c" "$HERE/x11.c" "$HERE/pump.c" "$HERE/fonts.c" "$HERE/codecs.c" "$GEN/xdg-shell-protocol.c" \
+  $(pkg-config --libs $PKGS) -lm -ldl \
   -o "$OUT_DIR/nodebuilder.node"

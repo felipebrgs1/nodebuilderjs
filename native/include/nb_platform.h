@@ -7,6 +7,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 // ---- window -----------------------------------------------------------------
@@ -55,3 +56,13 @@ void nb_platform_flush(void);
 
 /** Path of the system UI font file for NB_FONT_REGULAR / NB_FONT_BOLD (malloc'd), or NULL. */
 char *nb_platform_font_path(int font);
+
+// ---- image codecs -----------------------------------------------------------
+
+/**
+ * Decodes formats the TypeScript side can't (AVIF, HEIC) with the OS's codecs. Works
+ * without a window. On success: true and *rgba = malloc'd RGBA8 with straight alpha
+ * (the caller frees it). On failure: false and a message in `error`.
+ */
+bool nb_platform_decode_image(const uint8_t *data, size_t size, int *width, int *height, uint8_t **rgba,
+                              char *error, size_t error_size);

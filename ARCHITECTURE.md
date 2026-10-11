@@ -12,13 +12,13 @@ para as regras e convenções de quem mexe no código, veja o [AGENTS.md](AGENTS
 │ reactive.ts   signals, effects, memos, ownership                             │
 │ jsx-runtime   JSX -> descrições preguiçosas; control.ts: <For>, <Show>       │
 │ widgets.ts    Window, Column, Text, Image, Button... criam UINodes           │
-│ image.ts      fontes de imagem compartilhadas; png.ts: decodificador PNG     │
+│ image.ts      fontes de imagem; png.ts, jpeg.ts, webp.ts: decodificadores    │
 │ node.ts       árvore retida (UINode) + estilo; mudanças chamam invalidate()  │
 │ layout.ts     flexbox simplificado                                           │
 │ paint.ts      árvore -> command buffer (Float32Array + textos)               │
 │ app.ts        loop de frames, eventos, foco, hover, NB_STATS                 │
 └────┬─────────────────────────────────────────────────────────────────────────┘
-     │  N-API: render(commands, texts), measureText, createImage, eventos
+     │  N-API: render(commands, texts), measureText, createImage, decodeImage, eventos
 ┌────▼──────────────────────────── núcleo portável (native/core/) ─────────────┐
 │ addon.c         superfície N-API, fila de eventos, threadsafe function       │
 │ render_gles2.c  um shader, um formato de vértice, um batch por frame         │
@@ -31,6 +31,7 @@ para as regras e convenções de quem mexe no código, veja o [AGENTS.md](AGENTS
 │ x11.c        Xlib + EWMH, EGL, XIM, Xcursor, XRandR                          │
 │ pump.c       thread de poll() que avisa quando há eventos                    │
 │ fonts.c      fontconfig                                                      │
+│ codecs.c     AVIF/HEIC via libheif (dlopen, opcional)                        │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -132,8 +133,15 @@ Texto: o HarfBuzz faz o shaping (acentos, ligaduras, kerning), o FreeType raster
 glifo uma vez e o guarda num atlas de textura. As medidas que o layout pede ao C ficam em
 cache no lado TypeScript.
 
-Imagens: o PNG é decodificado em TypeScript (`src/png.ts`, com o zlib do runtime) para
-RGBA. `createImage` copia os pixels para o C, que os pré-multiplica e cria a textura no
+Imagens: PNG, JPEG e WebP são decodificados em TypeScript para RGBA (`src/png.ts` com o
+zlib do runtime, `src/jpeg.ts`, `src/webp.ts`). Os três reproduzem exatamente a saída das
+bibliotecas de referência: o JPEG usa a IDCT inteira, o upsampling "fancy" e as tabelas de
+cor do libjpeg-turbo; o WebP, o upsampling e as fórmulas de ponto fixo do libwebp. AVIF e
+HEIC precisariam de um decodificador de AV1/HEVC, então vão para o SO:
+`nb_platform_decode_image` (contrato da plataforma) usa, no Linux, a `libheif` carregada
+com `dlopen`. A API dela só tem handles e funções, então as poucas declarações em
+`codecs.c` valem para qualquer versão com o soname `libheif.so.1`, e não é preciso o header
+para compilar. `createImage` copia os pixels para o C, que os pré-multiplica e cria a textura no
 primeiro frame que a desenha (pode não haver contexto GL antes disso). Cada troca de imagem
 dentro de um frame fecha o batch, então muitas imagens diferentes custam uma chamada de
 desenho cada. `src/image.ts` divide uma decodificação entre todos os `<Image>` do mesmo

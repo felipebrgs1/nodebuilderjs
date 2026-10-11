@@ -298,6 +298,42 @@ static napi_value js_create_image(napi_env env, napi_callback_info info) {
   return out;
 }
 
+// decodeImage(bytes: Uint8Array) -> { width, height, data: Uint8Array (RGBA) }, for the
+// formats only the OS can decode (AVIF, HEIC). Throws with the platform's message.
+static napi_value js_decode_image(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  napi_typedarray_type type;
+  size_t length;
+  void *data;
+  CHECK(napi_get_typedarray_info(env, argv[0], &type, &length, &data, NULL, NULL));
+  if (type != napi_uint8_array) {
+    napi_throw_type_error(env, NULL, "decodeImage expects a Uint8Array");
+    return NULL;
+  }
+  int w = 0, h = 0;
+  uint8_t *rgba = NULL;
+  char error[256] = "";
+  if (!nb_platform_decode_image(data, length, &w, &h, &rgba, error, sizeof error)) {
+    napi_throw_error(env, NULL, error);
+    return NULL;
+  }
+  size_t size = (size_t)w * h * 4;
+  void *dst;
+  napi_value buffer, pixels, out;
+  napi_status status = napi_create_arraybuffer(env, size, &dst, &buffer);
+  if (status == napi_ok) memcpy(dst, rgba, size);
+  free(rgba);
+  CHECK(status);
+  CHECK(napi_create_typedarray(env, napi_uint8_array, size, buffer, 0, &pixels));
+  CHECK(napi_create_object(env, &out));
+  set_num(env, out, "width", w);
+  set_num(env, out, "height", h);
+  CHECK(napi_set_named_property(env, out, "data", pixels));
+  return out;
+}
+
 static napi_value js_destroy_image(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value argv[1];
@@ -371,6 +407,7 @@ NAPI_MODULE_INIT() {
       {"measureText", NULL, js_measure_text, NULL, NULL, NULL, napi_default, NULL},
       {"createImage", NULL, js_create_image, NULL, NULL, NULL, napi_default, NULL},
       {"destroyImage", NULL, js_destroy_image, NULL, NULL, NULL, napi_default, NULL},
+      {"decodeImage", NULL, js_decode_image, NULL, NULL, NULL, napi_default, NULL},
       {"setCursor", NULL, js_set_cursor, NULL, NULL, NULL, napi_default, NULL},
       {"setTitle", NULL, js_set_title, NULL, NULL, NULL, napi_default, NULL},
       {"move", NULL, js_move, NULL, NULL, NULL, napi_default, NULL},

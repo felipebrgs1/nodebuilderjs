@@ -3,7 +3,7 @@
 import { $ } from "bun";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DEB_DEPENDS, type PackageContext } from "./common.js";
+import { DEB_DEPENDS, DEB_SUGGESTS, type PackageContext } from "./common.js";
 
 export async function buildDeb({ app, files, tree, work, out }: PackageContext): Promise<string> {
   const dir = join(work, "deb");
@@ -22,6 +22,7 @@ export async function buildDeb({ app, files, tree, work, out }: PackageContext):
     `Depends: ${DEB_DEPENDS.join(", ")}`,
     // GPU drivers: always there on a desktop, missing on minimal installs/containers.
     `Recommends: libgl1-mesa-dri`,
+    `Suggests: ${DEB_SUGGESTS.join(", ")}`,
     `Section: misc`,
     `Priority: optional`,
     ...(app.homepage ? [`Homepage: ${app.homepage}`] : []),
