@@ -14,16 +14,18 @@ App nodebuilder: UI nativa para Linux em TSX, **sem DOM e sem React**. Leia ante
   `background={() => (ativo() ? "#3584e4" : "#0000")}`.
 - Listas: `<For each={lista}>{(item) => ...}</For>` (chave por referência). Condicional:
   `<Show when={() => ...} fallback={...}>`.
+- Estilo são props planas (`padding`, `gap`, `grow`, `background`...), não CSS. Não existem
+  `className`, `style={{}}`, `div`, `useState` nem bibliotecas de React (ex.: `lucide-react`).
 
-## Widgets e estilo
-- `Window` (raiz, uma por app), `Column`/`Row`/`Box`, `Scroll`, `Text`, `Button`, `TextField`,
-  `Checkbox`, `Card`, `Divider`, `Spacer`. Tudo vem de `@nodebuilderjs/core`.
-- Estilo são props planas, não CSS: `padding`, `gap`, `grow`, `align`, `justify`, `width`,
-  `height`, `background`, `radius`, `borderWidth`, `borderColor`, `color`, `fontSize`, `bold`.
-  Layout é flexbox; `align` padrão é `stretch`. `color`, `fontSize` e `bold` são herdados.
-- Cores padrão em `theme` (`theme.text.secondary`, `theme.accent.base`...).
-- Não existem `className`, `style={{}}`, `div`, `span`, `onChange` de DOM nem `useState`.
+## Skills (detalhes por assunto)
+Em `.agents/skills/<nome>/SKILL.md` (com links em `.claude/skills/` para o Claude Code). Agentes
+que suportam skills as carregam sozinhos; os outros devem ler a skill do assunto antes de começar:
 
-## Testes
-- `@nodebuilderjs/core/testing`: `mount(() => <App />)`, `findByText(root, "texto")`,
-  `click(node)` (sobe até o pai clicável). Métricas de texto falsas: 8 px por caractere.
+| Skill | Quando |
+|---|---|
+| `nodebuilder-ui` | telas, widgets, props de estilo, layout, `For`/`Show`, tema |
+| `nodebuilder-sem-react` | antes de instalar bibliotecas ou portar código React/web |
+| `nodebuilder-imagens` | imagens (PNG, JPEG, WebP, AVIF), arquivos no app |
+| `nodebuilder-testes` | testes sem janela (`mount`, `findByText`, `click`) |
+| `nodebuilder-empacotar` | AppImage/.deb/.rpm, arquivos embutidos, ícone e app id |
+| `nodebuilder-desempenho` | lentidão, listas grandes, dados ao vivo, animação |

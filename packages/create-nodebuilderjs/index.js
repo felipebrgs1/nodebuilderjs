@@ -2,7 +2,7 @@
 // bun create nodebuilderjs [dir] [--title "Meu App"] [--no-install] [--no-git]
 // Plain JS (not TS) so it runs under both `bun create` and `npm create`.
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -45,6 +45,17 @@ const appId = `dev.nodebuilder.${name.replace(/[^a-z0-9]/g, "_")}`;
 cpSync(join(here, "template"), target, { recursive: true });
 // npm drops .gitignore from published packages, so the template ships it as _gitignore.
 renameSync(join(target, "_gitignore"), join(target, ".gitignore"));
+
+// Skills live in .agents/skills (read by Codex, Cursor, OpenCode, Gemini CLI, Copilot). Claude
+// Code only reads .claude/skills, where each skill may be a symlink. Made here, relative,
+// because npm packs and cpSync don't keep relative symlinks.
+const skills = join(target, ".agents", "skills");
+if (existsSync(skills)) {
+  mkdirSync(join(target, ".claude", "skills"), { recursive: true });
+  for (const skill of readdirSync(skills)) {
+    symlinkSync(join("..", "..", ".agents", "skills", skill), join(target, ".claude", "skills", skill), "dir");
+  }
+}
 
 const fill = (file) => {
   const path = join(target, file);

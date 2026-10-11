@@ -14,7 +14,10 @@ muito bem, então o máximo possível do framework fica em TS, e o C fica pequen
 Documentos: `README.md` é para quem usa o framework (também é o README do pacote no npm),
 `ARCHITECTURE.md` explica o funcionamento interno e `ROADMAP.md` lista as prioridades.
 Mudou algo que eles descrevem (API pública, benchmarks, arquitetura, uma limitação
-resolvida)? Atualize-os junto.
+resolvida)? Atualize-os junto. O template de apps traz skills para agentes
+(`packages/create-nodebuilderjs/template/.agents/skills/`): mudança de API pública, widget
+novo ou limitação resolvida também atualiza a skill do assunto (e a tabela no
+`template/AGENTS.md`). Todo trecho de código de uma skill precisa passar no typecheck.
 
 ## Regras inegociáveis
 
@@ -104,7 +107,9 @@ cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces publicados junto com o core (ver "Publicação no npm")
   linux-x64/     @nodebuilderjs/linux-x64: só o addon pré-compilado (gerado, fora do git)
-  create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/
+  create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/ (com AGENTS.md e
+                         .agents/skills/nodebuilder-*: docs para agentes nos apps criados;
+                         index.js cria os links em .claude/skills/, que o Claude Code exige)
 lib/             JS + .d.ts para o Node (gerado por scripts/npm.ts, fora do git)
 test/            core, image, jpeg e webp (bun:test; bunfig.toml limita o bun test a test/)
   fixtures/      imagens de teste + saída esperada (.raw, .pnm do djpeg, SHA-256 do libwebp)

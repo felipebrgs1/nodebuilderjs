@@ -10,6 +10,7 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - Widgets: `Window` com decoração própria, `Column`/`Row`/`Box`, `Scroll`, `Text`, `Image`
   (PNG, JPEG, WebP; AVIF/HEIC via libheif), `Button`, `TextField`, `Checkbox`, `Card`,
   `Divider`, `Spacer`
+- `bun create nodebuilderjs` gera o app com `AGENTS.md` e skills para agentes (`.agents/skills`)
 - Núcleo nativo próprio: Wayland e X11 (escolhidos em tempo de execução), OpenGL ES 2,
   HarfBuzz + FreeType, teclas mortas e acentos, escala inteira (HiDPI)
 - Roda no Bun e no Node
