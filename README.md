@@ -225,8 +225,10 @@ bun run counter          # roda um exemplo
 bun test && bun run typecheck
 ```
 
-[ARCHITECTURE.md](ARCHITECTURE.md) explica como o framework é organizado por dentro, e o
-[AGENTS.md](AGENTS.md) traz as regras e convenções do projeto.
+O desenvolvimento segue TDD: comportamento novo ou bug começa por um teste que falha
+(`bun test` roda sem janela, em ~0,1 s). [ARCHITECTURE.md](ARCHITECTURE.md) explica como o
+framework é organizado por dentro, e o [AGENTS.md](AGENTS.md) traz as regras, as convenções
+e como testar cada camada.
 
 ## Licença
 

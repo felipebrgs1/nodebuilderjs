@@ -268,7 +268,32 @@ scripts/compare.sh "egui" 3 5 -- compare/egui/target/release/nodebuilder-egui-ba
 ```
 
 No Linux, Tauri e Flutter não passam de 60 fps; para comparar o mesmo trabalho, rode os
-outros com `NB_MAX_FPS=60`.
+outros com `NB_MAX_FPS=60`. A tabela com teto 60 está no [README](README.md#benchmarks).
+Com teto 120, só Electron, egui e nodebuilder passam de 60 (2026-10-11, mesma sessão do
+README, antes do culling; fps · CPU · PSS em MB):
+
+| Cena (teto 120) | Electron | egui | nodebuilder |
+|---|---|---|---|
+| Painel: visão geral | 117 · 84% · 365 | 119 · 21% · 105 | 111 · 39% · 90 |
+| Painel: tabela | 116 · 80% · 382 | 102 · 71% · 113 | 80 · 83% · 152 |
+| Painel: logs | 107 · 155% · 446 | 117 · 42% · 108 | 118 · 71% · 172 |
+| Painel: configurações | 116 · 67% · 311 | 118 · 23% · 105 | 104 · 22% · 89 |
+| Painel: `CYCLE=30` | 111 · 99% · 413 | 112 · 38% · 114 | 100 · 62% · 152 |
+| 1000 células, 1 texto muda | 117 · 71% · 312 | 117 · 47% · 107 | 103 · 44% · 109 |
+| 1000 células, todas mudam | 112 · 237% · 414 | 116 · 72% · 113 | 117 · 69% · 147 |
+| 3000 células, todas mudam | 50 · 173% · 427 | 45 · 81% · 128 | 51 · 96% · 190 |
+
+Depois do culling, na mesma sessão: tabela de 78 para 104 fps (CPU 82% → 51%).
+
+Cuidados ao medir:
+- O Tauri levou mais de 3 s para ficar ocioso depois de abrir: use aquecimento ≥ 8 s em
+  cenas estáticas.
+- Por que o Tauri fica perto do Electron: o processo da página (WebKitWebProcess) custa quase
+  o mesmo que o renderer do Chromium, e o WebKitGTK rasteriza na CPU (threads
+  `SkiaCPUWorker`). `WEBKIT_SKIA_ENABLE_CPU_RENDERING=0` e `WEBKIT_SKIA_CPU_PAINTING_THREADS=0`
+  não mudaram isso no WebKitGTK 2.54.1.
+- Ainda sem explicação: com teto 60, o nodebuilder fica em 51–58 fps até em cenas leves (o
+  agendamento perde vblanks; item 4 do roadmap), e com teto 120 o fps oscila entre rodadas.
 
 Quebra da memória do nodebuilder: Bun vazio ~15 MB, texto (FreeType/HarfBuzz) ~26 MB, janela
 GL ~108 MB (quase tudo é driver de vídeo), framework ~15 MB.
