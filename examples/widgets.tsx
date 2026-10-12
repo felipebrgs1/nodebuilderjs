@@ -2,7 +2,7 @@
 // OPEN=select|dialogo starts with the list or the dialog open; THEME=dark starts dark (for screenshots).
 
 import {
-  Button, Card, Checkbox, Column, Dialog, Match, ProgressBar, RadioGroup, Row, Select, Slider, Spinner, Switch, Tabs, Text,
+  Box, Button, Card, Checkbox, Column, Dialog, Match, ProgressBar, RadioGroup, Row, Select, Slider, Spinner, Switch, Tabs, Text,
   TextField, Toggle, Tooltip, Window, colorScheme, createSignal, run, setTheme, theme,
 } from "@nodebuilderjs/core";
 
@@ -14,6 +14,7 @@ const CITIES = [
   { value: "rio", label: "Rio de Janeiro", disabled: true },
   { value: "rec", label: "Recife" },
 ];
+const TAGS = ["typescript", "linux", "wayland", "x11", "signals", "gles2", "harfbuzz", "bun"];
 
 function Controls() {
   const [wifi, setWifi] = createSignal(true);
@@ -75,6 +76,14 @@ function Controls() {
           <Row gap={10} align="center">
             <Spinner />
             <Text color={() => theme.text.secondary}>Carregando…</Text>
+          </Row>
+          <Text color={() => theme.text.secondary}>Tags</Text>
+          <Row wrap gap={6}>
+            {TAGS.map((tag) => (
+              <Box padding={[4, 10]} radius={12} background={() => theme.control.base}>
+                <Text fontSize={12}>{tag}</Text>
+              </Box>
+            ))}
           </Row>
         </Card>
       </Row>

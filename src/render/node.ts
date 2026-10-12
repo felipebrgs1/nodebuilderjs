@@ -14,7 +14,12 @@ export interface Style {
   gap?: number;
   /** Number of equal-width columns of a grid (`direction: "grid"`). */
   columns?: number;
-  /** Space between the rows of a grid. Default: `gap`. */
+  /**
+   * Row/Column: children that do not fit start a new line (a Row breaks at its width, a
+   * Column at its height), each line laid out on its own (grow, justify, alignSelf).
+   */
+  wrap?: boolean;
+  /** Space between the rows of a grid, or between the lines of a wrapping Row/Column. Default: `gap`. */
   rowGap?: number;
   padding?: Edges;
   width?: number;

@@ -29,7 +29,7 @@ const STYLE_KEYS: (keyof Style)[] = [
   "direction", "gap", "padding", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow",
   "align", "justify", "position", "left", "top", "clip", "background", "radius", "borderWidth", "borderColor",
   "shadow", "color", "fontSize", "bold", "underline", "cursor", "opacity", "translateX", "translateY",
-  "alignSelf", "right", "bottom", "zIndex", "columns", "rowGap", "aspectRatio",
+  "alignSelf", "right", "bottom", "zIndex", "columns", "rowGap", "aspectRatio", "wrap",
 ];
 const HANDLER_KEYS: (keyof Handlers)[] = [
   "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur", "onResize",

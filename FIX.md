@@ -47,21 +47,6 @@ keeps being the default. Document the trade-off (real metrics depend on installe
 
 ## B. Layout
 
-### B4. `wrap` on Row (report item 2) - medium
-
-**API:** `wrap?: boolean` on Row (and Column): children that don't fit start a new line;
-`gap` between items, `rowGap` between lines (default = gap). Chips and tags.
-
-**Implementation:** `layout.ts`: split children into lines by their main-axis basis
-(intrinsic or width), each line laid out with the existing flex code (grow/justify per
-line), lines stacked on the cross axis. Height depends on width (like wrapping text): the
-node needs `minContentWidth` = widest child, and `heightAt(node, w)` computes the lines.
-Culling per line as today.
-
-**Tests:** 5 chips of 80px in 300px with gap 8 -> 3 on the first line, 2 on the second;
-`grow` stretches within a line; `justify="center"` per line; inside a Column the Row's
-height is the sum of lines; changing the parent width reflows.
-
 ### B5. `margin` (report item 8) - medium
 
 **API:** `margin?: Edges` (CSS order, negative allowed). Space outside the border, not
@@ -158,6 +143,5 @@ premultiplied space (as CSS does) and un-premultiply; test that
 
 ## Suggested order
 
-1. B4 (wrap)
-2. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
-3. C2 (weights, spacing), A4, E1, F4
+1. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
+2. C2 (weights, spacing), A4, E1, F4

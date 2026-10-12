@@ -1,8 +1,8 @@
 // A small flexbox: row/column, gap, padding, grow, shrink-to-fit, align,
 // justify, min/max sizes, absolute children and scrolling (vertical, horizontal or both);
-// plus a grid of equal columns and `aspectRatio`.
+// plus wrapping rows/columns, a grid of equal columns and `aspectRatio`.
 //
-// Wrapping text and `aspectRatio` make a height depend on the width given, so sizes come in
+// Wrapping text, wrapping rows and `aspectRatio` make a height depend on the width given, so sizes come in
 // two steps: the natural (max-content) size of every node, cached per layout, and
 // `heightAt(node, width)`, which only does real work in subtrees that contain them.
 
@@ -247,6 +247,16 @@ export function intrinsic(node: UINode): Natural {
     main += gaps;
     width = (row ? main : cross) + pl + pr;
     height = (row ? cross : main) + pt + pb;
+    if (s.wrap && kids.length > 1) {
+      // Naturally on one line, like CSS max-content; narrower, the height follows the lines.
+      // A Column breaks at its own height, so only a fixed one gives it a natural width.
+      if (row) {
+        wraps = true;
+        if (s.width !== undefined) height = linesExtent(node, wrapLines(node, kids, clamp(s.width, s.minWidth, s.maxWidth) - pl - pr, true, heightAt)) + pt + pb;
+      } else if (s.height !== undefined) {
+        width = linesExtent(node, wrapLines(node, kids, clamp(s.height, s.minHeight, s.maxHeight) - pt - pb, false, heightAt)) + pl + pr;
+      }
+    }
   }
 
   const ratio = s.aspectRatio;
@@ -280,24 +290,30 @@ function shrinks(node: UINode): number {
   if (hit !== undefined) return hit;
   let flags = 0;
   if (node.measure) flags = node.minContentWidth ? SHRINKS_X : 0;
-  else {
-    for (const c of node.children) {
-      if (!inFlow(c)) continue;
-      const cs = c.style;
-      if (cs.minWidth !== undefined || scrolls(c) || cs.clip) flags |= SHRINKS_X;
-      if (cs.minHeight !== undefined || c.scrollable || cs.clip) flags |= SHRINKS_Y;
-      if (flags !== (SHRINKS_X | SHRINKS_Y)) flags |= shrinks(c);
-      if (flags === (SHRINKS_X | SHRINKS_Y)) break;
-    }
-  }
+  else if (wrapsRow(node)) flags = SHRINKS_X | shrinksChildren(node, SHRINKS_X);
+  else flags = shrinksChildren(node, 0);
   if (node.style.width !== undefined) flags &= ~SHRINKS_X;
   if (node.style.height !== undefined) flags &= ~SHRINKS_Y;
   shrinkable.set(node, flags);
   return flags;
 }
 
-/** How narrow a child may get when its row shrinks (like CSS `min-width: auto`). */
+/** `flags` plus what the in-flow children of `node` let it give up. */
+function shrinksChildren(node: UINode, flags: number): number {
+  for (const c of node.children) {
+    if (!inFlow(c)) continue;
+    const cs = c.style;
+    if (cs.minWidth !== undefined || scrolls(c) || cs.clip) flags |= SHRINKS_X;
+    if (cs.minHeight !== undefined || c.scrollable || cs.clip) flags |= SHRINKS_Y;
+    if (flags !== (SHRINKS_X | SHRINKS_Y)) flags |= shrinks(c);
+    if (flags === (SHRINKS_X | SHRINKS_Y)) break;
+  }
+  return flags;
+}
+
+/** How narrow a child may get when its row shrinks (like CSS `min-width: auto`); a fixed width never gives way. */
 function minFloor(c: UINode): number {
+  if (c.style.width !== undefined) return intrinsic(c).width;
   return c.style.minWidth ?? (scrolls(c) || c.style.clip ? 0 : minWidth(c));
 }
 
@@ -321,11 +337,11 @@ function minWidth(node: UINode): number {
       const kids = node.children.filter(inFlow);
       const floors = kids.map(minFloor);
       const cols = columnsOf(node);
-      content = s.direction === "row"
-        ? floors.reduce((a, b) => a + b, 0) + Math.max(0, kids.length - 1) * (s.gap ?? 0)
-        : s.direction === "grid"
-          ? cols * Math.max(0, ...floors) + (cols - 1) * (s.gap ?? 0)
-          : Math.max(0, ...floors);
+      if (wrapsRow(node)) content = Math.max(0, ...floors); // one item per line
+      else if (s.direction === "row") content = floors.reduce((a, b) => a + b, 0) + Math.max(0, kids.length - 1) * (s.gap ?? 0);
+      else if (s.direction === "grid") content = cols * Math.max(0, ...floors) + (cols - 1) * (s.gap ?? 0);
+      else if (s.wrap && s.height !== undefined) content = k.content - pl - pr; // its lines side by side
+      else content = Math.max(0, ...floors);
     }
     min = clamp(Math.min(k.width, content + pl + pr), s.minWidth, s.maxWidth);
   }
@@ -349,7 +365,9 @@ function minHeightAt(node: UINode, width: number): number {
   const inner = Math.max(0, width - pl - pr);
   const kids = node.children.filter(inFlow);
   let content: number;
-  if (s.direction === "row") {
+  if (wrapsRow(node)) {
+    content = linesExtent(node, wrapLines(node, kids, inner, true, heightFloor));
+  } else if (s.direction === "row") {
     const widths = mainSizes(node, kids, inner, true);
     content = kids.reduce((h, c, i) => Math.max(h, heightFloor(c, widths[i]!)), 0);
   } else if (s.direction === "grid") {
@@ -375,6 +393,8 @@ function heightAt(node: UINode, width: number): number {
   let content: number;
   if (node.measure) {
     content = node.measure(inner).height;
+  } else if (wrapsRow(node)) {
+    content = linesExtent(node, wrapLines(node, kids, inner, true, heightAt));
   } else if (s.direction === "row") {
     const widths = mainSizes(node, kids, inner, true);
     content = kids.reduce((h, c, i) => Math.max(h, heightAt(c, widths[i]!)), 0);
@@ -556,6 +576,11 @@ function place(node: UINode, x: number, y: number, width: number, height: number
     placeAbsolute(node, innerX, innerY - offsetY, innerW, innerH, view);
     return;
   }
+  if (s.wrap && kids.length > 1) {
+    const [offsetX, offsetY] = placeWrapped(node, kids, innerX, innerY, innerW, innerH, view);
+    placeAbsolute(node, innerX - offsetX, innerY - offsetY, innerW, innerH, view);
+    return;
+  }
 
   // A row knows widths first and heights from them; a column the other way around.
   let sizes: number[];
@@ -606,6 +631,108 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   if (kids.length) checkOverflow(node, kids, row, content, innerMain, widest, innerCross, view);
 
   placeAbsolute(node, innerX - offsetX, innerY - offsetY, innerW, innerH, view);
+}
+
+/** A Row with `wrap`: its height depends on its width (a wrapping Column breaks at its height instead). */
+function wrapsRow(node: UINode): boolean {
+  return node.style.wrap === true && node.style.direction === "row";
+}
+
+/** One line of a wrapping row/column: its children, their sizes along and across it, and its own length and thickness. */
+interface Line {
+  kids: UINode[];
+  sizes: number[];
+  crosses: number[];
+  main: number;
+  cross: number;
+}
+
+/**
+ * Breaks a wrapping row/column into lines `innerMain` long by each child's natural size along
+ * it, then lays each line out like a row/column of its own (grow and shrink stay inside the
+ * line). A row measures heights at the line's widths with `measure` (heightAt, or a floor);
+ * in a column, children keep their natural widths.
+ */
+function wrapLines(node: UINode, kids: UINode[], innerMain: number, row: boolean, measure: (c: UINode, width: number) => number): Line[] {
+  const gap = node.style.gap ?? 0;
+  const widths = row ? undefined : kids.map((c) => intrinsic(c).width);
+  const lines: Line[] = [];
+  let start = 0;
+  let used = 0;
+  const close = (end: number) => {
+    const lineKids = kids.slice(start, end);
+    const crossesIn = widths?.slice(start, end);
+    const sizes = mainSizes(node, lineKids, innerMain, row, crossesIn);
+    const crosses = crossesIn ?? lineKids.map((c, i) => measure(c, sizes[i]!));
+    const main = sizes.reduce((a, b) => a + b, 0) + (lineKids.length - 1) * gap;
+    lines.push({ kids: lineKids, sizes, crosses, main, cross: Math.max(0, ...crosses) });
+  };
+  kids.forEach((c, i) => {
+    const basis = row ? rowBasis(node, c) : heightAt(c, widths![i]!);
+    if (i > start && used + gap + basis > innerMain + 0.01) {
+      close(i);
+      start = i;
+      used = basis;
+    } else used += (i > start ? gap : 0) + basis;
+  });
+  close(kids.length);
+  return lines;
+}
+
+/** How thick a wrapping node's lines are together: their thicknesses plus `rowGap` (default `gap`) between them. */
+function linesExtent(node: UINode, lines: Line[]): number {
+  return lines.reduce((a, l) => a + l.cross, 0) + (lines.length - 1) * (node.style.rowGap ?? node.style.gap ?? 0);
+}
+
+/**
+ * Places a wrapping row/column line by line: `justify` and each child's alignment apply inside
+ * its line, lines stack across from the start. Returns the scroll offsets.
+ */
+function placeWrapped(node: UINode, kids: UINode[], innerX: number, innerY: number, innerW: number, innerH: number, view: Rect): [number, number] {
+  const s = node.style;
+  const [pt, pr, pb, pl] = edges(s.padding);
+  const row = s.direction === "row";
+  const gap = s.gap ?? 0;
+  const lineGap = s.rowGap ?? gap;
+  const innerMain = row ? innerW : innerH;
+  const innerCross = row ? innerH : innerW;
+  const lines = wrapLines(node, kids, innerMain, row, heightAt);
+  const extent = linesExtent(node, lines);
+  let longest = 0;
+  for (const l of lines) if (l.main > longest) longest = l.main;
+  node.contentWidth = (row ? longest : extent) + pl + pr;
+  node.contentHeight = (row ? extent : longest) + pt + pb;
+  if (node.scrollable) node.scrollY = clamp(node.scrollY, 0, Math.max(0, node.contentHeight - node.height));
+  if (node.scrollableX) node.scrollX = clamp(node.scrollX, 0, Math.max(0, node.contentWidth - node.width));
+  const offsetX = node.scrollableX ? node.scrollX : 0;
+  const offsetY = node.scrollable ? node.scrollY : 0;
+
+  let across = 0;
+  for (const line of lines) {
+    let cursor = 0;
+    let spacing = gap;
+    const leftover = Math.max(0, innerMain - line.main);
+    switch (s.justify) {
+      case "center": cursor = leftover / 2; break;
+      case "end": cursor = leftover; break;
+      case "space-between": if (line.kids.length > 1) spacing = gap + leftover / (line.kids.length - 1); break;
+    }
+    line.kids.forEach((c, i) => {
+      const align = alignOf(node, c);
+      const size = crossSize(align, c, row, line.cross, line.crosses[i]!);
+      const crossOffset = across + (align === "center" ? (line.cross - size) / 2 : align === "end" ? line.cross - size : 0);
+      const main = line.sizes[i]!;
+      if (row) place(c, innerX + cursor - offsetX, innerY + crossOffset - offsetY, main, size, view);
+      else place(c, innerX + crossOffset - offsetX, innerY + cursor - offsetY, size, main, view);
+      cursor += main + spacing;
+    });
+    // Only an item longer than its line overflows along it (the others moved to the next line).
+    checkOverflow(node, line.kids, row, line.main, innerMain, 0, innerCross, view);
+    across += line.cross + lineGap;
+  }
+  // Across, lines stack like the children of the other direction.
+  checkOverflow(node, kids, !row, extent, innerCross, 0, innerMain, view);
+  return [offsetX, offsetY];
 }
 
 /** Absolute children are measured from the content box (at x, y once scrolled) and scroll with the content. */

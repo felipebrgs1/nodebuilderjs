@@ -157,6 +157,22 @@ test("overflow shrinks the scroller, not the text above it", () => {
   expect(scroller!.contentHeight).toBe(500);
 });
 
+test("a shrinking row keeps a sibling as wide as its fixed-width child, even if that child has a smaller minWidth", () => {
+  const { root } = mount(() => (
+    <Row width={300}>
+      <Column grow={1}>
+        <Text>a b c d</Text>
+        <Box width={150} minWidth={50} height={10} />
+      </Column>
+      <Box grow={1} minWidth={0}><Text>{"x".repeat(40)}</Text></Box>
+    </Row>
+  ));
+  const row = root.children[0]!;
+  layout(row, 300, 100);
+  // The fixed 150px is the column's floor (minWidth only matters where width is free).
+  expect(row.children[0]!.width).toBe(150);
+});
+
 test("debugTree prints the laid out tree", () => {
   const { root } = mount(() => (
     <Column padding={4}>

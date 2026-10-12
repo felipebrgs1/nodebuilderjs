@@ -106,7 +106,7 @@ What cannot be tested automatically is documented when closing the task:
 
 ### Test organization
 
-- One file per subject: `core` (reactivity, tree, layout, culling), `grid` (`Grid`, `aspectRatio`), `app` (`run()` with a
+- One file per subject: `core` (reactivity, tree, layout, culling), `grid` (`Grid`, `aspectRatio`), `wrap` (`wrap` rows/columns), `app` (`run()` with a
   fake native: idle renders nothing, frame reasons, `NB_TRACE`, frame loop and overflow
   warnings), `overflow` (overflow detection, `layoutWarnings()`), `control-flow`
   (`Show`, `Switch`/`Match`, `Index`, nesting without recreating components),
@@ -168,7 +168,7 @@ src/                   one module per folder; relative imports with `.js`
     context.ts         createContext/useContext (value stored in the owner scope)
   render/              tree -> layout -> command buffer
     node.ts            UINode (retained tree), Style, handlers, invalidate(), measureText(), displayScale()
-    layout.ts          simplified flexbox + grid (equal columns) + aspectRatio + culling
+    layout.ts          simplified flexbox (+ wrap) + grid (equal columns) + aspectRatio + culling
     overflow.ts        overflow warnings: children cut off by a clip or the window (layoutWarnings, run() in dev)
     paint.ts           tree -> CommandBuffer (Float32Array) + parseColor
     shapes.ts          polyline (LINE segments) and fillPolygon (triangulation + AA fringe)
@@ -439,6 +439,14 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
   `align`/`alignSelf` says otherwise or they have an `aspectRatio`. Children stay in one
   parent, so `<For>` stays keyed. Every `direction === "row"` check has a grid branch next
   to it: a new layout function needs one too.
+- **`wrap`** (Row/Column, not grid): `wrapLines` breaks the in-flow children into lines by
+  their natural main size and runs `mainSizes` per line (grow/shrink stay inside it);
+  `placeWrapped` places line by line (`justify`/`alignSelf` per line, lines packed at the
+  start, `rowGap` apart). A wrapping Row is "height depends on width": `intrinsic` = one line
+  (`wraps` set), `heightAt`/`minHeightAt` sum the lines, `shrinks()` reports SHRINKS_X and
+  `minWidth` is the widest child. A wrapping Column breaks at the height it is placed with; only
+  a fixed `height` gives it a natural width. Overflow is checked per line along it, and for the
+  lines stacked across.
 - `Scroll` = column with `scrollable = true` (vertical); `horizontal` = row with
   `scrollableX = true`; both = column with both flags. On the scrolling axis, it does not
   shrink its children; on the cross axis, each child gets at least the visible space without

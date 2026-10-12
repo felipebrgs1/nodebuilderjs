@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### New
+- **`<Row wrap>`** (CSS `flex-wrap: wrap`): children that do not fit start a new line, `gap`
+  between items and `rowGap` (default `gap`) between lines; `grow`, `justify` and `alignSelf`
+  apply per line. The Row's height follows the width it gets and it shrinks down to its widest
+  child. `<Column wrap>` breaks into columns at its height.
+- **Fix:** a child with a fixed `width` and a smaller `minWidth` (such as `Slider`) no longer
+  lets its container shrink below that width.
 - **`zIndex`:** paint and hit-test order among siblings (default 0; ties keep child order).
   Siblings only, no global stacking contexts; overlays stay above everything. The part of a
   child that sticks out of a parent that does not `clip` (an absolute badge) is now clickable.

@@ -205,6 +205,19 @@ tallest `heightAt(cell, cellWidth)` (`gridRows`), the same function serving `int
 culls through `place()` like any child; absolute children go through the shared
 `placeAbsolute`.
 
+**`wrap`** on a Row/Column reuses the flex code per line: `wrapLines` breaks the children at
+the inner main size by their natural size (a line always takes at least one child), then calls
+`mainSizes` for each line, so `grow` and shrinking stay inside it, and measures the line's
+thickness (its thickest child). The same function serves `heightAt`, `minHeightAt` (with
+`heightFloor`) and `placeWrapped`, which applies `justify` and `alignSelf` inside each line and
+stacks lines from the start, `rowGap` apart (no `align-content`). A wrapping Row is one more
+"height depends on width" node: naturally a single line (`wraps` set, so `heightAt` keeps its
+"wide enough" shortcut), shrinkable down to its widest child (`shrinks()` reports SHRINKS_X).
+A wrapping Column breaks at the height it is placed with; its natural width is only known for
+a fixed `height`. Overflow is checked per line along it (only a child longer than the line
+overflows) and once across, for the stacked lines. Nodes without `wrap` take none of these
+paths (dashboard table, 500 rows: layout 2.77 → 2.79 ms/frame, within noise).
+
 The wrapping itself lives in `render/text-wrap.ts`: greedy, at spaces, like CSS's
 `overflow-wrap: normal` (a word longer than the line overflows). Word widths are summed
 instead of measuring the whole line again; a line that fits whole is measured only once.
