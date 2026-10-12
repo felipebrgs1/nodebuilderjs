@@ -104,23 +104,7 @@ Done (D1). Left for later: server-side decorations via `xdg-decoration` on KDE.
 
 ## E. Ecosystem
 
-### E1. Icon imports (report item 12) - small
-
-**Problem:** 32 lines of `export { default as x } from "lucide-static/icons/x.svg" with {
-type: "text" }`.
-
-**Not** bundling Lucide in core (zero third-party content in the package, size). Instead,
-a code generator: `nodebuilder icons add play pause heart --from lucide-static` writes/updates
-`src/icons.ts` (sorted, deduped, camelCase names), validating that each file exists in
-`node_modules`. Supports `--from @phosphor-icons/core` (`-fill` variants). Works in the
-packaged executable (static imports with `type: "text"`).
-
-**Tests:** `test/cli.test.ts` with a fake `node_modules/lucide-static/icons/` in a temp dir:
-adds, dedupes, errors on an unknown icon.
-
-**Docs:** `nodebuilder-icons` skill.
-
----
+Done (E1).
 
 ---
 
@@ -142,4 +126,4 @@ premultiplied space (as CSS does) and un-premultiply; test that
 
 1. B4 (wrap)
 2. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
-3. C2 (weights, spacing), E1, F4
+3. C2 (weights, spacing), F4

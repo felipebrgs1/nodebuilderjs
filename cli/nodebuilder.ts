@@ -2,6 +2,7 @@
 // `nodebuilder` command (bin of @nodebuilderjs/core). Needs Bun: packaging uses `bun build --compile`.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { iconsCommand } from "./icons.js";
 import { packageCommand } from "./package.js";
 import { screenshotCommand } from "./screenshot.js";
 
@@ -15,6 +16,9 @@ switch (command) {
   case "screenshot":
     screenshotCommand(args);
     break;
+  case "icons":
+    iconsCommand(args);
+    break;
   case "version":
   case "--version":
   case "-v":
@@ -25,6 +29,7 @@ switch (command) {
 
   nodebuilder package <entry.tsx> [options]     builds an AppImage, .deb, .rpm and .tar.gz in dist/
   nodebuilder screenshot <app.tsx> <out.png>    renders the app to a PNG without a window (--help for options)
+  nodebuilder icons add <names...>              adds icon imports to src/icons.ts (--help for options)
   nodebuilder version
 
 New project: bun create nodebuilderjs my-app`);

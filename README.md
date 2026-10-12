@@ -206,6 +206,23 @@ included, still wins. It can be reactive (`fill={liked}`). Gradients, text, filt
 illustrations should be turned into PNG. React packages (`lucide-react`,
 `@phosphor-icons/react`) don't work: use `lucide-static`, `lucide` or `@phosphor-icons/core`.
 
+Many icons: let the CLI write the imports into one module instead of by hand.
+
+```sh
+bun add lucide-static
+nodebuilder icons add play pause heart arrow-left       # -> src/icons.ts (--out to change)
+nodebuilder icons add heart-fill house --from @phosphor-icons/core   # weights by suffix
+nodebuilder icons list arrow                            # names containing "arrow"
+```
+
+Each icon becomes one sorted, deduplicated line, `import arrowLeft from
+"lucide-static/icons/arrow-left.svg" with { type: "text" }; export { arrowLeft };` (camelCase
+name; the rest of the file is kept), so `import { arrowLeft } from "./icons.js"` gives the SVG
+text and `nodebuilder package` embeds it. Each file is checked in `node_modules`; an unknown
+name fails with close matches (`did you mean heart-crack?`) and writes nothing. Not
+`export { default as x } from "x.svg" with { type: "text" }`: Bun drops the attribute on a
+re-export and gives the file's path; the command rewrites such lines it finds.
+
 ### Freehand drawing
 
 ```tsx

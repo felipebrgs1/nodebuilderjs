@@ -56,6 +56,8 @@ bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settin
 bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]
 bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --wait-frames N]
                             # PNG of the app without a window or display server (EGL offscreen)
+bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
+                            # icon imports for an app (validated in its node_modules); `icons list [filter]`
 bun run npm:build           # npm packages in dist/npm/ (does not publish)
 scripts/compare.sh <label> <warmup-s> <sample-s> -- <command...>  # CPU/RAM of the process tree
 ```
@@ -119,7 +121,7 @@ What cannot be tested automatically is documented when closing the task:
   `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
   (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
   `input` (events), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
-  `cli` (the `nodebuilder` command, spawned),
+  `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
   `clipboard`, `text-selection`, `testing` (public helpers), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
 - Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
@@ -233,7 +235,8 @@ test/            one file per module (bun:test; bunfig.toml limits bun test to t
   charts/        tests for src/charts (scales and each chart type)
   fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
 examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
-cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
+cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts,
+                 icons.ts (`icons add/list`: writes an app's icon imports)
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces published together with core (see "Publishing to npm")
   linux-x64/     @nodebuilderjs/linux-x64: only the prebuilt addon (generated, not in git)
@@ -634,6 +637,9 @@ packages, all with the version from the root `package.json`:
   `create-nodebuilderjs` renames it when copying. Relative symlinks also do not survive
   pack/`cpSync`: that is why the `.claude/skills/` links are created by `index.js`.
 - `Object.keys(native)` returns `[]` (non-enumerable properties); it is not an error.
+- Bun drops import attributes on re-exports: `export { default as x } from "x.svg" with
+  { type: "text" }` gives the file's path, not its text. Import, then export
+  (`import x from "x.svg" with { type: "text" }; export { x };`), as `nodebuilder icons add` writes.
 
 ### Frame loop
 - Code that runs inside `renderFrame` (`layout()`, `refreshHover()`, paint) must only call

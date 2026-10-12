@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### New
+- **`nodebuilder icons add <names...>`** (`--from lucide-static | @phosphor-icons/core`,
+  `--out src/icons.ts`) writes the icon imports into one module: sorted, deduplicated,
+  camelCase names, each file checked in `node_modules`, unknown names fail with close matches;
+  the rest of the file is kept. `nodebuilder icons list [filter]` prints the names. Generated
+  apps get `bun run icons:add`. The lines are `import x from "....svg" with { type: "text" };
+  export { x };`: Bun drops the attribute on `export { default as x } from ...` re-exports
+  (`x` became the file's path), and the command rewrites those.
 - **Real text metrics in tests:** `useRealTextMetrics()` in `@nodebuilderjs/core/testing`
   makes `mount` measure text with the installed fonts (the native core, no window) until the
   returned function restores the previous metrics; `canUseRealTextMetrics()` for `skipIf`.
