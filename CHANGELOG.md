@@ -9,14 +9,27 @@
   window's title-bar buttons are labelled ("Minimize", "Maximize"/"Restore", "Close") and a
   `Tooltip` labels its trigger with the tip. `debugTree()` shows it.
 - **Testing:** `findAllByText`, `findByLabel`, `findAllByLabel`.
+- **Hover and press:** `hoverStyle`/`pressStyle` on every widget and `createInteraction()`
+  (`hovered`/`pressed`/`focused` + `props` to spread), for a child that follows its parent's hover.
+- **Custom title bar:** `<Window decorations={false}>`, `dragRegion` on any widget (double click
+  maximizes; controls inside keep the press) and `<WindowControls />`.
+- **Layout:** `alignSelf`; `right`/`bottom` on absolute children (`left={0} right={0}` stretches).
+- **Text:** `underline` (inherited). Canvas `g.text(..., { maxWidth, ellipsis })`.
+- **Frame tracing:** `NB_STATS` shows why frames were drawn (`why: inv ev raf`);
+  `NB_TRACE=frames` prints the stack that asked for each frame; in development a warning names
+  code that invalidates inside every frame.
 
 ### Changed
 - **Testing:** `click(node)` and the node helpers of `interact()` throw when the node can't be
   reached (culled, clipped by an ancestor or the window, not in the tree, overlay not shown)
   instead of silently missing. `click(node)` uses the node's center, and `localX/localY` are
   relative to the node that handles the click.
+- **Absolute children** of a `Scroll` now scroll with the content (they stayed fixed).
+- Handlers passed to a widget are chained with the widget's own instead of replacing them
+  (`Slider` and `TextField` dropped a user's `onPointerDown`).
 
 ### Docs
+- `bun run check:snippets` typechecks the README and skill snippets; the ones that failed are fixed.
 - Skills and README: equal columns (`width={0} grow={1}`), absolute children, `clip` with
   `radius`, `shadow` without `background`, reactive Canvas `draw` and fitting text with
   `measureText`, animation options (`createTween` `duration`/`easing`, `mixColor`), events.
