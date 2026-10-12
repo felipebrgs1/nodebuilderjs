@@ -50,7 +50,7 @@ agents such as Claude Code.
   `background={() => (active() ? "#3584e4" : "#ffffff")}`.
 - **Styles are props, not CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
   `radius`, `color`, `fontSize`... The layout is flexbox.
-- **Built-in widgets:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
+- **Built-in widgets:** `Window` (with `WindowControls` for a custom title bar), `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
   `Button`, `TextField`, `Checkbox`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`,
   `Tooltip`, `Dialog`, `ProgressBar`, `Spinner`, `Card`, `Divider`, `Spacer`, plus `<For>`/`<Index>`,
   `<Show>`/`<Switch>` and `<ErrorBoundary>` for lists, conditions and errors, and
@@ -495,6 +495,39 @@ It is the system clipboard (Wayland and X11), text only. `TextField` pastes with
 Shift+Insert (line breaks become spaces). Without a window, as in tests, it is an in-memory
 clipboard. On Wayland, the compositor only accepts a copy right after a key press or click
 (the usual case: Ctrl+C, a "Copy" button).
+
+### Window and title bar
+
+`<Window>` draws its own title bar (title and the minimize, maximize and close buttons), border,
+rounded corners and resize edges. For a header merged with the title bar (a search field next
+to the window buttons, as in music players and browsers), turn it off with
+`decorations={false}` and build your own:
+
+```tsx
+import { Row, Spacer, Text, TextField, Window, WindowControls, createSignal } from "@nodebuilderjs/core";
+
+const [query, setQuery] = createSignal("");
+<Window title="Player" decorations={false}>
+  <Row dragRegion height={56} align="center" gap={12} padding={[0, 12]}>
+    <Text bold>Player</Text>
+    <TextField width={280} value={query} onInput={setQuery} placeholder="Search" />
+    <Spacer />
+    <WindowControls />
+  </Row>
+  {/* content */}
+</Window>
+```
+
+- **`dragRegion`** works on any widget: pressing on it moves the window and a double click
+  maximizes or restores it. A press on something inside it that handles the press (a button,
+  a text field, anything clickable, focusable or with `onPointerDown`) stays with that
+  child, so plain text and empty space drag, controls don't.
+- **`<WindowControls />`** is the built-in bar's three buttons, labelled "Minimize",
+  "Maximize"/"Restore" and "Close"; it takes style props (`gap`, `padding`...).
+- Without decorations the border, corners and resizing from the edges stay. For your own
+  buttons, `windowControls.minimize()`, `.toggleMaximize()`, `.close()` and `.setTitle(t)`;
+  `windowState.maximized()`, `.activated()` (the window has focus), `.width()` and
+  `.height()` are reactive.
 
 ### Testing
 

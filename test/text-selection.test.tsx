@@ -100,7 +100,7 @@ test("Text selectable inside a drag region selects instead of moving the window"
     bar.dragRegion = true;
     const input = createInput(root, {
       size: () => ({ width: 800, height: 600 }), resizable: () => false, setCursor() {}, resize() {},
-      move: () => moves++, invalidate() {}, now: () => 0,
+      move: () => moves++, toggleMaximize() {}, invalidate() {}, now: () => 0,
     });
     const label = bar.children[0]!;
     input.pointerDown(label.x + 4, label.y + 4, 0);

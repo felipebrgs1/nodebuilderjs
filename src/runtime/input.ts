@@ -13,6 +13,8 @@ export interface InputHost {
   resizable(): boolean;
   setCursor(name: string): void;
   move(): void;
+  /** A double click on a drag region. */
+  toggleMaximize(): void;
   resize(edges: number): void;
   /** Something changed that needs a new frame (e.g. scrolling). */
   invalidate(): void;
@@ -312,14 +314,18 @@ export function createInput(root: UINode, host: InputHost) {
       setFocus(path.find((n) => n.focusable) ?? null);
 
       const e = pointerEvent(x, y, button, lastClick.clicks);
+      // Controls inside a drag region (fields, sliders, focusables) take the press: no window move.
+      let taken = false;
       for (const n of path) {
         n.handlers.onPointerDown?.(at(n, e));
         if (e.stopped()) return;
-        if (n.handlers.onClick) return; // clickable things never start a window move
-        if (n.dragRegion && button === 0) {
-          pressed = null;
+        if (n.dragRegion && button === 0 && !taken) {
+          if (e.clicks === 2) return host.toggleMaximize();
+          pressed = null; // the compositor takes the pointer; the release may never come
           return host.move();
         }
+        if (n.handlers.onClick) return; // clickable things never start a window move
+        if (n.handlers.onPointerDown || n.focusable) taken = true;
       }
     },
 

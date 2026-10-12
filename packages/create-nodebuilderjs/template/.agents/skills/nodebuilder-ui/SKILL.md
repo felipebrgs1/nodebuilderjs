@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: nodebuilder widgets, style props and layout (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking, clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
+description: nodebuilder widgets, style props and layout (Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking, clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
 ---
 
 # UI with nodebuilder
@@ -12,7 +12,8 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 
 | Widget | What for | Main props |
 |---|---|---|
-| `Window` | root, one per app, with its own title bar | `title`, `width`, `height` (initial size), `appId`, `onClose` (return `false` to keep it open) |
+| `Window` | root, one per app, with its own title bar | `title`, `width`, `height` (initial size), `appId`, `onClose` (return `false` to keep it open), `decorations={false}` (your own title bar, see "Theme and window") |
+| `WindowControls` | minimize, maximize/restore and close buttons, for a custom title bar | style (`gap`...) |
 | `Column` / `Row` / `Box` | flex container (column, row; `Box` is a column) | style + events |
 | `Scroll` | scrolling: vertical (default), `horizontal` or `horizontal vertical` (both) | needs `grow={1}` or a size; see "Scrolling" below |
 | `Text` | text; wraps at spaces to fit the width | children (`{count}`, `"a"`) or `text={() => ...}`, `wrap` (default `true`), `maxLines` (truncates with "…"), `textAlign`, `lineHeight`, `underline`, `selectable` |
@@ -354,6 +355,26 @@ too: the edges count from inside the parent's `padding`.
   follow theme changes. `color={theme.text.secondary}` keeps the color of that moment.
 - `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`;
   `windowState.width()`, `.height()`, `.maximized()`, `.activated()` are accessors.
+- **Custom title bar** (navigation or search merged with the window buttons): `<Window
+  decorations={false}>` drops the built-in bar (border, corners and edge resizing stay);
+  `dragRegion` on any widget makes it move the window, and a double click maximizes. Plain
+  text and empty space inside it drag; buttons, fields and anything clickable, focusable or
+  with `onPointerDown` keep their press.
+
+```tsx
+import { Row, Spacer, Text, TextField, Window, WindowControls, createSignal, theme, windowState } from "@nodebuilderjs/core";
+
+const [query, setQuery] = createSignal("");
+<Window title="Player" decorations={false}>
+  <Row dragRegion height={56} align="center" gap={12} padding={[0, 12]}>
+    <Text bold color={() => (windowState.activated() ? theme.text.primary : theme.text.secondary)}>Player</Text>
+    <TextField width={280} value={query} onInput={setQuery} placeholder="Search" />
+    <Spacer />
+    <WindowControls />
+  </Row>
+  {/* the rest of the screen */}
+</Window>
+```
 - Animation: see the next section.
 - Not available yet: theme following the system, `scale`/`rotate`, selection in `TextField`
   (and Ctrl+C in it), IME, multiple windows.
@@ -406,7 +427,7 @@ may want to copy (ids, links, paths, error messages, results) gets `selectable`:
 
 With `selectable`: dragging selects, double-click takes the word, triple-click the line,
 Ctrl+A everything and Ctrl+C copies; the cursor becomes the text cursor. It is not in the Tab order, and inside
-the title bar it selects instead of dragging the window. Selection is one `Text` at a time
+the title bar (or any `dragRegion`) it selects instead of dragging the window. Selection is one `Text` at a time
 (it does not span several) and there is no Shift+click or Shift+arrows yet.
 
 The system clipboard (text only) is in `clipboard`:

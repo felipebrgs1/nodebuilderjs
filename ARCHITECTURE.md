@@ -389,7 +389,11 @@ The backend is chosen at runtime: Wayland if `WAYLAND_DISPLAY` is set, otherwise
 `DISPLAY` is set (`NB_BACKEND=wayland|x11` forces one). Both implement the same vtable
 (`native/platform/linux/linux.h`), so any new window feature goes into both.
 
-The window always draws its own decoration (title bar, buttons, resize edges). On X11, the
+The window always draws its own decoration (title bar, buttons, resize edges). The title bar
+is a node with `dragRegion`: `runtime/input.ts` turns a left press on it into an interactive
+move (`InputHost.move`) and a double click into `toggleMaximize`, unless a node between it and
+the pointer took the press (clickable, focusable or with `onPointerDown`). Custom title bars
+(`decorations={false}`) use the same path. On X11, the
 window manager's decoration is turned off and move/maximize use EWMH messages; without a
 compositor, the window loses transparency and rounded corners.
 

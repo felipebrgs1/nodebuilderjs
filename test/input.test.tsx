@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { Box, Button, Column, Row, Scroll, Text, UINode, Window, createRoot, layout, setTextMeasurer } from "@nodebuilderjs/core";
+import {
+  Box, Button, Column, Row, Scroll, Text, TextField, UINode, Window, WindowControls, createRoot, createSignal, debugTree, layout, setTextMeasurer,
+} from "@nodebuilderjs/core";
 import type { PointerEvent } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
 import { createInput } from "../src/runtime/input.js";
@@ -25,6 +27,7 @@ function setup(view: () => any, options: { resizable?: boolean } = {}) {
     resizable: () => options.resizable ?? false,
     setCursor(name: string) { host.cursor = name; },
     move() { host.calls.push("move"); },
+    toggleMaximize() { host.calls.push("toggleMaximize"); },
     resize(edges: number) { host.calls.push(`resize ${edges}`); },
     invalidate() { host.calls.push("invalidate"); },
     now: () => now,
@@ -165,13 +168,17 @@ describe("pointer buttons", () => {
     expect(input.focused).toBeNull();
   });
 
-  test("title bars move the window; window borders resize it", () => {
+  test("title bars move the window, a double click toggles maximize; window borders resize it", () => {
     const { input, host } = setup(() => <Window title="t"><Text>x</Text></Window>, { resizable: true });
     input.pointerDown(100, 20, 0);
     input.pointerDown(150, 100, 0); // content: no move
     input.pointerDown(1, 100, 0); // left border
     input.pointerDown(299, 199, 0); // bottom right corner
-    expect(host.calls).toEqual(["move", "resize 4", "resize 10"]);
+    now += 1000;
+    input.pointerDown(100, 20, 0);
+    now += 100;
+    input.pointerDown(100, 20, 0);
+    expect(host.calls).toEqual(["move", "resize 4", "resize 10", "move", "toggleMaximize"]);
   });
 
   test("clickable nodes inside a drag region never move the window", () => {
@@ -180,6 +187,121 @@ describe("pointer buttons", () => {
     expect(close?.label).toBe("WindowButton(close)");
     input.pointerDown(285, 23, 0);
     expect(host.calls).toEqual([]);
+  });
+});
+
+describe("custom title bar", () => {
+  const [query, setQuery] = createSignal("");
+  // A header row merged with the title bar: search field, a button, window controls.
+  const header = () => (
+    <Window title="t" decorations={false}>
+      <Row dragRegion height={40} align="center" gap={8} padding={[0, 8]}>
+        <Text>App</Text>
+        <TextField width={100} value={query} onInput={setQuery} />
+        <Button label="Go" onClick={() => log.push("go")} />
+        <Box grow={1} height={40} />
+        <WindowControls gap={4} />
+      </Row>
+      <Text>body</Text>
+    </Window>
+  );
+  const find = (root: UINode, label: string): UINode => {
+    if (root.label === label || root.label.startsWith(`${label} `)) return root;
+    for (const c of root.children) {
+      try { return find(c, label); } catch {}
+    }
+    throw new Error(`no ${label}`);
+  };
+  const center = (n: UINode): [number, number] => [n.x + n.width / 2, n.y + n.height / 2];
+
+  test("decorations={false} has no built-in title bar or divider", () => {
+    const { root } = setup(() => <Window title="t" decorations={false}><Text>body</Text></Window>);
+    const tree = debugTree(root);
+    expect(tree).not.toContain("Titlebar");
+    expect(tree).not.toContain("Divider");
+    expect(tree).toContain('Text "body"');
+    // The content starts right below the border.
+    expect(find(root, "Text").y).toBe(1);
+    expect(setup(() => <Window title="t"><Text>body</Text></Window>).root.children[0]!.children[0]!.label).toBe("Titlebar");
+  });
+
+  test("borders still resize a window without decorations", () => {
+    const { input, host } = setup(() => <Window title="t" decorations={false}><Text>body</Text></Window>, { resizable: true });
+    input.pointerDown(1, 100, 0);
+    expect(host.calls).toEqual(["resize 4"]);
+  });
+
+  test("a dragRegion moves the window from its empty space and from plain text", () => {
+    const { root, input, host } = setup(header);
+    input.pointerDown(...center(find(root, "Text")), 0);
+    now += 1000;
+    input.pointerDown(...center(find(root, "Box")), 0); // the spacer
+    expect(host.calls).toEqual(["move", "move"]);
+  });
+
+  test("a double click on a dragRegion toggles maximize instead of moving", () => {
+    const { root, input, host } = setup(header);
+    const spacer = center(find(root, "Box"));
+    input.pointerDown(...spacer, 0);
+    now += 100;
+    input.pointerDown(...spacer, 0);
+    expect(host.calls).toEqual(["move", "toggleMaximize"]);
+  });
+
+  test("a press on a control inside a dragRegion never moves the window", () => {
+    const { root, input, host } = setup(header);
+    for (const label of ["TextField", "Button", "WindowButton(minimize)", "WindowButton(maximize)", "WindowButton(close)"]) {
+      now += 1000;
+      const node = find(root, label);
+      let hit = input.hitTest(...center(node));
+      while (hit && hit !== node) hit = hit.parent;
+      expect(hit).toBe(node);
+      input.pointerDown(...center(node), 0);
+      input.pointerUp(...center(node), 0);
+    }
+    expect(host.calls).toEqual([]);
+    expect(log).toEqual(["go"]);
+  });
+
+  test("only the left button drags", () => {
+    const { root, input, host } = setup(header);
+    input.pointerDown(...center(find(root, "Box")), 2);
+    expect(host.calls).toEqual([]);
+  });
+
+  test("a node with its own press handler or focus inside a dragRegion keeps the press", () => {
+    const { root, input, host } = setup(() => (
+      <Row dragRegion height={40}>
+        <Box width={40} onPointerDown={() => log.push("down")} />
+        <Box width={40} ref={(el) => ((el as UINode).focusable = true)} />
+        <Box width={40} />
+      </Row>
+    ));
+    const [a, b, c] = root.children[0]!.children;
+    for (const n of [a!, b!, c!]) {
+      now += 1000;
+      input.pointerDown(...center(n), 0);
+    }
+    expect(log).toEqual(["down"]);
+    expect(host.calls).toEqual(["move"]);
+  });
+
+  test("the press still bubbles past a control to the dragRegion's own handler, without moving", () => {
+    const { root, input, host } = setup(() => (
+      <Row dragRegion height={40} onPointerDown={() => log.push("row")}>
+        <Box width={40} onPointerDown={() => log.push("inner")} />
+      </Row>
+    ));
+    input.pointerDown(...center(root.children[0]!.children[0]!), 0);
+    expect(log).toEqual(["inner", "row"]);
+    expect(host.calls).toEqual([]);
+  });
+
+  test("WindowControls labels its buttons and takes style props", () => {
+    const { root } = setup(() => <WindowControls gap={20} />);
+    const controls = root.children[0]!;
+    expect(controls.children.map((n) => n.ariaLabel)).toEqual(["Minimize", "Maximize", "Close"]);
+    expect(controls.children[1]!.x - controls.children[0]!.x).toBe(26 + 20);
   });
 });
 
