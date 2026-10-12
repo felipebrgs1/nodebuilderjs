@@ -1,113 +1,117 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-10-12)
 
 ### New
-- **Linear gradients:** `background={{ linear: ["#1db954", "#121212"], angle: 180 }}` (CSS
-  angles; stops as colors or `[color, offset]`), with rounded corners, borders, `opacity`,
-  `hoverStyle` and reactive values (theme colors inside an accessor follow `setTheme`). In
-  `<Canvas>`, `g.linearGradient(x0, y0, x1, y1, stops)` fills `rect`, `polygon`, `circle`,
-  `arc`, `line` and `polyline`. Interpolated in premultiplied space like CSS. New draw op
-  `GRADIENT` (10); colors are now premultiplied in the vertex shader.
-- **`nodebuilder icons add <names...>`** (`--from lucide-static | @phosphor-icons/core`,
-  `--out src/icons.ts`) writes the icon imports into one module: sorted, deduplicated,
-  camelCase names, each file checked in `node_modules`, unknown names fail with close matches;
-  the rest of the file is kept. `nodebuilder icons list [filter]` prints the names. Generated
-  apps get `bun run icons:add`. The lines are `import x from "....svg" with { type: "text" };
-  export { x };`: Bun drops the attribute on `export { default as x } from ...` re-exports
-  (`x` became the file's path), and the command rewrites those.
-- **Real text metrics in tests:** `useRealTextMetrics()` in `@nodebuilderjs/core/testing`
-  makes `mount` measure text with the installed fonts (the native core, no window) until the
-  returned function restores the previous metrics; `canUseRealTextMetrics()` for `skipIf`.
-  `useFakeTextMetrics({ charWidth, lineHeight })` stays the default (8 and 20).
-- **`<Row wrap>`** (CSS `flex-wrap: wrap`): children that do not fit start a new line, `gap`
-  between items and `rowGap` (default `gap`) between lines; `grow`, `justify` and `alignSelf`
-  apply per line. The Row's height follows the width it gets and it shrinks down to its widest
-  child. `<Column wrap>` breaks into columns at its height.
-- **`margin`** (`8`, `[v, h]` or `[top, right, bottom, left]`; negative allowed): space outside
-  the border that the parent's layout keeps free, counted in natural sizes, `grow`, shrinking,
-  `Grid` cells and `wrap` lines; stretched children fit inside it. Not painted or hit; adds to
-  `gap` (no collapsing). On absolute children it adds to `left`/`top`/`right`/`bottom`.
-- **Fix:** a child with a fixed `width` and a smaller `minWidth` (such as `Slider`) no longer
-  lets its container shrink below that width.
-- **`zIndex`:** paint and hit-test order among siblings (default 0; ties keep child order).
-  Siblings only, no global stacking contexts; overlays stay above everything. The part of a
-  child that sticks out of a parent that does not `clip` (an absolute badge) is now clickable.
-- **`<Grid columns={4} gap={8} rowGap={12}>`:** children flow into rows of equal-width cells
-  (the last row keeps empty cells); each row is as tall as its tallest cell. Laid out by the
-  layout engine itself, so `<For>` inside stays keyed and adding an item only reflows.
-- **`aspectRatio`** (width / height) on every widget, like CSS `aspect-ratio`: the height
-  follows the width in columns and `Grid` cells, the width follows a fixed height or a row's
-  height; `min/max` clamp. `aspectRatio={1}` in a `Grid` gives square covers.
-- **Overflow warnings:** in development, `run()` prints once per node when children need more
-  room than their container gives them and a `clip` ancestor or the window hides the excess
-  (`layout: Row > Text("Artists") overflows Box(panel) by 42px (children need 342px, 300px
-  available)`); `debugTree()` marks the container `[overflow +42]`, and tests read them with
-  `layoutWarnings()` (from `mount`, or `layoutWarnings(root)` in `@nodebuilderjs/core/testing`).
-  Silent with `NODE_ENV=production` and in packaged executables (which also silences the frame
-  loop warning there).
-- **Font fallback and color emoji:** characters the UI font lacks (`▲`, `↑`, CJK...) come from
-  the system's fallback fonts (fontconfig order), and emoji are drawn in color (Noto Color
-  Emoji and other CBDT/sbix/COLRv0 fonts), including ZWJ sequences, skin tones and flags.
-  `color` does not tint an emoji; `opacity` does fade it. Works in screenshots too.
-- **Screenshots without a window:** `nodebuilder screenshot <app.tsx> <out.png>` (`--width`,
-  `--height`, `--scale`, `--theme`, `--wait-frames`) renders the app to a PNG with the GPU and
-  no display server (EGL surfaceless), after its animations finish; `screenshot(root | view)`,
-  `savePNG` and `canScreenshot` in `@nodebuilderjs/core/testing` give the real pixels in tests.
-  Generated apps get `bun run screenshot`, and their skills tell agents to look at the UI.
-- **`<Icon fill>`:** `true` fills with the icon color, a color fills with that color; replaces
-  the root `<svg>` fill (as Lucide's prop does), so outline icons become solid. Reactive.
-- **`ariaLabel`** on every widget: a name for elements without text (icon-only buttons). The
-  window's title-bar buttons are labelled ("Minimize", "Maximize"/"Restore", "Close") and a
-  `Tooltip` labels its trigger with the tip. `debugTree()` shows it.
-- **Testing:** `findAllByText`, `findByLabel`, `findAllByLabel`.
-- **Hover and press:** `hoverStyle`/`pressStyle` on every widget and `createInteraction()`
-  (`hovered`/`pressed`/`focused` + `props` to spread), for a child that follows its parent's hover.
-- **Custom title bar:** `<Window decorations={false}>`, `dragRegion` on any widget (double click
-  maximizes; controls inside keep the press) and `<WindowControls />`.
-- **Layout:** `alignSelf`; `right`/`bottom` on absolute children (`left={0} right={0}` stretches).
-- **Text:** `underline` (inherited). Canvas `g.text(..., { maxWidth, ellipsis })`.
-- **Font weights, italics, letter spacing:** `fontWeight` (1..1000; `bold` is 700),
-  `italic` and `letterSpacing` (px after every character, may be negative) on every widget,
-  inherited like `fontSize`. The closest face the system has (fontconfig), any weight with a
-  variable font, a slanted upright face when there is no italic; fallback fonts follow the
-  weight and slant. Canvas `g.text`/`g.measureText` take `{ weight, italic, letterSpacing }`.
-  `TextField` follows them too.
-- **Frame tracing:** `NB_STATS` shows why frames were drawn (`why: inv ev raf`);
-  `NB_TRACE=frames` prints the stack that asked for each frame; in development a warning names
-  code that invalidates inside every frame.
+- **Seeing the UI:** `nodebuilder screenshot <app.tsx> <out.png>` (`--width`, `--height`,
+  `--scale`, `--theme`, `--wait-frames`) renders the app to a PNG with the GPU and no display
+  server (EGL surfaceless), after its animations finish. Generated apps get
+  `bun run screenshot`, and their skills tell agents to look at the UI they build.
+- **Layout:**
+  - `<Grid columns={4} gap={8} rowGap={12}>`: rows of equal-width cells, each row as tall as
+    its tallest cell. Laid out by the layout engine itself, so `<For>` inside stays keyed.
+  - `aspectRatio` (width / height) on every widget, like CSS `aspect-ratio`;
+    `aspectRatio={1}` in a `Grid` gives square covers.
+  - `<Row wrap>` (CSS `flex-wrap: wrap`): `gap` between items, `rowGap` between lines,
+    `grow`/`justify`/`alignSelf` per line; its height follows its width. `<Column wrap>`
+    breaks into columns at its height.
+  - `margin` (`8`, `[v, h]` or `[top, right, bottom, left]`; negative allowed), kept free by
+    the parent's layout (sizes, `grow`, shrinking, `Grid` cells, `wrap` lines). No collapsing.
+  - `alignSelf`; `right`/`bottom` on absolute children (`left={0} right={0}` stretches).
+  - `zIndex`: paint and hit-test order among siblings (ties keep child order; no global
+    stacking contexts, overlays stay on top).
+  - **Overflow warnings:** in development, `run()` prints once per node when children need
+    more room than their container gives and a `clip` ancestor or the window hides the excess
+    (`layout: Row > Text("Artists") overflows Box(panel) by 42px (...)`); `debugTree()` marks
+    the container `[overflow +42]`. Silent with `NODE_ENV=production` and in packaged
+    executables.
+- **Styling:**
+  - Linear gradients: `background={{ linear: ["#1db954", ["#121212", 0.6]], angle: 180 }}`
+    (CSS angles), with rounded corners, borders, `opacity` and reactive values; in `<Canvas>`,
+    `g.linearGradient(x0, y0, x1, y1, stops)` fills `rect`, `polygon`, `circle`, `arc`,
+    `line` and `polyline`. Interpolated in premultiplied space, like CSS.
+  - `hoverStyle`/`pressStyle` on every widget, and `createInteraction()`
+    (`hovered`/`pressed`/`focused` + `props` to spread) for a child that follows its parent.
+  - `underline` (inherited).
+  - `fontWeight` (1..1000; `bold` is 700), `italic` and `letterSpacing` on every widget,
+    inherited like `fontSize`: the closest face the system has (fontconfig), any weight of a
+    variable font, a slanted upright face when there is no italic. Canvas `g.text` and
+    `g.measureText` take `{ weight, italic, letterSpacing }`; `g.text` also `{ maxWidth,
+    ellipsis }`. `TextField` follows them.
+- **Text:** font fallback and color emoji. Characters the UI font lacks (`▲`, `↑`, CJK...)
+  come from the system's fallback fonts (fontconfig order, following weight and slant);
+  emoji are drawn in color (Noto Color Emoji and other CBDT/sbix/COLRv0 fonts), including
+  ZWJ sequences, skin tones and flags. `color` does not tint an emoji; `opacity` fades it.
+- **Window:** `<Window decorations={false}>` for a custom title bar, `dragRegion` on any
+  widget (double click maximizes; clickable, focusable or `onPointerDown` children inside keep
+  the press) and `<WindowControls />`. The built-in buttons are labelled ("Minimize",
+  "Maximize"/"Restore", "Close").
+- **Icons:** `<Icon fill>` (`true` or a color) replaces the root `<svg>` fill, so outline
+  icons become solid. `nodebuilder icons add <names...>` (`--from lucide-static |
+  @phosphor-icons/core`, `--out src/icons.ts`) writes the imports into one module: sorted,
+  deduplicated, checked in `node_modules`, unknown names fail with close matches;
+  `nodebuilder icons list [filter]` prints the names. Generated apps get `bun run icons:add`.
+- **Testing** (`@nodebuilderjs/core/testing`):
+  - `click(node)` and `interact()`'s node helpers throw when the node can't be reached
+    (culled, clipped, detached, overlay not shown).
+  - `findAllByText`, `findByLabel`, `findAllByLabel`, and `ariaLabel` on every widget (a name
+    for icon-only buttons; a `Tooltip` labels its trigger; `debugTree()` shows it).
+  - `layoutWarnings()` (from `mount`, or `layoutWarnings(root)`) lists the overflow warnings.
+  - `useRealTextMetrics()` measures text with the installed fonts (no window) until the
+    returned function restores the fake metrics; `canUseRealTextMetrics()` for `skipIf`;
+    `useFakeTextMetrics({ charWidth, lineHeight })`.
+  - `screenshot(root | view)`, `savePNG` and `canScreenshot` give the real pixels.
+- **Tooling:** `NB_STATS` shows why frames were drawn (`why: inv ev raf`); `NB_TRACE=frames`
+  prints the stack that asked for each frame; in development a warning names code that
+  invalidates inside every frame. Frame callbacks receive `frameNow()`. In the repository,
+  `bun run check:snippets` typechecks the README and skill snippets.
+- **Apps created with `bun create nodebuilderjs`:** `screenshot` and `icons:add` scripts, and
+  skills covering everything above.
 
-### Changed
-- **Text measurers:** the third argument of a `setTextMeasurer` function is now the font
-  (`{ weight, italic, letterSpacing }`) instead of `bold`, and the width it returns must
-  include `letterSpacing` after every character. A custom `Painter.text` gets the same font
-  (or `true` for bold).
-- **Testing:** `click(node)` and the node helpers of `interact()` throw when the node can't be
-  reached (culled, clipped by an ancestor or the window, not in the tree, overlay not shown)
-  instead of silently missing. `click(node)` uses the node's center, and `localX/localY` are
-  relative to the node that handles the click.
-- **Absolute children** of a `Scroll` now scroll with the content (they stayed fixed).
-- Handlers passed to a widget are chained with the widget's own instead of replacing them
-  (`Slider` and `TextField` dropped a user's `onPointerDown`).
-- **`onPointerDown` bubbles past clickable nodes** until `e.stop()`, as the docs said: it used
-  to end at the first node with an `onClick`, so a list's context menu (`e.button === 2`)
-  missed presses on its clickable rows and a `Tooltip` around a `Button` only hid on release.
-  `onClick` still runs only on the innermost clickable, and a clickable still never moves the
-  window from a drag region. A parent's `pressStyle` now shows while a child is pressed (CSS
-  `:active`); `e.stop()` in an `onPointerDown` on the child keeps the press to it.
+### Changes that may affect your code
+- **`click(node)`** in tests uses the node's center (it pressed 1 px inside the top-left corner), and
+  `localX/localY` are relative to the node that handles the click. It throws on a hidden target
+  instead of silently missing.
+- **Absolute children of a `Scroll`** now scroll with the content (they stayed fixed).
+- **Handlers are chained:** a handler passed to a widget runs together with the widget's own
+  instead of replacing it.
+- **`onPointerDown` bubbles past clickable nodes** until `e.stop()`, as documented: it ended at
+  the first node with an `onClick`. `onClick` still runs only on the innermost clickable. A
+  parent's `pressStyle` now shows while a child is pressed (CSS `:active`); `e.stop()` in the
+  child's `onPointerDown` keeps the press to it.
+- **Hit testing reaches children that stick out** of a parent that does not `clip` or scroll
+  (an absolute badge); presses there used to go to what was behind.
+- **Text measurers:** the third argument of a `setTextMeasurer` function is now a `FontStyle`
+  (`{ weight, italic, letterSpacing }`) instead of `bold`, and the returned width must include
+  `letterSpacing` after every character. A custom `Painter.text` gets a `FontInput` (that
+  object, or `true` for bold).
+- **Command buffer** (only for a custom native build): `TEXT` has 10 floats (a font id,
+  `weight * 2 + italic`, instead of bold, and `letterSpacing` at the end); new op `GRADIENT`
+  (10); colors are premultiplied in the vertex shader. The addon and the core must have the
+  same version, as before.
+- **Closing the window** drops the frame scheduler and pending `requestAnimationFrame`
+  callbacks, so unfinished animations stop there.
+- **`mixColor`** mixes in premultiplied space, like CSS: mixing toward a translucent color
+  gives a different (correct) result.
+- **Icon modules:** don't write `export { default as x } from "./x.svg" with { type: "text" }`:
+  Bun drops the attribute on re-exports, and `x` becomes the file's path. Use
+  `import x from "./x.svg" with { type: "text" }; export { x };`, or let
+  `nodebuilder icons add` write (and rewrite) the module.
 
-### Docs
-- `bun run check:snippets` typechecks the README and skill snippets; the ones that failed are fixed.
-- Skills and README: equal columns (`width={0} grow={1}`), absolute children, `clip` with
-  `radius`, `shadow` without `background`, reactive Canvas `draw` and fitting text with
-  `measureText`, animation options (`createTween` `duration`/`easing`, `mixColor`), events.
+### Fixes
+- **Idle redraw:** since the interactive scrollbars (0.2.5), an idle window redrew at the fps
+  cap, because the per-frame hover refresh invalidated even with no scrollbar to highlight.
+  Idle is back to 0 frames.
+- `Slider` and `TextField` dropped a user's `onPointerDown` (handlers are now chained).
+- A child with a fixed `width` and a smaller `minWidth` (such as `Slider`) let its container
+  shrink below that width.
+- `mixColor(color, "transparent", t)` passed through translucent gray; now
+  `mixColor("#ff0000", "transparent", 0.5)` is red at 50% alpha.
 
-### Fixed
-- **Idle redraw:** since the interactive scrollbars (0.2.5), an idle window redrew at the fps cap
-  (~10% CPU for an empty window, ~25% for the dashboard) because the per-frame hover refresh
-  invalidated even with no scrollbar to highlight. Idle is back to 0 frames and 0% CPU.
-- **`mixColor` toward a transparent color** passed through translucent gray: it now mixes in
-  premultiplied space like CSS, so `mixColor("#ff0000", "transparent", 0.5)` is red at 50% alpha.
+### Performance
+- Idle CPU after the redraw fix: empty window 9.8% → 0%, dashboard 25.6% → 0.6%.
+- `margin` and `wrap` keep the 500-row table's layout at ~2.8 ms/frame (same as before,
+  within noise).
 
 ## 0.2.5 (2026-10-12)
 

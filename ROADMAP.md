@@ -3,7 +3,7 @@
 Para onde o nodebuilder vai. A ordem dentro de cada seção é a prioridade atual; não há
 datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebuilderjs/issues).
 
-## Já existe (0.2)
+## Already shipped (0.3)
 
 - Reatividade estilo SolidJS (signals, memos, effects, ownership), JSX próprio, `<For>` e `<Show>`
 - Controle de fluxo completo (2026-10-12): `<Switch>`/`<Match>`, `<Index>` (lista por
@@ -30,6 +30,12 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - `nodebuilder package`: AppImage, `.deb`, `.rpm` e `.tar.gz` (glibc 2.34+)
 - Screenshots without a window or display server (2026-10-12): `nodebuilder screenshot` and
   `screenshot()` in testing (EGL surfaceless + FBO), so agents can look at the UI they build
+- 0.3 (2026-10-12): linear gradients (backgrounds and Canvas), `hoverStyle`/`pressStyle`/
+  `createInteraction`, `zIndex`, `alignSelf`, `right`/`bottom`, custom title bars
+  (`decorations={false}`, `dragRegion`, `WindowControls`), font weights, italics, letter
+  spacing, `underline`, font fallback and color emoji, `<Icon fill>`, `nodebuilder icons add`,
+  overflow warnings, frame tracing (`NB_TRACE=frames`) and testing helpers (`findByLabel`,
+  `layoutWarnings`, `useRealTextMetrics`, `screenshot`)
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 
 ## Onde estamos (benchmarks de 2026-10-11)
