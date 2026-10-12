@@ -14,6 +14,8 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - `onPointerMove` e `interact()` para testar mouse e teclado sem janela
 - `createContext`/`useContext`, `ref` (foco, rolagem e caixa do layout) e `onResize`
 - `<Overlay>` (diálogos modais, menus ancorados, dicas), `opacity` e `translateX`/`translateY`
+- Rolagem completa: barras que se arrastam e paginam, `<Scroll horizontal>` e nos dois eixos,
+  Shift+roda, PageUp/PageDown/Home/End/setas, `scrollTo({ x, y })` e `scrollIntoView()`
 - Área de transferência do sistema (texto, Wayland e X11): `clipboard`, colar no `TextField`,
   `<Text selectable>` para selecionar e copiar texto fixo
 - `bun create nodebuilderjs` gera o app com `AGENTS.md` e skills para agentes (`.agents/skills`)

@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Show, theme), contexto (createContext), ref (focar, rolar, medir), onResize, overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
+description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Show, theme), rolagem (vertical, horizontal, barras, teclado, scrollIntoView), contexto (createContext), ref (focar, rolar, medir), onResize, overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
 ---
 
 # Interface com nodebuilder
@@ -14,7 +14,7 @@ props planas. Reatividade estilo SolidJS: **só funções são reativas** (veja 
 |---|---|---|
 | `Window` | raiz, uma por app, com barra de título própria | `title`, `width`, `height` (tamanho inicial), `appId`, `onClose` (retorne `false` para não fechar) |
 | `Column` / `Row` / `Box` | contêiner flex (coluna, linha; `Box` é coluna) | estilo + eventos |
-| `Scroll` | coluna com rolagem vertical | precisa de `grow={1}` ou `height`; filhos podem ser maiores |
+| `Scroll` | rolagem: vertical (padrão), `horizontal` ou `horizontal vertical` (os dois) | precisa de `grow={1}` ou um tamanho; veja "Rolagem" abaixo |
 | `Text` | texto; quebra linha nos espaços para caber na largura | filhos (`{count}`, `"a"`) ou `text={() => ...}`, `wrap` (padrão `true`), `maxLines` (corta com "…"), `textAlign`, `lineHeight`, `selectable` |
 | `Image` | PNG, JPEG, WebP, AVIF | veja a skill `nodebuilder-imagens` |
 | `Icon` | ícone SVG (Lucide, Phosphor), cor herdada como texto | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icones` |
@@ -52,9 +52,10 @@ const [nome, setNome] = createSignal("");
 - Qualquer prop aceita valor fixo ou função: `background={() => (sel() ? a : b)}`.
 - `onResize={(s) => ...}`: tamanho do nó (`s.width`, `s.height`) depois do layout, na primeira
   vez e quando muda. Use para adaptar a tela à largura disponível.
-- `ref={(el) => ...}` em qualquer widget: `el.focus()`, `el.blur()`, `el.scrollTo(y)` (num
-  `Scroll`) e `el.x`/`y`/`width`/`height` do último layout. É chamado na criação, antes do
-  layout: guarde o `el` e leia a caixa depois (num clique, por exemplo).
+- `ref={(el) => ...}` em qualquer widget: `el.focus()`, `el.blur()`, `el.scrollIntoView()`,
+  num `Scroll` `el.scrollTo(y)` / `el.scrollTo({ x, y })` e `el.scrollX`/`el.scrollY`, e
+  `el.x`/`y`/`width`/`height` do último layout. É chamado na criação, antes do layout:
+  guarde o `el` e leia a caixa depois (num clique, por exemplo).
 
 ## Contexto, ref e tamanho
 
@@ -74,7 +75,7 @@ const [usuario, setUsuario] = createSignal("Ana");
 // Focar um campo ao abrir e rolar uma lista até o fim.
 const [busca, setBusca] = createSignal("");
 let lista: ElementRef | undefined;
-<Column grow={1} minHeight={0}>
+<Column grow={1}>
   <TextField ref={(el) => el.focus()} value={busca} onInput={setBusca} />
   <Scroll ref={(el) => (lista = el)} grow={1}>{/* ... */}</Scroll>
 </Column>;
@@ -85,6 +86,45 @@ const irParaOFim = () => lista?.scrollTo(Infinity);
   um accessor (signal) e chame-o dentro de uma função reativa, como acima.
 - `useContext` só funciona no corpo do componente (não dentro de um `onClick` ou `setTimeout`):
   leia lá e guarde numa variável.
+
+## Rolagem
+
+```tsx
+import { Button, Card, For, Row, Scroll, Text } from "@nodebuilderjs/core";
+import type { ElementRef } from "@nodebuilderjs/core";
+
+const itens = Array.from({ length: 200 }, (_, i) => `Item ${i}`);
+const linhas: ElementRef[] = [];
+<>
+  {/* Faixa que rola para o lado: os filhos mantêm a largura. */}
+  <Scroll horizontal gap={12} padding={[0, 0, 14, 0]}>
+    <For each={itens}>{(t) => <Card width={160}><Text>{t}</Text></Card>}</For>
+  </Scroll>
+  <Button label="Ir para o 150" onClick={() => linhas[150]?.scrollIntoView()} />
+  <Scroll grow={1}>
+    <For each={itens}>{(t, i) => <Row ref={(el) => (linhas[i()] = el)} padding={8}><Text>{t}</Text></Row>}</For>
+  </Scroll>
+  {/* Tabela larga e longa: rola nos dois eixos. */}
+  <Scroll horizontal vertical height={300}>{/* linhas com larguras fixas */}</Scroll>
+</>;
+```
+
+- `<Scroll>` rola na vertical. `horizontal`: uma linha cujos filhos mantêm a largura (texto
+  dentro não quebra, a não ser com `width`/`maxWidth`). `horizontal vertical`: uma coluna
+  que rola nos dois eixos; cada filho tem pelo menos a largura visível e cresce se o
+  conteúdo pedir.
+- O usuário rola com a roda (Shift+roda vai para o lado; touchpad nos dois eixos), arrastando
+  o polegar da barra, clicando na trilha (uma página) e pelo teclado: PageUp/PageDown,
+  Home/End e as setas rolam o `Scroll` em volta do elemento focado (sem foco, o que está sob
+  o mouse), se nenhum `onKeyDown` chamar `e.stop()`. O `TextField` fica com Home/End e ←/→;
+  ↑/↓ rolam.
+- As barras ficam **por cima** do conteúdo, numa faixa de 14 px na borda direita (e na de
+  baixo), e só existem quando há o que rolar: deixe `padding` nessa borda se houver botões
+  encostados nela (como o `padding={[0, 0, 14, 0]}` acima).
+- `el.scrollIntoView()` (em qualquer elemento, pelo `ref`) rola os `Scroll` em volta o mínimo
+  para ele aparecer; vale no próximo frame, mesmo para um elemento recém-criado ou fora da
+  tela. `el.scrollTo({ x, y })` aceita só um dos eixos.
+- Um `<Overlay modal>` aberto bloqueia a roda, as teclas e as barras do que está atrás.
 
 ## Diálogos, menus e dicas: `<Overlay>`
 
@@ -143,7 +183,9 @@ let botao: ElementRef | undefined;
 - Um filho **não encolhe abaixo do próprio conteúdo** (como `min-size: auto` do CSS), exceto
   `Scroll`, `clip` ou `minWidth/minHeight` explícito. Lista longa dentro de uma coluna
   que cresce sem parar? Envolva em `<Scroll grow={1}>`.
-- Para um `Scroll` dentro de uma coluna com `grow`, a coluna também precisa de `minHeight={0}`.
+- O conteúdo de um `Scroll` não conta nesse mínimo: a coluna (ou linha) em volta dele
+  encolhe sem precisar de `minHeight={0}`/`minWidth={0}`. Um `Scroll horizontal` não
+  perde altura (só o que rola na vertical cede altura).
 - Numa `Row` sem espaço, quem tem `grow` encolhe primeiro: o texto longo vai com
   `grow={1}` (e `maxLines={1}` para virar "…"), os rótulos curtos ao lado ficam inteiros.
 - Texto quebra sozinho na largura que recebe (`\n` também quebra); palavra maior que a linha

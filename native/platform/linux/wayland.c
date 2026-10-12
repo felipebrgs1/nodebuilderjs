@@ -184,8 +184,11 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t serial, uint3
   nb_push_event(&e);
 }
 
+static int current_mods(void);
+
 static void pointer_axis(void *d, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t value) {
-  nb_event e = {.type = NB_EV_SCROLL, .x = S.px, .y = S.py};
+  // Modifiers too: Shift turns a vertical wheel into horizontal scrolling.
+  nb_event e = {.type = NB_EV_SCROLL, .x = S.px, .y = S.py, .mods = current_mods()};
   if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) e.dy = wl_fixed_to_double(value);
   else e.dx = wl_fixed_to_double(value);
   nb_push_event(&e);

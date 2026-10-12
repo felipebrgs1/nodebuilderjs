@@ -37,7 +37,7 @@ typedef struct {
   int width, height, scale;
   bool maximized, activated, focused, repeat;
   bool transparent;  // window can show see-through (rounded) corners
-  int mods;
+  int mods;        // NB_MOD_* held during a key or scroll event
   char key[64];    // xkb keysym name, e.g. "Return", "a", "BackSpace"
   char text[32];   // UTF-8 produced by the key (after compose / dead keys)
   char *data;      // malloc'd payload (NB_EV_CLIPBOARD text, NULL = empty); the core frees it

@@ -2,7 +2,7 @@
 // binds props to them; there is no special widget base class.
 
 export { type BoxProps, type StyleProps, applyProps } from "./props.js";
-export { Box, Card, Column, Divider, Row, Scroll, Spacer } from "./containers.js";
+export { Box, Card, Column, Divider, Row, Scroll, type ScrollProps, Spacer } from "./containers.js";
 export { Text, type TextAlign } from "./text.js";
 export { Image, type ImageFit } from "./image.js";
 export { Icon, type IconInput } from "./icon.js";

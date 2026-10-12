@@ -95,8 +95,15 @@ conteúdo, a menos que seja rolável, recorte o conteúdo (`clip`) ou tenha `min
 `minHeight` explícito. Para texto que quebra, "o próprio conteúdo" na largura é a palavra
 mais longa (com `maxLines`, o "…"). Numa linha sem espaço, os filhos com `grow` encolhem
 primeiro e só depois os outros, proporcionalmente; é diferente do CSS, que encolhe todos
-juntos e faz um rótulo curto ao lado de um texto longo quebrar. `Scroll` é uma coluna rolável
-com `minHeight: 0`.
+juntos e faz um rótulo curto ao lado de um texto longo quebrar.
+
+O que rola não segura quem está em volta: o mínimo de um nó (`minWidth` para linhas,
+`minHeightAt` para colunas) ignora o conteúdo de descendentes que rolam ou recortam, então
+uma coluna com um `Scroll grow={1}` dentro encolhe sem `minHeight={0}` (no CSS isso pede
+`min-height: 0`). Na altura, só quem rola na vertical (ou recorta) cede; um `Scroll
+horizontal` mantém a altura. Saber se uma subárvore pode encolher (`shrinks()`) só é
+perguntado quando uma linha ou coluna precisa encolher, com cache por layout, então o frame
+comum não paga por isso.
 
 **Altura que depende da largura.** Texto que quebra muda de altura conforme a largura, então
 o tamanho vem em dois passos. `intrinsic(node)` dá o tamanho natural (texto no menor número de
@@ -125,6 +132,52 @@ O tamanho natural de todos os filhos ainda é calculado a cada frame, porque a a
 conteúdo depende deles; cada `Text` guarda a última medida (texto, tamanho, negrito) para
 isso não custar uma ida ao cache global. O layout incremental está no
 [roadmap](ROADMAP.md).
+
+### Rolagem
+
+Um nó rola na vertical (`scrollable`), na horizontal (`scrollableX`) ou nos dois. `<Scroll>`
+é uma coluna que rola na vertical; `<Scroll horizontal>`, uma linha que rola na horizontal;
+`<Scroll horizontal vertical>`, uma coluna nos dois. No eixo em que rola, o nó não encolhe
+os filhos (eixo principal) e, no eixo cruzado, dá a cada filho pelo menos o espaço visível
+sem espremê-lo abaixo do conteúdo (`floor` em `crossSize`, como o shrink-to-fit do CSS): numa
+grade nos dois eixos, uma linha de tabela fica com a largura natural e um parágrafo quebra
+na largura visível. `place()` mede `contentWidth`/`contentHeight` (filhos + padding),
+limita `scrollX`/`scrollY` ao conteúdo e desloca os filhos; o culling já era nos dois eixos.
+
+`render/scrollbar.ts` é a geometria das barras, usada pela pintura e pelo input:
+`overflows`, `scrollTo`/`scrollBy` (limitados) e `scrollbar(n, eixo)` com a faixa que pega o
+ponteiro e a trilha e o polegar. As barras são desenhadas por cima do conteúdo (como no GTK
+e no macOS) e não ocupam espaço no layout; com as duas, cada uma para antes do canto. Sob o
+ponteiro, ou arrastada, a barra engrossa e mostra a trilha (`UINode.activeScrollbar`, que o
+input marca e a pintura lê; cores e tamanhos em `theme.scrollbar`).
+
+No input, o hit test devolve o próprio nó rolável quando o ponto está na faixa de uma barra
+que tem o que rolar (14 px na borda): o conteúdo embaixo não recebe hover nem clique, mas
+sem conteúdo para rolar não há faixa. Apertar o polegar começa um arraste com captura (a
+posição segue o ponteiro na proporção conteúdo/trilha, mesmo fora da barra); apertar a
+trilha avança uma página (87,5% da área visível). Apertar a barra não muda o foco. A roda
+entrega cada eixo ao ancestral mais próximo que rola naquele eixo e tem o que rolar (o
+touchpad rola os dois de uma vez); com Shift, a roda vertical vira horizontal (o C manda os
+modificadores no evento de rolagem). Teclas que nenhum `onKeyDown` parou rolam o `Scroll` em
+volta do foco, ou sob o ponteiro: setas 40 px, PageUp/PageDown uma página, Home/End até a
+ponta. A cadeia de quem pode rolar para numa camada modal, então nem a roda nem as teclas
+chegam ao que está atrás de um `<Overlay modal>`, mesmo que o foco tenha ficado lá atrás.
+
+`scrollIntoView()` só marca o nó (`revealRequests`); o `layout()` seguinte resolve, depois de
+posicionar a árvore. Um descendente de nó `culled` tem caixa velha, então antes o layout
+reposiciona o ancestral `culled` mais externo sem região visível (e repete para quem recorta
+dentro dele) até a caixa do nó valer. Depois rola cada `Scroll` em volta, de dentro para
+fora, o mínimo para mostrá-lo (o começo dele, se não couber), e posiciona tudo de novo com
+as posições novas. Isso custa um segundo `place()` só nos frames com pedido pendente. A
+subida para no overlay: um elemento num `<Overlay>` não rola o que está atrás da camada.
+
+Medido em 2026-10-12, sem janela (tabela de 500 linhas com métricas falsas, `layout()` e
+`paintTree()` 3000 vezes rolando, 5 rodadas alternando com a versão anterior): layout
+0,544–0,585 → 0,558–0,613 ms (mediana 0,560 → 0,572, dentro do ruído), pintura 0,032–0,037
+→ 0,033–0,037 ms, `pointerMove` 0,94–1,06 → 0,80–0,94 µs. O hit test ficou mais rápido
+porque testa a caixa de cada filho antes de descer (uma lista tem muitos filhos fora da
+tela). Calcular a cada frame se cada subárvore pode encolher custava ~7% do layout; por isso
+`shrinks()` só roda quando algo precisa encolher.
 
 ### Overlays
 
@@ -245,7 +298,7 @@ nunca toca em estado compartilhado além de acordar o JS.
 No TypeScript, `runtime/input.ts` transforma os eventos crus em eventos de interface: hit
 test (ignorando nós `culled`), hover com entrada e saída, cursor, bordas de
 redimensionar, foco, clique e duplo clique, captura do ponteiro enquanto um botão está
-pressionado, rolagem e teclado com Tab. O que é janela (mover, redimensionar, cursor,
+pressionado, rolagem (roda, barras e teclas; veja "Rolagem") e teclado com Tab. O que é janela (mover, redimensionar, cursor,
 relógio) passa por uma interface `InputHost`; o `run()` liga isso ao addon, e os testes (e o
 `interact()` de `@nodebuilderjs/core/testing`) usam um host sem janela.
 

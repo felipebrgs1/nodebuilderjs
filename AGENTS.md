@@ -48,7 +48,7 @@ bun run build:native        # compila native/build/<platform>-<arch>/nodebuilder
 bun run typecheck           # tsc 7 --noEmit (~0,1 s)
 bun test                    # todos os testes, sem janela (~0,1 s)
 bun test test/svg.test.tsx  # um arquivo; -t "padrão" filtra pelo nome do teste
-bun run counter | todo | images | icons | drawing | charts | overlays | text   # exemplos
+bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll   # exemplos
 bun run dev                 # todo com --watch
 bun run bench               # stress test com NB_STATS=1 (env: N=1000 MODE=one|all|static)
 bun run bench:dashboard     # app realista (env: TAB=overview|table|logs|settings ROWS=500
@@ -102,7 +102,8 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
 
 - Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `context`, `ref`
   (`ref`, foco e rolagem por código, `onResize`), `overlay`, `style` (`opacity`, `translate`),
-  `text` (quebra de linha, alinhamento, `maxLines`, seleção em várias linhas),
+  `text` (quebra de linha, alinhamento, `maxLines`, seleção em várias linhas), `scroll`
+  (horizontal e dois eixos, barras, roda, teclado, mínimos de quem contém um `Scroll`),
   `input` (eventos),
   `clipboard`, `text-selection`, `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulação), `draw` (primitivas e `shapes.ts`), `canvas` e `charts/`. Assunto novo ganha arquivo novo; quando o `core` crescer, divida-o.
@@ -143,6 +144,7 @@ src/                   um módulo por pasta; imports relativos com `.js`
     layout.ts          flexbox simplificado + culling
     paint.ts           árvore -> CommandBuffer (Float32Array) + parseColor
     shapes.ts          polyline (segmentos LINE) e fillPolygon (triangulação + franja de AA)
+    scrollbar.ts       posição de rolagem limitada e geometria das barras (pintura e input)
     text-wrap.ts       quebra de linha do <Text> (gulosa, nos espaços) e maxLines com "…"
   runtime/
     app.ts             run(): janela, agendamento de frames, NB_STATS; liga o input ao addon
@@ -195,7 +197,7 @@ test/            um arquivo por módulo (bun:test; bunfig.toml limita o bun test
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> comandos com nome
   charts/        testes de src/charts (escalas e cada tipo de gráfico)
   fixtures/      entradas e saídas de referência (.raw, .pnm do djpeg, PNG do librsvg...)
-examples/        counter, todo, images, icons, drawing, charts, overlays, text, bench, dashboard (.tsx) + assets/
+examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, bench, dashboard (.tsx) + assets/
 cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.ts
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces publicados junto com o core (veja "Publicação no npm")
@@ -327,7 +329,18 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica). Op novo tamb�
   `heightAt(node, width)` a altura numa largura. Uma coluna calcula as larguras dos filhos
   antes das alturas; uma linha, o contrário. Widget de medida própria cuja altura muda com a
   largura define `minContentWidth` (sem ele, o layout supõe altura fixa e usa o atalho).
-- `Scroll` = coluna com `scrollable = true` e `minHeight: 0`.
+- `Scroll` = coluna com `scrollable = true` (vertical); `horizontal` = linha com
+  `scrollableX = true`; os dois = coluna com as duas marcas. No eixo em que rola, não encolhe os
+  filhos; no eixo cruzado, cada filho tem pelo menos o espaço visível sem ser espremido abaixo
+  do conteúdo (`floor` em `crossSize`).
+- **O conteúdo de quem rola não conta no mínimo de quem o contém** (`shrinks()`, perguntado só
+  quando algo precisa encolher): coluna com `Scroll grow={1}` dentro encolhe sem
+  `minHeight={0}`. Na altura, só quem rola na vertical (ou recorta) cede.
+- Barras de rolagem: desenhadas por cima do conteúdo, numa faixa de 14 px que só pega o
+  ponteiro quando há o que rolar; o hit test devolve o nó rolável nessa faixa. Geometria em
+  `render/scrollbar.ts`, estado de hover/arraste em `UINode.activeScrollbar`.
+- `scrollIntoView()` é resolvido no `layout()` seguinte (`revealRequests`): reposiciona os
+  ancestrais `culled` antes de usar a caixa do nó, rola e posiciona tudo de novo.
 - **Culling:** `place()` recebe a região visível (estreitada por cada nó com clip/scroll). Filho
   fora dela ganha a caixa mas fica `culled`: subárvore não é posicionada, pintada (`paintTree`)
   nem testada no clique (`hitTest`). Coordenadas de descendentes de um nó `culled` são velhas;
@@ -437,6 +450,9 @@ todos com a versão do `package.json` da raiz:
   (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms, WebP 105–180 ms); sem mipmaps (reduzir
   muito uma imagem serrilha) e sem versão @2x.
 - `opacity` multiplica o alfa de cada comando (não é de grupo); sem `scale`/`rotate`.
+- Rolagem sem inércia nem animação; sem rolagem automática ao arrastar uma seleção até a
+  borda; clique segurado na trilha da barra avança uma página só (sem repetição). Shift+roda
+  depende dos modificadores do evento: no Wayland só valem com a janela em foco de teclado.
 - Sem acessibilidade (AT-SPI), API de animações/transições, tema escuro, multi-janela, IME
   (text-input-v3), DnD, escala fracionária real (KDE 125% renderiza em 2x e reduz).
 - Janela sempre com decoração própria (CSD): barra de título, mover, maximizar,

@@ -4,6 +4,7 @@
 import type { ImageSource } from "../image/source.js";
 
 export type Color = string;
+export type Axis = "x" | "y";
 export type Edges = number | [vertical: number, horizontal: number] | [top: number, right: number, bottom: number, left: number];
 
 export interface Style {
@@ -180,16 +181,23 @@ export interface OverlayOptions {
 /** Every live overlay layer, in creation order (later ones draw above). Each root picks its own in layout(). */
 export const overlayLayers = new Set<UINode>();
 
+/** Nodes waiting for scrollIntoView(); the next layout of their root brings them into view. */
+export const revealRequests = new Set<UINode>();
+
 /** What a `ref` receives: the box from the last layout (window coordinates) and imperative actions. */
 export interface ElementRef {
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
+  readonly scrollX: number;
   readonly scrollY: number;
   focus(): void;
   blur(): void;
-  scrollTo(y: number): void;
+  /** On a Scroll: moves its content to `y`, or to `{ x, y }` (either may be left out). */
+  scrollTo(to: number | { x?: number; y?: number }): void;
+  /** Scrolls the Scrolls around the element as little as needed to show it (on the next layout). */
+  scrollIntoView(): void;
 }
 
 export class UINode implements ElementRef {
@@ -205,6 +213,8 @@ export class UINode implements ElementRef {
   tabStop = true;
   /** Children may overflow vertically and are scrolled by `scrollY`. */
   scrollable = false;
+  /** Children may overflow horizontally and are scrolled by `scrollX`. */
+  scrollableX = false;
   /** Pressing here (outside clickable children) moves the window. */
   dragRegion = false;
   /** Optional intrinsic size (text, custom widgets); `maxWidth` is Infinity for the natural size. */
@@ -221,11 +231,15 @@ export class UINode implements ElementRef {
   y = 0;
   width = 0;
   height = 0;
-  /** Content extent, used by scroll containers. */
+  /** Content extent (children plus padding), used by scroll containers. */
+  contentWidth = 0;
   contentHeight = 0;
+  scrollX = 0;
   scrollY = 0;
   /** Outside the visible area in the last layout: its box is set, its subtree is stale and skipped. */
   culled = false;
+  /** Scrollbar under the pointer or being dragged (set by input, drawn wider by paint). */
+  activeScrollbar: { axis: Axis; pressed: boolean } | null = null;
 
   constructor(label = "box") {
     this.label = label;
@@ -291,11 +305,26 @@ export class UINode implements ElementRef {
   }
 
   /** Scrolls a scrollable node; layout clamps the position to the content. */
-  scrollTo(y: number) {
-    if (!this.scrollable) return;
-    this.scrollY = Math.max(0, y);
+  scrollTo(to: number | { x?: number; y?: number }) {
+    const { x, y } = typeof to === "number" ? { x: undefined, y: to } : to;
+    if (y !== undefined && this.scrollable) this.scrollY = Math.max(0, y);
+    if (x !== undefined && this.scrollableX) this.scrollX = Math.max(0, x);
     invalidate();
   }
+
+  /**
+   * Done by the next layout, where the boxes are current: even when the node is new, or was
+   * culled (outside the view, its own coordinates are stale).
+   */
+  scrollIntoView() {
+    revealRequests.add(this);
+    invalidate();
+  }
+}
+
+/** Scrolls on some axis (and so clips its children). */
+export function scrolls(n: UINode): boolean {
+  return n.scrollable || n.scrollableX;
 }
 
 export function debugTree(node: UINode, indent = ""): string {

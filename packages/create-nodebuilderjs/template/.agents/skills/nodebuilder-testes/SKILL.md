@@ -35,7 +35,9 @@ test("adiciona uma tarefa", () => {
 - `click(node)`: dispara o `onClick` do nó ou do ancestral mais próximo (atalho rápido).
 - `interact(root)`: mouse e teclado entregues como no app de verdade (hover, foco, captura
   ao arrastar, Tab): `hover(n)`, `press(n)`, `release(n)`, `drag(n, dx, dy)`, `move(x, y)`,
-  `scroll(n, dy)`, `key("Return")`, `key("c", { ctrl: true })`, `type("texto")` e `focused`.
+  `down(x, y)`/`up(x, y)` (botão numa posição da janela, ex.: na barra de rolagem),
+  `scroll(n, dy, { dx, shift })`, `key("Return")`, `key("c", { ctrl: true })`,
+  `type("texto")`, `focused` e `cursor` (o cursor que a janela mostraria).
 
 ```tsx
 const ui = interact(root);
@@ -48,6 +50,9 @@ ui.drag(slider, 80, 0);     // arrasta 80 px para a direita
 - `ref={(el) => el.focus()}` (foco ao criar) vale num microtask: crie o `interact(root)` e
   faça `await Promise.resolve()` antes de digitar. `onResize` dispara a cada `relayout()`
   em que o tamanho mudou.
+- Rolagem: `n.scrollY`/`n.scrollX` dizem a posição; `ui.scroll(n, 60)` usa a roda,
+  `ui.key("Next")` (PageDown; PageUp é `"Prior"`) o teclado. `scrollTo` e `scrollIntoView()`
+  valem no próximo layout: chame `relayout()` antes de conferir.
 - Overlays são posicionados no layout: depois de abrir ou fechar um, chame `relayout()`.
   O conteúdo fica em `root.layers` (não em `root.children`); `findByText(root, ...)` busca
   nos dois.

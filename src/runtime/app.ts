@@ -214,7 +214,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
         input.pointerUp(ev.x, ev.y, ev.button);
         break;
       case "scroll":
-        input.scroll(ev.x, ev.y, ev.dx, ev.dy);
+        input.scroll(ev.x, ev.y, ev.dx, ev.dy, ev.shift);
         break;
       case "keydown":
         input.keyDown(ev);

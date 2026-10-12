@@ -25,6 +25,9 @@ nem Solid**. O JSX parece o de sempre, mas os elementos são os widgets do
 | `cond && <X/>` | `<Show when={() => cond()}><X/></Show>` |
 | `createContext` / `useContext` | iguais: `createContext(padrão)`, `<Ctx.Provider value={...}>`, `useContext(Ctx)`; valor que muda vai como accessor |
 | `useRef` + `ref={r}` / `el.focus()` | `ref={(el) => ...}` em qualquer widget: `el.focus()`, `el.blur()`, `el.scrollTo(y)`, `el.width` |
+| `overflow-y: auto` / `overflow-x: auto` / `overflow: auto` | `<Scroll>` / `<Scroll horizontal>` / `<Scroll horizontal vertical>` (com `grow={1}` ou um tamanho) |
+| `el.scrollIntoView()`, `el.scrollTo({ left, top })`, `scrollLeft`/`scrollTop` | `el.scrollIntoView()` (rola o mínimo, no próximo frame), `el.scrollTo({ x, y })`, `el.scrollX`/`el.scrollY` |
+| `min-height: 0` / `min-width: 0` em volta de quem rola | desnecessário: o conteúdo de um `Scroll` não segura o tamanho de quem o contém |
 | `ResizeObserver`, media queries | `onResize={(s) => setLargura(s.width)}` + signal |
 | `createPortal`, `position: fixed`, `z-index`, modal/dropdown/tooltip de biblioteca | `<Overlay>` (`modal`, `anchor={() => el}`, `onDismiss`); skill `nodebuilder-ui` |
 | CSS `opacity`, `transform: translate(...)` | props `opacity`, `translateX`, `translateY` (sem `scale`/`rotate`) |

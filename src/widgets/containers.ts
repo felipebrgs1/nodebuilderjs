@@ -33,12 +33,30 @@ export function Spacer(props: { size?: number }) {
   return node;
 }
 
-/** Vertically scrolling column. Give it `grow` or a fixed height. */
-export function Scroll(props: BoxProps) {
-  const node = Column(props);
-  node.label = "Scroll";
-  node.scrollable = true;
-  node.style.minHeight ??= 0;
+export type ScrollProps = BoxProps & {
+  /** Scrolls sideways. Alone, the Scroll is a row whose children keep their width. */
+  horizontal?: boolean;
+  /** Scrolls up and down (the default; with `horizontal`, both ways in a column). */
+  vertical?: boolean;
+};
+
+/**
+ * Scrolling container: a column that scrolls vertically, a row that scrolls horizontally
+ * (`horizontal`) or a column that scrolls both ways (`horizontal vertical`). Give it `grow`
+ * or a fixed size.
+ */
+export function Scroll(props: ScrollProps) {
+  const x = !!props.horizontal;
+  const y = props.vertical ?? !x;
+  const node = new UINode("Scroll");
+  // Before applyProps: a `ref` that scrolls right away needs the node to be scrollable.
+  node.scrollable = y;
+  node.scrollableX = x;
+  node.style.direction = x && !y ? "row" : "column";
+  if (y) node.style.minHeight = 0;
+  if (x) node.style.minWidth = 0;
+  applyProps(node, props);
+  insert(node, props.children);
   return node;
 }
 

@@ -102,6 +102,7 @@ static napi_value event_to_js(napi_env env, const nb_event *e) {
       set_num(env, o, "y", e->y);
       set_num(env, o, "dx", e->dx);
       set_num(env, o, "dy", e->dy);
+      set_bool(env, o, "shift", e->mods & NB_MOD_SHIFT);
       break;
     case NB_EV_KEY_DOWN:
     case NB_EV_KEY_UP:
