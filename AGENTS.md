@@ -106,7 +106,8 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
   `error-boundary` (erros, fila de effects), `context`, `ref`
   (`ref`, foco e rolagem por código, `onResize`), `overlay`, `style` (`opacity`, `translate`),
   `text` (quebra de linha, alinhamento, `maxLines`, seleção em várias linhas), `controls`
-  (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `scroll`
+  (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `popups`
+  (`Select`, `Tabs`, `Tooltip`, `Dialog`), `scroll`
   (horizontal e dois eixos, barras, roda, teclado, mínimos de quem contém um `Scroll`),
   `input` (eventos),
   `clipboard`, `text-selection`, `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
@@ -162,6 +163,8 @@ src/                   um módulo por pasta; imports relativos com `.js`
     containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
     text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
     toggle.ts radio.ts slider.ts progress.ts   controles (Toggle, RadioGroup, Slider, ProgressBar/Spinner)
+    select.ts tabs.ts tooltip.ts dialog.ts     sobre o Overlay (Tabs não abre nada, mas usa roving.ts)
+    roving.ts          grupo com uma parada do Tab e setas (RadioGroup, Tabs)
     overlay.ts         <Overlay>: camada acima da janela (marcador na árvore + root.layers)
     text-selection.ts  posições de caracteres, palavra sob o clique (Text selectable; TextField)
   image/
@@ -264,6 +267,9 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
 - **Ao adicionar um campo em `Style`**, inclua-o também em `STYLE_KEYS` (`widgets/props.ts`);
   handlers novos vão em `Handlers` (`render/node.ts`) e `HANDLER_KEYS`.
 - Herdáveis via árvore: `color`, `fontSize`, `bold` (função `inherited`).
+- Widget que abre algo por cima devolve `[nó, <Show><Overlay>]` (o `Overlay` fica fora do nó,
+  para os eventos da lista não subirem pelo gatilho); o gatilho guarda o foco e trata as teclas
+  enquanto está aberto.
 - Controle novo aceita `disabled` via `disableable(node, props)` (`widgets/props.ts`): esmaece,
   tira do foco e do Tab e troca o cursor; os handlers do controle checam o accessor devolvido.
   Teclas que o controle usa (setas no `Slider`) chamam `e.stop()`, senão rolam o `Scroll` em volta.

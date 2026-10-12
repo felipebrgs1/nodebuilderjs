@@ -6,6 +6,7 @@ import { type Style, UINode } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, read, untrack } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
+import { rovingFocus } from "./roving.js";
 import { Text } from "./text.js";
 
 export interface Choice<T> {
@@ -54,31 +55,18 @@ export function RadioGroup<T>(
     return { row, option, disabled, pick };
   });
 
-  // One Tab stop: the selected option, or the first enabled one.
-  createEffect(() => {
-    const value = props.value();
-    const current = items.find((i) => Object.is(i.option.value, value) && !i.disabled()) ?? items.find((i) => !i.disabled());
-    for (const i of items) i.row.tabStop = i === current;
-  });
-
-  const move = (from: number, step: number) => {
-    for (let k = 1; k <= items.length; k++) {
-      const next = items[(from + step * k + items.length * k) % items.length]!;
-      if (next.disabled()) continue;
-      next.pick();
-      next.row.focus();
-      return;
-    }
-  };
-  items.forEach((item, index) => {
+  for (const item of items) {
     item.row.handlers.onKeyDown = (e) => {
-      if (e.key === "space" || e.key === "Return" || e.key === "KP_Enter") item.pick();
-      else if (e.key === "Down" || e.key === "Right") move(index, 1);
-      else if (e.key === "Up" || e.key === "Left") move(index, -1);
-      else return;
+      if (e.key !== "space" && e.key !== "Return" && e.key !== "KP_Enter") return;
+      item.pick();
       e.stop();
     };
-  });
+  }
+  rovingFocus(
+    items.map((i) => ({ node: i.row, disabled: i.disabled, select: i.pick })),
+    () => items.findIndex((i) => Object.is(i.option.value, props.value())),
+    { next: ["Down", "Right"], prev: ["Up", "Left"] },
+  );
   untrack(() => group.setSlot(group.addSlot(), items.map((i) => i.row)));
   return group;
 }

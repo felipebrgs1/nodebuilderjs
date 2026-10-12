@@ -184,6 +184,13 @@ export const overlayLayers = new Set<UINode>();
 /** Nodes waiting for scrollIntoView(); the next layout of their root brings them into view. */
 export const revealRequests = new Set<UINode>();
 
+/** The element with the keyboard focus in `node`'s window (null outside a window or without focus). */
+export function focusedElement(node: UINode): UINode | null {
+  let n = node;
+  while (n.parent) n = n.parent;
+  return (n.isRoot && n.focusHost?.focused) || null;
+}
+
 /** What a `ref` receives: the box from the last layout (window coordinates) and imperative actions. */
 export interface ElementRef {
   readonly x: number;

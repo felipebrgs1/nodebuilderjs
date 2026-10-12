@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), rolagem (vertical, horizontal, barras, teclado, scrollIntoView), contexto (createContext), ref (focar, rolar, medir), onResize, overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
+description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), rolagem (vertical, horizontal, barras, teclado, scrollIntoView), contexto (createContext), ref (focar, rolar, medir), onResize, overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
 ---
 
 # Interface com nodebuilder
@@ -25,6 +25,10 @@ props planas. Reatividade estilo SolidJS: **só funções são reativas** (veja 
 | `Toggle` | interruptor liga/desliga (`Switch` é o controle de fluxo) | `checked` (accessor), `onChange(ligado)`, `label`, `disabled` |
 | `RadioGroup` | uma opção entre várias; uma parada do Tab, setas trocam | `value` (accessor), `onChange(v)`, `options=[{ value, label, disabled? }]`, `disabled` |
 | `Slider` | número arrastando ou com setas/PageUp/Home/End | `value` (accessor), `onChange(n)`, `min` (0), `max` (100), `step` (1), `width` (200), `disabled` |
+| `Select` | lista suspensa ancorada no campo; teclado completo | `value` (accessor, pode ser `undefined`), `onChange(v)`, `options=[{ value, label, disabled? }]`, `placeholder`, `width`, `disabled` |
+| `Tabs` | barra de abas (o conteúdo é seu, com `<Switch>`) | `value` (accessor), `onChange(v)`, `tabs=[{ value, label, disabled? }]` |
+| `Tooltip` | dica ao parar o ponteiro sobre o filho | `text`, `placement` (`"top"`), `delay` (500 ms), filho |
+| `Dialog` | diálogo modal pronto: título, corpo, ações | `open` (accessor), `onClose`, `title`, `actions`, `width` (420), `dismissible` (true) |
 | `ProgressBar` | barra de progresso, 6 px | `value` de 0 a 1 (sem ele: indeterminada) |
 | `Spinner` | ocupado, sem medida | `size` (20), `color` |
 | `Card` | coluna com fundo, borda, raio 12, padding 16, gap 8 | estilo |
@@ -177,6 +181,10 @@ const linhas: ElementRef[] = [];
 - Um `<Overlay modal>` aberto bloqueia a roda, as teclas e as barras do que está atrás.
 
 ## Diálogos, menus e dicas: `<Overlay>`
+
+Para os casos comuns use os widgets prontos (`Dialog`, `Select`, `Tooltip`), que já tratam
+foco, teclado e fechar. O `<Overlay>` é para o que eles não cobrem (menu de opções, toast,
+popover próprio):
 
 Nada de `zIndex` nem `position: fixed`: o que precisa ficar por cima de tudo (fora do
 recorte de um `Scroll` ou `Card`) vai num `<Overlay>`, quase sempre dentro de um `<Show>`.

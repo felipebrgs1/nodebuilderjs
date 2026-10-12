@@ -51,8 +51,8 @@ código como o Claude Code.
 - **Estilo são props, não CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
   `radius`, `color`, `fontSize`... O layout é flexbox.
 - **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
-  `Button`, `TextField`, `Checkbox`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`,
-  `Card`, `Divider`, `Spacer`, além de `<For>`/`<Index>`,
+  `Button`, `TextField`, `Checkbox`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`,
+  `Tooltip`, `Dialog`, `ProgressBar`, `Spinner`, `Card`, `Divider`, `Spacer`, além de `<For>`/`<Index>`,
   `<Show>`/`<Switch>` e `<ErrorBoundary>` para listas, condições e erros, e de
   `createContext` para valores compartilhados pela árvore.
 
@@ -298,6 +298,37 @@ const [volume, setVolume] = createSignal(40);
 - `Toggle` é o interruptor liga/desliga: o nome `Switch` já é do controle de fluxo.
 - `Spinner` gira enquanto está na tela (`size`, `color`).
 
+```tsx
+import { Button, Dialog, Match, Select, Switch, Tabs, Text, Tooltip, createSignal } from "@nodebuilderjs/core";
+
+const [cidade, setCidade] = createSignal<string | undefined>(undefined);
+const [aba, setAba] = createSignal("geral");
+const [confirmar, setConfirmar] = createSignal(false);
+<Select value={cidade} onChange={setCidade} placeholder="Cidade" options={[
+  { value: "poa", label: "Porto Alegre" },
+  { value: "sp", label: "São Paulo" },
+]} />;
+<Tabs value={aba} onChange={setAba} tabs={[{ value: "geral", label: "Geral" }, { value: "conta", label: "Conta" }]} />;
+<Switch>
+  <Match when={() => aba() === "geral"}><Text>Geral</Text></Match>
+  <Match when={() => aba() === "conta"}><Text>Conta</Text></Match>
+</Switch>;
+<Tooltip text="Apaga para sempre"><Button label="Excluir" onClick={() => setConfirmar(true)} /></Tooltip>;
+<Dialog open={confirmar} onClose={() => setConfirmar(false)} title="Excluir arquivo?"
+  actions={<Button label="Excluir" variant="danger" onClick={() => setConfirmar(false)} />}>
+  <Text>Esta ação não pode ser desfeita.</Text>
+</Dialog>;
+```
+
+- `Select`: a lista abre embaixo (ou em cima, se não couber) com a largura do campo; setas
+  movem o destaque, Enter escolhe, Esc fecha. O foco fica no campo.
+- `Tabs` é só a barra (uma parada do Tab, setas trocam); o conteúdo de cada aba é seu, com
+  `<Switch>`/`<Show>`.
+- `Tooltip` aparece depois de `delay` ms (500) com o ponteiro parado, do lado `placement`
+  (`"top"`); some ao sair ou clicar.
+- `Dialog` é um `<Overlay modal>` pronto: foca o primeiro controle ao abrir e devolve o foco
+  ao fechar; Esc e o fundo chamam `onClose` (`dismissible={false}` desliga).
+
 ### Texto
 
 `<Text>` quebra linha nos espaços para caber na largura que recebe, como na web; `\n` sempre
@@ -493,6 +524,8 @@ Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#me
 - Campo de texto sem seleção, cópia e desfazer (colar funciona).
 - SVG só no subconjunto para ícones (sem gradientes, texto, filtros); AVIF/HEIC dependem da
   `libheif` do sistema.
+- `Dialog`, `Select` e `Tooltip` abrem e fecham sem transição (a API de animações é o
+  próximo passo).
 - `ProgressBar` indeterminada e `Spinner` pedem um frame atrás do outro enquanto aparecem
   (CPU baixa, mas não zero); esconda-os quando a espera acabar.
 - Sem API de animações (dá para animar `opacity`/`translate` com `requestAnimationFrame`),

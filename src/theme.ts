@@ -13,6 +13,9 @@ export const theme = {
   focusRing: "#3584e480",
   selection: "#3584e44d",
   divider: "#0000001a",
+  tooltip: { background: "#1f1f24eb", text: "#ffffff" },
+  /** Dims what is behind a modal dialog. */
+  backdrop: "#00000059",
   /** Opacity of disabled controls. */
   disabledOpacity: 0.45,
   /** Overlay scrollbars: a thin thumb that widens (to `hoverSize`) under the pointer. */

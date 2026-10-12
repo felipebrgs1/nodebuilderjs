@@ -22,6 +22,7 @@ nem Solid**. O JSX parece o de sempre, mas os elementos são os widgets do
 | `div`, `span`, `p`, `h1` | `Column`, `Row`, `Box`, `Text fontSize={24} bold` |
 | `onChange` de input | `TextField value={v} onInput={setV}` |
 | `<input type="range">`, `type="radio"`, switch do MUI, `<progress>` | `Slider`, `RadioGroup`, `Toggle`, `ProgressBar`/`Spinner` |
+| `<select>`, Dialog/Modal, Tabs, Tooltip (MUI, Radix, shadcn) | `Select`, `Dialog`, `Tabs` (+ `<Switch>` para o conteúdo), `Tooltip` |
 | `disabled` em input/botão | `disabled` em qualquer controle (valor ou função) |
 | `list.map(...)` em JSX | `<For each={list}>{(item) => ...}</For>` |
 | `list.map((x, i) => ...)` com `key={i}` (lista de primitivos) | `<Index each={list}>{(item, i) => ...}</Index>`; `item` é accessor (`item()`), `i` é número |

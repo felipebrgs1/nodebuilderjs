@@ -16,3 +16,7 @@ export { ProgressBar, Spinner } from "./progress.js";
 export { TextField } from "./text-field.js";
 export { Window } from "./window.js";
 export { Overlay } from "./overlay.js";
+export { Select } from "./select.js";
+export { Tabs } from "./tabs.js";
+export { Tooltip } from "./tooltip.js";
+export { Dialog } from "./dialog.js";
