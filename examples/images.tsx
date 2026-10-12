@@ -1,7 +1,7 @@
-// The <Image> widget: natural size, aspect ratio, fit modes, rounded corners and opacity.
+// The <Image> widget: natural size, aspect ratio, fit modes, a Grid of square covers, rounded corners and opacity.
 // `with { type: "file" }` makes `bun build --compile` (and so `nodebuilder package`) embed the
 // file; the import is its path, which works both in development and in the executable.
-import { Button, Card, Column, Image, Row, Scroll, Text, Window, createSignal, run, theme } from "@nodebuilderjs/core";
+import { Button, Card, Column, Grid, Image, Row, Scroll, Text, Window, createSignal, run, theme } from "@nodebuilderjs/core";
 import logo from "./assets/logo.png" with { type: "file" };
 import photo from "./assets/plasma.png" with { type: "file" };
 import photoJpeg from "./assets/photo.jpg" with { type: "file" };
@@ -47,6 +47,15 @@ function App() {
               </Column>
             ))}
           </Row>
+        </Card>
+        <Card gap={12}>
+          <Text bold>Grid of square covers</Text>
+          {/* Equal columns that follow the window width; aspectRatio keeps every cover square. */}
+          <Grid columns={6} gap={8}>
+            {[...FORMATS, ...FORMATS, ...FORMATS].map((f) => (
+              <Image src={f.src} aspectRatio={1} fit="cover" radius={8} />
+            ))}
+          </Grid>
         </Card>
         <Card gap={12}>
           <Text bold>Modos de ajuste (fit)</Text>

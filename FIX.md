@@ -65,34 +65,6 @@ keeps being the default. Document the trade-off (real metrics depend on installe
 
 ## B. Layout
 
-### B2. `Grid` and equal columns (report item 3) - small
-
-**API:** `<Grid columns={4} gap={8} rowGap={8}>{items}</Grid>`: children flow into rows
-of `columns` equal-width cells (each cell `width={0} grow={1}`); last row keeps empty
-cells so widths stay equal. Reactive children (`<For>`) supported.
-
-**Implementation:** `src/widgets/grid.ts` on top of Column/Row: collects resolved children
-(`render(child)`, see "Build, then collect" in AGENTS.md) and chunks them in a memo; or,
-better for `<For>`, a layout-level `direction: "grid"` with `columns` in `layout.ts`
-(place children in cells; height of a row = max of its cells' `heightAt(cellWidth)`).
-Prefer the layout version: no re-chunking on list changes, and `<For>` stays keyed.
-
-**Tests:** 4 columns in 400px with gap 8 -> each 94px; 5 children -> 2 rows, the fifth at
-x=0; wrapping text in one cell grows only its row; `<For>` adding an item reflows.
-
-### B3. `aspectRatio` (report item 3) - small/medium
-
-**API:** `aspectRatio?: number` (width / height). Square covers that follow the width:
-`<Box aspectRatio={1}>`.
-
-**Implementation:** `Style` + `STYLE_KEYS`; in `layout.ts`, `heightAt(node, w)` returns
-`w / aspectRatio` when height is not fixed; mark the node as width-dependent (like wrapping
-text, via `minContentWidth` or an equivalent flag) so the column path computes widths first.
-In a row with fixed height and no width, `intrinsic().width = height * aspectRatio`.
-
-**Tests:** in a 300px column (stretch) -> 300x300; with `grow` in a row of fixed height ->
-width follows; min/max still clamp; inside `Grid` cells -> square cells.
-
 ### B4. `wrap` on Row (report item 2) - medium
 
 **API:** `wrap?: boolean` on Row (and Column): children that don't fit start a new line;
@@ -204,6 +176,6 @@ premultiplied space (as CSS does) and un-premultiply; test that
 
 ## Suggested order
 
-1. B2/B3 (Grid, aspectRatio), A3 (overflow warnings), B4 (wrap)
+1. A3 (overflow warnings), B4 (wrap)
 2. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
 3. C2 (weights, spacing), A4, E1, F4

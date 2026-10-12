@@ -15,6 +15,7 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 | `Window` | root, one per app, with its own title bar | `title`, `width`, `height` (initial size), `appId`, `onClose` (return `false` to keep it open), `decorations={false}` (your own title bar, see "Theme and window") |
 | `WindowControls` | minimize, maximize/restore and close buttons, for a custom title bar | style (`gap`...) |
 | `Column` / `Row` / `Box` | flex container (column, row; `Box` is a column) | style + events |
+| `Grid` | children in rows of equal-width cells (cards, covers, galleries) | `columns`, `gap`, `rowGap` (default `gap`); see "Layout rules" |
 | `Scroll` | scrolling: vertical (default), `horizontal` or `horizontal vertical` (both) | needs `grow={1}` or a size; see "Scrolling" below |
 | `Text` | text; wraps at spaces to fit the width | children (`{count}`, `"a"`) or `text={() => ...}`, `wrap` (default `true`), `maxLines` (truncates with "…"), `textAlign`, `lineHeight`, `underline`, `selectable` |
 | `Image` | PNG, JPEG, WebP, AVIF | see the `nodebuilder-images` skill |
@@ -56,8 +57,8 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
 
 - Layout: `direction` (`"row"`/`"column"`), `gap`, `padding` (`8`, `[v, h]` or
   `[top, right, bottom, left]`), `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
-  `maxHeight`, `grow`, `align`, `alignSelf`, `justify`, `position: "absolute"` +
-  `left`/`top`/`right`/`bottom`, `zIndex`, `clip`.
+  `maxHeight`, `grow`, `aspectRatio` (width / height), `align`, `alignSelf`, `justify`,
+  `position: "absolute"` + `left`/`top`/`right`/`bottom`, `zIndex`, `clip`.
 - Visual: `background`, `radius`, `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}`,
   `opacity` (0 to 1, applies to children), `translateX`/`translateY` (shifts after
   layout, without pushing siblings; for animation).
@@ -341,9 +342,18 @@ let button: ElementRef | undefined;
   `grow={1}` (and `maxLines={1}` to become "…"), the short labels next to it stay whole.
 - Text wraps by itself at the width it gets (`\n` also breaks); a word longer than the line
   overflows. A single line: `wrap={false}` (overflows) or `maxLines={1}` (truncates with "…").
-- There are no percentages, `flex-wrap` or grid: build rows with `Row` and fixed widths (see
-  tables: `Text width={110}`), `grow`, or proportional columns (below).
-- **Equal (or proportional) columns:** `width={0} grow={1}` on each child, like CSS
+- There are no percentages or `flex-wrap`: build rows with `Row` and fixed widths (see
+  tables: `Text width={110}`), `grow`, proportional columns (below) or a `Grid`.
+- **`<Grid columns={3} gap={8}>`** (CSS `repeat(3, 1fr)`): children flow into rows of equal
+  cells, whatever their content; the last row keeps its empty cells. A row is as tall as its
+  tallest cell and cells stretch to it (`align`/`alignSelf` change that). `rowGap` sets the
+  space between rows (default `gap`). Use it with `<For>` too: adding an item reflows.
+- **`aspectRatio={16 / 9}`** (width / height), like CSS `aspect-ratio`: in a column or a `Grid`
+  cell the height follows the width; with a fixed `height` (or stretched in a `Row` with a
+  height) the width follows the height. `min/max` still clamp, and children taller than the
+  ratio make the box taller. In a `Grid`, `aspectRatio={1}` gives square cells (covers,
+  thumbnails) that do not stretch to a taller neighbor.
+- **Equal (or proportional) columns in one row:** `width={0} grow={1}` on each child, like CSS
   `flex: 1 1 0`. The fixed width is the base `grow` adds to, so the widths follow only the
   `grow` values (1:1:2...), not the content; text inside wraps to the column. Plain `grow={1}`
   only shares the *leftover* space, so wider content makes a wider column. Rows of equal height
@@ -364,9 +374,22 @@ let button: ElementRef | undefined;
   pinned to the visible area, put it next to the `Scroll` in a parent that does not scroll.
 
 ```tsx
-import { Box, Column, Row, Text } from "@nodebuilderjs/core";
+import { Box, Column, For, Grid, Image, Row, Text, createSignal } from "@nodebuilderjs/core";
 
-// Three columns: 1 : 1 : 2, whatever their content.
+// Square album covers, four per row, following the window width.
+const [albums] = createSignal([{ title: "Blue", cover: "blue.jpg" }]);
+<Grid columns={4} gap={12} rowGap={16}>
+  <For each={albums}>
+    {(a) => (
+      <Column gap={6}>
+        <Image src={a.cover} aspectRatio={1} fit="cover" radius={8} />
+        <Text maxLines={1}>{a.title}</Text>
+      </Column>
+    )}
+  </For>
+</Grid>;
+
+// Three columns in one row: 1 : 1 : 2, whatever their content (the manual alternative).
 <Row gap={12}>
   <Column width={0} grow={1}><Text>Now playing</Text></Column>
   <Column width={0} grow={1}><Text>Up next, a much longer title that wraps</Text></Column>

@@ -64,12 +64,33 @@ with tabs, a table and a chart.
 ### Layout
 
 A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch by default;
-`alignSelf` overrides it for one child), `justify`, `min/max` sizes. There are no percentages
-or grid:
+`alignSelf` overrides it for one child), `justify`, `min/max` sizes, plus `Grid` and
+`aspectRatio`. There are no percentages:
 
-- **Equal or proportional columns:** `width={0} grow={1}` on each child (CSS `flex: 1 1 0`);
-  the widths follow the `grow` values, not the content. In a column with a height,
-  `height={0} grow={1}` does the same for rows.
+- **`<Grid columns={4} gap={8} rowGap={12}>`:** children flow into rows of equal-width cells
+  (CSS `grid-template-columns: repeat(4, 1fr)`); the last row keeps empty cells, so widths stay
+  equal. Each row is as tall as its tallest cell and cells stretch to it (`align`/`alignSelf`
+  change that). `rowGap` defaults to `gap`. Works with `<For>` (items stay keyed; adding one
+  reflows the cells).
+- **`aspectRatio`** (width / height) on any widget: the free side follows the other, like CSS
+  `aspect-ratio`. In a column (or a `Grid` cell) the height follows the width; with a fixed
+  `height`, or stretched in a `Row` of known height, the width follows the height. `min/max`
+  still clamp; children taller than the ratio make a box taller (an `Image` takes the ratio as
+  is). In a `Grid`, an `aspectRatio` cell keeps its shape instead of stretching to the row.
+
+  ```tsx
+  import { Grid, Image } from "@nodebuilderjs/core";
+
+  const covers = ["a.jpg", "b.jpg", "c.jpg", "d.jpg"];
+  const Covers = () => (
+    <Grid columns={3} gap={8}>
+      {covers.map((src) => <Image src={src} aspectRatio={1} fit="cover" radius={8} />)}
+    </Grid>
+  );
+  ```
+- **Equal or proportional columns in a row:** `width={0} grow={1}` on each child (CSS
+  `flex: 1 1 0`); the widths follow the `grow` values (1:1:2), not the content. In a column
+  with a height, `height={0} grow={1}` does the same for rows.
 - **`position="absolute"`** with `left`/`top`/`right`/`bottom` (from the parent's content box,
   inside its `padding`): out of the flow and at its natural size, unless both `left` and `right`
   (or `top` and `bottom`) are set without a `width` (`height`): then it stretches between them,

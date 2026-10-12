@@ -1,9 +1,10 @@
 // A small flexbox: row/column, gap, padding, grow, shrink-to-fit, align,
-// justify, min/max sizes, absolute children and scrolling (vertical, horizontal or both).
+// justify, min/max sizes, absolute children and scrolling (vertical, horizontal or both);
+// plus a grid of equal columns and `aspectRatio`.
 //
-// Wrapping text makes a height depend on the width given, so sizes come in two steps: the
-// natural (max-content) size of every node, cached per layout, and `heightAt(node, width)`,
-// which only does real work in subtrees that contain wrapping text.
+// Wrapping text and `aspectRatio` make a height depend on the width given, so sizes come in
+// two steps: the natural (max-content) size of every node, cached per layout, and
+// `heightAt(node, width)`, which only does real work in subtrees that contain them.
 
 import { type Edges, type Size, type UINode, overlayLayers, revealRequests, scrolls } from "./node.js";
 import { scrollRange } from "./scrollbar.js";
@@ -189,11 +190,13 @@ function inFlow(n: UINode) {
   return n.style.position !== "absolute";
 }
 
-/** Natural size plus whether the height changes with the width given (wrapping text inside). */
+/** Natural size plus whether the height changes with the width given (wrapping text or `aspectRatio` inside). */
 interface Natural extends Size {
   wraps: boolean;
   /** Width the content wants before `width`/`min`/`max` apply: from there on nothing wraps. */
   content: number;
+  /** An `aspectRatio` inside: the height keeps following the width past `content`. */
+  fluid: boolean;
 }
 
 /** Natural size of a node, ignoring the space its parent offers (text on as few lines as it can). */
@@ -205,22 +208,38 @@ export function intrinsic(node: UINode): Natural {
   let width: number;
   let height: number;
   let wraps = false;
+  let fluid = false;
 
   if (node.measure) {
     const m = node.measure(Infinity);
     width = m.width + pl + pr;
     height = m.height + pt + pb;
     wraps = node.minContentWidth !== undefined;
+  } else if (s.direction === "grid") {
+    const kids = node.children.filter(inFlow);
+    let cell = 0;
+    for (const c of kids) {
+      const k = intrinsic(c);
+      cell = Math.max(cell, k.width);
+      wraps ||= k.wraps;
+      fluid ||= k.fluid;
+    }
+    const cols = columnsOf(node);
+    width = cols * cell + (cols - 1) * (s.gap ?? 0) + pl + pr;
+    height = gridHeight(node, kids, cell, heightAt) + pt + pb;
   } else {
     const row = s.direction === "row";
+    // A row of fixed height already knows how wide its stretched aspectRatio children are.
+    const innerH = row && s.height !== undefined ? clamp(s.height, s.minHeight, s.maxHeight) - pt - pb : undefined;
     const kids = node.children.filter(inFlow);
     let main = 0;
     let cross = 0;
     for (const c of kids) {
       const k = intrinsic(c);
-      main += row ? k.width : k.height;
+      main += row ? rowBasis(node, c, innerH) : k.height;
       cross = Math.max(cross, row ? k.height : k.width);
       wraps ||= k.wraps;
+      fluid ||= k.fluid;
     }
     const gaps = Math.max(0, kids.length - 1) * (s.gap ?? 0);
     main += gaps;
@@ -228,11 +247,19 @@ export function intrinsic(node: UINode): Natural {
     height = (row ? cross : main) + pt + pb;
   }
 
+  const ratio = s.aspectRatio;
+  if (ratio && s.width === undefined && s.height !== undefined) width = clamp(s.height, s.minHeight, s.maxHeight) * ratio;
+  else if (ratio && s.height === undefined) {
+    height = byRatio(node, height, clamp(s.width ?? width, s.minWidth, s.maxWidth) / ratio);
+    if (s.width === undefined) wraps = fluid = true;
+  }
+
   const size: Natural = {
     width: clamp(s.width ?? width, s.minWidth, s.maxWidth),
     height: clamp(s.height ?? height, s.minHeight, s.maxHeight),
     wraps: wraps && s.height === undefined,
     content: width,
+    fluid: fluid && s.height === undefined,
   };
   cache.set(node, size);
   return size;
@@ -291,9 +318,12 @@ function minWidth(node: UINode): number {
     else {
       const kids = node.children.filter(inFlow);
       const floors = kids.map(minFloor);
+      const cols = columnsOf(node);
       content = s.direction === "row"
         ? floors.reduce((a, b) => a + b, 0) + Math.max(0, kids.length - 1) * (s.gap ?? 0)
-        : Math.max(0, ...floors);
+        : s.direction === "grid"
+          ? cols * Math.max(0, ...floors) + (cols - 1) * (s.gap ?? 0)
+          : Math.max(0, ...floors);
     }
     min = clamp(Math.min(k.width, content + pl + pr), s.minWidth, s.maxWidth);
   }
@@ -320,6 +350,8 @@ function minHeightAt(node: UINode, width: number): number {
   if (s.direction === "row") {
     const widths = mainSizes(node, kids, inner, true);
     content = kids.reduce((h, c, i) => Math.max(h, heightFloor(c, widths[i]!)), 0);
+  } else if (s.direction === "grid") {
+    content = gridHeight(node, kids, cellWidth(node, inner), heightFloor);
   } else {
     content = kids.reduce((h, c) => h + heightFloor(c, columnChildWidth(node, c, inner)), 0);
     content += Math.max(0, kids.length - 1) * (s.gap ?? 0);
@@ -330,8 +362,8 @@ function minHeightAt(node: UINode, width: number): number {
 /** Height of `node` laid out `width` wide. */
 function heightAt(node: UINode, width: number): number {
   const k = intrinsic(node);
-  // At its natural width nothing wraps, and more room never adds lines.
-  if (!k.wraps || width >= k.content) return k.height;
+  // At its natural width nothing wraps, and more room never adds lines (an aspectRatio does).
+  if (!k.wraps || (!k.fluid && width >= k.content)) return k.height;
   const hit = heights.get(node);
   if (hit && hit.width === width) return hit.height;
   const s = node.style;
@@ -344,11 +376,15 @@ function heightAt(node: UINode, width: number): number {
   } else if (s.direction === "row") {
     const widths = mainSizes(node, kids, inner, true);
     content = kids.reduce((h, c, i) => Math.max(h, heightAt(c, widths[i]!)), 0);
+  } else if (s.direction === "grid") {
+    content = gridHeight(node, kids, cellWidth(node, inner), heightAt);
   } else {
     content = kids.reduce((h, c) => h + heightAt(c, columnChildWidth(node, c, inner)), 0);
     content += Math.max(0, kids.length - 1) * (s.gap ?? 0);
   }
-  const height = clamp(content + pt + pb, s.minHeight, s.maxHeight);
+  let height = content + pt + pb;
+  if (s.aspectRatio && s.height === undefined) height = byRatio(node, height, width / s.aspectRatio);
+  height = clamp(height, s.minHeight, s.maxHeight);
   heights.set(node, { width, height });
   return height;
 }
@@ -359,7 +395,7 @@ function heightAt(node: UINode, width: number): number {
  * (its content), like CSS shrink-to-fit.
  */
 function crossSize(align: string, c: UINode, row: boolean, innerCross: number, natural: number, floor?: number): number {
-  const fixed = row ? c.style.height : c.style.width;
+  const fixed = row ? c.style.height : (c.style.width ?? ratioWidth(c));
   const room = floor === undefined ? innerCross : Math.max(innerCross, floor);
   return clamp(
     fixed ?? (align === "stretch" ? room : Math.min(natural, room)),
@@ -373,6 +409,66 @@ function alignOf(parent: UINode, c: UINode): string {
   return c.style.alignSelf ?? parent.style.align ?? "stretch";
 }
 
+/**
+ * Height of an `aspectRatio` box whose content is `content` tall: children taller than the
+ * ratio allows make it taller (like CSS min-height: auto); a measured node (an image) is
+ * replaced content and takes the ratio as is.
+ */
+function byRatio(node: UINode, content: number, ratioHeight: number): number {
+  return node.measure ? ratioHeight : Math.max(content, ratioHeight);
+}
+
+/** Width an `aspectRatio` gets from a fixed height (and no width of its own). */
+function ratioWidth(c: UINode): number | undefined {
+  const s = c.style;
+  return s.aspectRatio && s.width === undefined && s.height !== undefined ? intrinsic(c).width : undefined;
+}
+
+/**
+ * Width of a child of a row before grow/shrink. A stretched `aspectRatio` with no size of
+ * its own takes it from the row's inner height, when that is known (as in CSS).
+ */
+function rowBasis(node: UINode, c: UINode, innerH?: number): number {
+  const s = c.style;
+  if (s.width === undefined && s.height === undefined && s.aspectRatio && innerH !== undefined && alignOf(node, c) === "stretch") {
+    return clamp(clamp(innerH, s.minHeight, s.maxHeight) * s.aspectRatio, s.minWidth, s.maxWidth);
+  }
+  return intrinsic(c).width;
+}
+
+function columnsOf(node: UINode): number {
+  return Math.max(1, Math.floor(node.style.columns ?? 1));
+}
+
+/** Width of each cell of a grid `inner` wide: equal columns, whatever the content. */
+function cellWidth(node: UINode, inner: number): number {
+  const cols = columnsOf(node);
+  return Math.max(0, (inner - (cols - 1) * (node.style.gap ?? 0)) / cols);
+}
+
+/** A grid child's width in a `cell`-wide cell: the cell, unless it sets its own. */
+function cellChildWidth(c: UINode, cell: number): number {
+  const s = c.style;
+  return clamp(s.width ?? ratioWidth(c) ?? cell, s.minWidth, s.maxWidth);
+}
+
+/** Height of each row of a grid: its tallest cell, measured with `measure` (heightAt or a floor). */
+function gridRows(node: UINode, kids: UINode[], cell: number, measure: (c: UINode, width: number) => number): number[] {
+  const cols = columnsOf(node);
+  const rows: number[] = [];
+  for (let i = 0; i < kids.length; i += cols) {
+    let h = 0;
+    for (const c of kids.slice(i, i + cols)) h = Math.max(h, measure(c, cellChildWidth(c, cell)));
+    rows.push(h);
+  }
+  return rows;
+}
+
+function gridHeight(node: UINode, kids: UINode[], cell: number, measure: (c: UINode, width: number) => number): number {
+  const rows = gridRows(node, kids, cell, measure);
+  return rows.reduce((a, b) => a + b, 0) + Math.max(0, rows.length - 1) * (node.style.rowGap ?? node.style.gap ?? 0);
+}
+
 /** Width of a child of a column: in a horizontal scroll, wide content keeps its width. */
 function columnChildWidth(node: UINode, c: UINode, innerW: number): number {
   return crossSize(alignOf(node, c), c, false, innerW, intrinsic(c).width, node.scrollableX ? minWidth(c) : undefined);
@@ -383,13 +479,13 @@ function columnChildWidth(node: UINode, c: UINode, innerW: number): number {
  * `grow`, or the missing space taken in proportion to size. In a column, `crosses` are the
  * children's widths (their heights may depend on them).
  */
-function mainSizes(node: UINode, kids: UINode[], innerMain: number, row: boolean, crosses?: number[]): number[] {
+function mainSizes(node: UINode, kids: UINode[], innerMain: number, row: boolean, crosses?: number[], innerCross?: number): number[] {
   const gap = node.style.gap ?? 0;
   const mainMin = (c: UINode) => (row ? c.style.minWidth : c.style.minHeight) ?? 0;
   const mainMax = (c: UINode) => (row ? c.style.maxWidth : c.style.maxHeight) ?? Infinity;
   const fixedMain = (c: UINode) => (row ? c.style.width : c.style.height);
 
-  const sizes = kids.map((c, i) => fixedMain(c) ?? (row ? intrinsic(c).width : heightAt(c, crosses![i]!)));
+  const sizes = kids.map((c, i) => fixedMain(c) ?? (row ? rowBasis(node, c, innerCross) : heightAt(c, crosses![i]!)));
   const used = sizes.reduce((a, b) => a + b, 0) + Math.max(0, kids.length - 1) * gap;
   const free = innerMain - used;
 
@@ -452,12 +548,17 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   const row = s.direction === "row";
   const gap = s.gap ?? 0;
   const kids = node.children.filter(inFlow);
+  if (s.direction === "grid") {
+    const offsetY = placeGrid(node, kids, innerX, innerY, innerW, view);
+    placeAbsolute(node, innerX, innerY - offsetY, innerW, innerH, view);
+    return;
+  }
 
   // A row knows widths first and heights from them; a column the other way around.
   let sizes: number[];
   let crosses: number[];
   if (row) {
-    sizes = mainSizes(node, kids, innerW, true);
+    sizes = mainSizes(node, kids, innerW, true, undefined, innerH);
     crosses = kids.map((c, i) => {
       const h = heightAt(c, sizes[i]!);
       return crossSize(alignOf(node, c), c, true, innerH, h, node.scrollable ? h : undefined);
@@ -500,14 +601,52 @@ function place(node: UINode, x: number, y: number, width: number, height: number
     cursor += main + spacing;
   });
 
-  // Absolute children are measured from the content box and scroll with the content.
+  placeAbsolute(node, innerX - offsetX, innerY - offsetY, innerW, innerH, view);
+}
+
+/** Absolute children are measured from the content box (at x, y once scrolled) and scroll with the content. */
+function placeAbsolute(node: UINode, x: number, y: number, innerW: number, innerH: number, view: Rect) {
   for (const c of node.children) {
     if (inFlow(c)) continue;
     const cs = c.style;
     const [x0, w] = absoluteSpan(cs.left, cs.right, cs.width, intrinsic(c).width, innerW, cs.minWidth, cs.maxWidth);
     const [y0, h] = absoluteSpan(cs.top, cs.bottom, cs.height, heightAt(c, w), innerH, cs.minHeight, cs.maxHeight);
-    place(c, innerX + x0 - offsetX, innerY + y0 - offsetY, w, h, view);
+    place(c, x + x0, y + y0, w, h, view);
   }
+}
+
+/**
+ * Places a grid's cells row by row: equal columns, each row as tall as its tallest cell.
+ * Cells stretch to their row (or follow `align`/`alignSelf`), except an `aspectRatio`, which
+ * keeps its shape (like CSS grid). Cells outside `view` are culled by place(). Returns the
+ * vertical scroll offset.
+ */
+function placeGrid(node: UINode, kids: UINode[], innerX: number, innerY: number, innerW: number, view: Rect): number {
+  const s = node.style;
+  const [pt, pr, pb, pl] = edges(s.padding);
+  const cols = columnsOf(node);
+  const gap = s.gap ?? 0;
+  const rowGap = s.rowGap ?? gap;
+  const cell = cellWidth(node, innerW);
+  const rows = gridRows(node, kids, cell, heightAt);
+  node.contentWidth = innerW + pl + pr;
+  node.contentHeight = rows.reduce((a, b) => a + b, 0) + Math.max(0, rows.length - 1) * rowGap + pt + pb;
+  if (node.scrollable) node.scrollY = clamp(node.scrollY, 0, Math.max(0, node.contentHeight - node.height));
+  const offsetY = node.scrollable ? node.scrollY : 0;
+
+  let top = innerY - offsetY;
+  rows.forEach((rowHeight, r) => {
+    kids.slice(r * cols, (r + 1) * cols).forEach((c, i) => {
+      const w = cellChildWidth(c, cell);
+      let align = alignOf(node, c);
+      if (align === "stretch" && c.style.aspectRatio && c.style.height === undefined) align = "start";
+      const h = crossSize(align, c, true, rowHeight, heightAt(c, w));
+      const dy = align === "center" ? (rowHeight - h) / 2 : align === "end" ? rowHeight - h : 0;
+      place(c, innerX + i * (cell + gap), top + dy, w, h, view);
+    });
+    top += rowHeight + rowGap;
+  });
+  return offsetY;
 }
 
 /**
