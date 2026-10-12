@@ -138,6 +138,19 @@ the fps cap on fast monitors, frames are skipped with `native.requestFrame()`, w
 without drawing. X11 has no frame callback: the pacing comes from a timer at the monitor's
 refresh rate (XRandR).
 
+Every frame request carries a reason: `inv` (`invalidate()`, i.e. the tree changed), `ev` (a
+native event: `configure`, or input changing hover/scroll state) or `raf` (frame callbacks
+still pending after a frame). The first request since the last frame is the frame's reason;
+`NB_STATS` counts them and `NB_TRACE=frames` prints them with the requesting stack. A request
+made while a frame is laid out or painted (after the `requestAnimationFrame` callbacks) is
+marked `[in frame]`: if that keeps happening for 30 frames with no other request, nothing is
+changing and the app is stuck redrawing; outside production (`NODE_ENV`), `run()` warns once
+with the top of that stack.
+
+`run()` is `runWith(loadNative(), ...)`; `runWith` takes the native core and hooks (`env`,
+`now`, `log`, `warn`) so `test/app.test.tsx` drives the whole loop with a fake core: it
+counts `render` calls while sending `configure`, `frame` and pointer events.
+
 ## Layout
 
 `src/render/layout.ts` is a simplified flexbox: `direction`, `gap`, `padding`, `grow`, `align`
@@ -464,8 +477,17 @@ NB_STATS=1 bun examples/bench.tsx        # N=1000 MODE=one|all|static
 NB_STATS=1 bun examples/dashboard.tsx    # TAB=overview|table|logs|settings ROWS=500 CYCLE=30
 ```
 
-`NB_STATS=1` prints every second: fps, time per frame (state, layout, paint, native), node
-count, command buffer size, heap and RSS.
+`NB_STATS=1` prints every second: fps, time per frame (state, layout, paint, native), why the
+frames happened (`why: inv 3 ev 2 raf 0`, see "A frame"), node count, command buffer size,
+heap and RSS. An idle app prints nothing (no frames). If it does not go idle, `NB_TRACE=frames`
+shows, per frame, the reason and the top 6 stack frames of whoever asked:
+
+```
+frame 2: inv [in frame]
+    at invalidatesWhilePainting (src/app.tsx:9:5)
+    at paintTree (src/render/paint.ts:140:8) x4
+    at renderFrame (src/runtime/app.ts:234:5)
+```
 
 The comparisons use the same scene built in plain HTML and JavaScript, running in Electron
 (`compare/electron/`) and in a Tauri 2 shell (`compare/tauri/`, which loads the same files).

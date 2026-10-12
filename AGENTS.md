@@ -79,6 +79,7 @@ from internal details, so that refactoring does not break tests for no reason.
 | Errors (`ErrorBoundary`, `catchError`) | a component or effect that throws; check the `fallback`, that the scope was disposed (the effect no longer runs, `onCleanup` ran) and that, without a boundary, the error reaches the caller and the queue keeps going |
 | Widgets and layout | mount with `mount` (`@nodebuilderjs/core/testing`) or `insert` into a root `UINode`, run `layout()` and check `x`/`y`/`width`/`height` or `debugTree()`. Fake metrics: 8 px per character, 20 px line |
 | Painting and command buffer | `drawCommands(node)` / `decode(buffer)` from `test/helpers.ts` return named commands (`{ op: "line", x0, ... }`). A new draw primitive starts here |
+| Frame loop (when frames render) | `runWith(fakeNative, app, { maxFps: 1000 }, hooks)` from `runtime/app.ts` (see `test/app.test.tsx`): the fake records `render`/`requestFrame` and the test sends `configure`/`frame`/pointer events through `open`'s callback, then awaits a `setImmediate` tick. `hooks` inject `env`, `now`, `log`, `warn`. Close with `windowControls.close()` and reset the globals `run()` sets (text measurer, image backend, frame clock) |
 | Events (mouse, keyboard, focus) | `interact(root)` from `@nodebuilderjs/core/testing`, or `createInput(root, host)` from `runtime/input.ts` with a fake host that records move/resize/cursor and controls the clock |
 | Images and textures | `setImageBackend({ create, destroy })` records texture creation and release |
 | Decoders and rasterizers | "golden" tests: the reference output (libjpeg-turbo, libwebp, librsvg, ImageMagick) lives in `test/fixtures/`, generated once; compare byte for byte or with an explicit tolerance. Then fuzzing with flipped bytes and truncated files: every error is a format message (never a TypeError), and absurd dimensions are rejected before allocating (2^28 pixel limit) |
@@ -99,7 +100,8 @@ What cannot be tested automatically is documented when closing the task:
 
 ### Test organization
 
-- One file per subject: `core` (reactivity, tree, layout, culling), `control-flow`
+- One file per subject: `core` (reactivity, tree, layout, culling), `app` (`run()` with a
+  fake native: idle renders nothing, frame reasons, `NB_TRACE`, frame loop warning), `control-flow`
   (`Show`, `Switch`/`Match`, `Index`, nesting without recreating components),
   `error-boundary` (errors, effect queue), `context`, `ref`
   (`ref`, programmatic focus and scrolling, `onResize`), `overlay`, `style` (`opacity`, `translate`),
@@ -155,7 +157,7 @@ src/                   one module per folder; relative imports with `.js`
     scrollbar.ts       clamped scroll position and scrollbar geometry (painting and input)
     text-wrap.ts       <Text> line wrapping (greedy, at spaces) and maxLines with "…"
   runtime/
-    app.ts             run(): window, frame scheduling, NB_STATS; wires input to the addon
+    app.ts             run()/runWith(): window, frame scheduling, NB_STATS/NB_TRACE; wires input to the addon
     input.ts           events -> UI: hit test, hover, cursor, focus, clicks, capture, scrolling, keyboard
     native.ts          loads native/build/<platform>-<arch>/nodebuilder.node (literal requires)
     frames.ts          frame clock: requestAnimationFrame queue, frameNow, animating()
@@ -398,8 +400,12 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
 
 ## Performance
 
-- `NB_STATS=1` prints every second: fps, ms/frame (state, layout, paint, native), nodes,
-  command buffer size, heap and RSS.
+- `NB_STATS=1` prints every second: fps, ms/frame (state, layout, paint, native), why the
+  frames happened (`why: inv 3 ev 2 raf 0`: `invalidate()`, native/input events,
+  `requestAnimationFrame`), nodes, command buffer size, heap and RSS.
+- `NB_TRACE=frames` logs one line per frame with its reason and the top 6 stack frames of the
+  request (reactive plumbing removed); `[in frame]` = asked while that frame was being laid
+  out or painted. Stacks are only taken when tracing (and, in dev, for in-frame requests).
 - fps cap: `run(app, { maxFps })` or `NB_MAX_FPS`; default 120. On Wayland the frame stays
   aligned to vsync: we skip vblanks with `native.requestFrame()` (commit without drawing).
   On X11 pacing is timer-based (not aligned to vsync). 1.5 ms tolerance so 144 Hz does not
@@ -556,7 +562,9 @@ packages, all with the version from the root `package.json`:
 - Code that runs inside `renderFrame` (`layout()`, `refreshHover()`, paint) must only call
   `invalidate()` when something really changed: an unconditional invalidate there redraws
   at the fps cap forever while idle (this happened with the scrollbar highlight). To find
-  who asks for frames, log `new Error().stack` in `schedule()` (`runtime/app.ts`).
+  who asks for frames, run with `NB_TRACE=frames` (look for `[in frame]`); in dev, `run()`
+  warns once after 30 frames in a row that request themselves with nothing else changing.
+  `test/app.test.tsx` pins "an idle window renders once".
 
 ### Native
 - libwayland headers < 1.22 lack the v6 fields of `wl_surface_listener`, and an old
