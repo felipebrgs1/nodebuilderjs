@@ -29,7 +29,8 @@ const [user] = createSignal({ name: "Ana", avatar: logo });
   It can be a function: changing `src` releases the old image.
 - Size: without `width`/`height`, it uses the file's pixels (1 pixel = 1 logical px). With only one
   of the two, the other follows the aspect ratio. For HiDPI screens, use a 2x larger file and fix the
-  size (`width={64}` for a 128 px PNG).
+  size (`width={64}` for a 128 px PNG). A shape of your own that follows the space:
+  `aspectRatio={1} fit="cover"` (square covers; in a `<Grid columns={4}>` they fill each cell).
 - `fit`: `contain` (default, whole image centered), `cover` (fills and crops), `fill`
   (stretches). `radius` rounds the corners; `opacity` goes from 0 to 1.
 - The same file used in several places is decoded once; the memory is released when the

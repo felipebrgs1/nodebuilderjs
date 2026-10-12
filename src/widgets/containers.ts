@@ -1,8 +1,8 @@
-// Layout containers: Box, Column, Row, Scroll, Spacer, Divider and Card.
+// Layout containers: Box, Column, Row, Grid, Scroll, Spacer, Divider and Card.
 
 import { insert } from "../jsx-runtime.js";
 import { UINode } from "../render/node.js";
-import { createEffect } from "../reactive/signals.js";
+import { type MaybeAccessor, createEffect } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 import { type BoxProps, applyProps } from "./props.js";
 
@@ -24,6 +24,22 @@ export function Row(props: BoxProps) {
   const node = Box(props);
   node.label = "Row";
   node.style.direction ??= "row";
+  return node;
+}
+
+export type GridProps = BoxProps & {
+  /** Cells per row; every cell is equally wide, the last row included. */
+  columns: MaybeAccessor<number>;
+};
+
+/**
+ * Children flow into rows of `columns` equal-width cells; `gap` between cells, `rowGap`
+ * between rows (default: `gap`). Each row is as tall as its tallest cell.
+ */
+export function Grid(props: GridProps) {
+  const node = Box(props);
+  node.label = "Grid";
+  node.style.direction = "grid";
   return node;
 }
 

@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### New
+- **`<Grid columns={4} gap={8} rowGap={12}>`:** children flow into rows of equal-width cells
+  (the last row keeps empty cells); each row is as tall as its tallest cell. Laid out by the
+  layout engine itself, so `<For>` inside stays keyed and adding an item only reflows.
+- **`aspectRatio`** (width / height) on every widget, like CSS `aspect-ratio`: the height
+  follows the width in columns and `Grid` cells, the width follows a fixed height or a row's
+  height; `min/max` clamp. `aspectRatio={1}` in a `Grid` gives square covers.
 - **Font fallback and color emoji:** characters the UI font lacks (`▲`, `↑`, CJK...) come from
   the system's fallback fonts (fontconfig order), and emoji are drawn in color (Noto Color
   Emoji and other CBDT/sbix/COLRv0 fonts), including ZWJ sequences, skin tones and flags.

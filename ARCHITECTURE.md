@@ -188,6 +188,23 @@ shrink. Measured on 2026-10-12 in the same session: layout of `bench` (1000 chan
 2.5 → 2.7 ms and of the 500-row table 2.5 → 2.7 ms per frame; the first version, without
 these shortcuts, cost 7.9 and 4.4 ms.
 
+**`aspectRatio`** joins the same machinery: a box with a ratio and no fixed size sets `wraps`
+and also `fluid` (propagated up like `wraps`), because past its natural width its height
+keeps growing, so `heightAt` must not take the "wide enough" shortcut. `heightAt` returns
+`width / ratio` (or the content's height, if taller; a measured node such as `Image` takes the
+ratio as is). The other direction is resolved where the height is known: a fixed `height`
+gives the width (`ratioWidth`, used by `crossSize` and grid cells), and a child stretched in a
+row whose inner height is known takes `height * ratio` as its flex basis (`rowBasis`).
+
+**Grid** (`direction: "grid"`, the `Grid` widget) is laid out by `layout.ts` itself, not by
+chunking children into rows: `<For>` keeps inserting into one parent and a change only
+reflows. Cells are `(inner - gaps) / columns` wide (`cellWidth`); each row is as tall as the
+tallest `heightAt(cell, cellWidth)` (`gridRows`), the same function serving `intrinsic`,
+`heightAt` and `minHeightAt` (with `heightFloor`). `placeGrid` stretches cells to their row
+(`align`/`alignSelf` otherwise; an `aspectRatio` cell keeps its shape, as CSS grid does) and
+culls through `place()` like any child; absolute children go through the shared
+`placeAbsolute`.
+
 The wrapping itself lives in `render/text-wrap.ts`: greedy, at spaces, like CSS's
 `overflow-wrap: normal` (a word longer than the line overflows). Word widths are summed
 instead of measuring the whole line again; a line that fits whole is measured only once.

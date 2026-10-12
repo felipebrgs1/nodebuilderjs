@@ -106,7 +106,7 @@ What cannot be tested automatically is documented when closing the task:
 
 ### Test organization
 
-- One file per subject: `core` (reactivity, tree, layout, culling), `app` (`run()` with a
+- One file per subject: `core` (reactivity, tree, layout, culling), `grid` (`Grid`, `aspectRatio`), `app` (`run()` with a
   fake native: idle renders nothing, frame reasons, `NB_TRACE`, frame loop warning), `control-flow`
   (`Show`, `Switch`/`Match`, `Index`, nesting without recreating components),
   `error-boundary` (errors, effect queue), `context`, `ref`
@@ -167,7 +167,7 @@ src/                   one module per folder; relative imports with `.js`
     context.ts         createContext/useContext (value stored in the owner scope)
   render/              tree -> layout -> command buffer
     node.ts            UINode (retained tree), Style, handlers, invalidate(), measureText(), displayScale()
-    layout.ts          simplified flexbox + culling
+    layout.ts          simplified flexbox + grid (equal columns) + aspectRatio + culling
     paint.ts           tree -> CommandBuffer (Float32Array) + parseColor
     shapes.ts          polyline (LINE segments) and fillPolygon (triangulation + AA fringe)
     scrollbar.ts       clamped scroll position and scrollbar geometry (painting and input)
@@ -181,7 +181,7 @@ src/                   one module per folder; relative imports with `.js`
     screenshot.ts      captureTree: real metrics + native images, layout, paint, renderOffscreen
   widgets/             one file per widget; index.ts re-exports
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps (+ hoverStyle/pressStyle), inherited, interaction, createInteraction
-    containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
+    containers.ts      Box, Column, Row, Grid, Scroll, Spacer, Divider, Card
     text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
     toggle.ts radio.ts slider.ts progress.ts   controls (Toggle, RadioGroup, Slider, ProgressBar/Spinner)
     select.ts tabs.ts tooltip.ts dialog.ts     on top of Overlay (Tabs opens nothing, but uses roving.ts)
@@ -420,6 +420,17 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
   widths before their heights; a row, the opposite. A widget with its own measurement whose
   height changes with width defines `minContentWidth` (without it, layout assumes a fixed
   height and takes the shortcut).
+- **`aspectRatio`** (width / height) is "height depends on width" too: `intrinsic()` sets
+  `wraps` and `fluid` (no "wide enough" shortcut in `heightAt`, which returns `width / ratio`,
+  or the content if taller; measured nodes take the ratio as is). A fixed `height` gives the
+  width (`ratioWidth`); a child stretched in a row of known inner height gets
+  `height * ratio` as its flex basis (`rowBasis`).
+- **Grid** (`direction: "grid"` + `columns`, `rowGap`; the `Grid` widget): equal cells
+  (`cellWidth`), rows as tall as their tallest cell (`gridRows`, shared by `intrinsic`,
+  `heightAt` and `minHeightAt`), placed by `placeGrid`; cells stretch to the row unless
+  `align`/`alignSelf` says otherwise or they have an `aspectRatio`. Children stay in one
+  parent, so `<For>` stays keyed. Every `direction === "row"` check has a grid branch next
+  to it: a new layout function needs one too.
 - `Scroll` = column with `scrollable = true` (vertical); `horizontal` = row with
   `scrollableX = true`; both = column with both flags. On the scrolling axis, it does not
   shrink its children; on the cross axis, each child gets at least the visible space without

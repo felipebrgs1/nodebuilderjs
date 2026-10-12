@@ -37,6 +37,9 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | `min-height: 0` / `min-width: 0` around what scrolls | unnecessary: the content of a `Scroll` does not hold up the size of its container |
 | `ResizeObserver`, media queries | `onResize={(s) => setWidth(s.width)}` + signal |
 | `createPortal`, `position: fixed`, `z-index`, library modal/dropdown/tooltip | `<Overlay>` (`modal`, `anchor={() => el}`, `onDismiss`); skill `nodebuilder-ui` |
+| CSS `display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; row-gap: 12px` | `<Grid columns={4} gap={8} rowGap={12}>` (equal columns only; no spans or named areas) |
+| CSS `flex: 1 1 0` (equal or 1:1:2 columns in one row) | `width={0} grow={1}` (`grow={2}`...) on each child |
+| CSS `aspect-ratio: 16 / 9`, square thumbnails | `aspectRatio={16 / 9}`; `aspectRatio={1}` in `Grid` cells gives square cells |
 | CSS `align-self`, `position: absolute; inset: 0` / `right: 8px` | `alignSelf`, `position="absolute" left={0} top={0} right={0} bottom={0}` / `right={8}` (inside a `Scroll` it scrolls with the content) |
 | CSS `opacity`, `transform: translate(...)` | props `opacity`, `translateX`, `translateY` (no `scale`/`rotate`) |
 | `transition`, framer-motion, react-spring, `AnimatePresence` | `createTween`, `createPresence` (+ `<Show when={p.mounted}>`), `animate` |

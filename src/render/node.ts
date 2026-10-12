@@ -9,8 +9,13 @@ export type Edges = number | [vertical: number, horizontal: number] | [top: numb
 
 export interface Style {
   // layout
-  direction?: "row" | "column";
+  /** "grid" places children in rows of `columns` equal cells (the `Grid` widget). */
+  direction?: "row" | "column" | "grid";
   gap?: number;
+  /** Number of equal-width columns of a grid (`direction: "grid"`). */
+  columns?: number;
+  /** Space between the rows of a grid. Default: `gap`. */
+  rowGap?: number;
   padding?: Edges;
   width?: number;
   height?: number;
@@ -19,6 +24,12 @@ export interface Style {
   maxWidth?: number;
   maxHeight?: number;
   grow?: number;
+  /**
+   * Width / height. With one side free, it follows the other (a width from the parent, a
+   * height from a fixed `height` or a stretching row); min/max still clamp, and content
+   * taller than the ratio allows makes the box taller (like CSS `aspect-ratio`).
+   */
+  aspectRatio?: number;
   /** Cross-axis alignment of children. Default: "stretch". */
   align?: "start" | "center" | "end" | "stretch";
   /** This node's cross-axis alignment, overriding its parent's `align`. */
