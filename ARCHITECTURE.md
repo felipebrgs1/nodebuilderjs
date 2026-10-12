@@ -442,6 +442,12 @@ click and double click, pointer capture while a button is held, scrolling (wheel
 keys; see "Scrolling") and keyboard with Tab. Whatever belongs to the window (move, resize,
 cursor, clock) goes through an `InputHost` interface; `run()` wires it to the addon, and the
 tests (and `interact()` from `@nodebuilderjs/core/testing`) use a windowless host.
+The hit test walks siblings in paint order (`stacked()`: by `zIndex`, then child order, the
+same order `paintTree` draws them), top first. Like CSS overflow, it also descends into
+children outside the parent's box when the parent does not clip or scroll, so the part of an
+absolute badge that sticks out is clickable; the price is that a miss walks the visible,
+non-clipped subtrees instead of only the child that contains the point (`pointerMove` in the
+500-row table: ~1.1 → ~3.9 µs, still far below a frame).
 The testing helpers that target a node (`click`, `interact().press`...) first check what the
 hit test would see: the node and its ancestors are not `culled`, and its center lies inside
 every clipping or scrolling ancestor and the window. Otherwise they throw instead of letting

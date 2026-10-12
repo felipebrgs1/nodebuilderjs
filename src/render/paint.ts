@@ -2,7 +2,7 @@
 // native renderer executes in one go (format: native/include/nb.h, consumer: native/core/render_gles2.c).
 
 import { type ImageSource, imageHandle } from "../image/source.js";
-import { type Color, type LineCap, type Painter, type UINode, scrolls } from "./node.js";
+import { type Color, type LineCap, type Painter, type UINode, scrolls, stacked } from "./node.js";
 import { scrollbar } from "./scrollbar.js";
 import { theme } from "../theme.js";
 
@@ -146,7 +146,7 @@ export function paintTree(node: UINode, p: Painter) {
     const b = s.borderWidth ?? 0;
     p.clip(node.x + b, node.y + b, node.width - 2 * b, node.height - 2 * b, Math.max(0, (s.radius ?? 0) - b));
   }
-  for (const c of node.children) paintTree(c, p);
+  for (const c of stacked(node)) paintTree(c, p);
   if (clip) p.unclip();
 
   if (scroller) {

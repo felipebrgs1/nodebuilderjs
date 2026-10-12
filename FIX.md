@@ -190,15 +190,6 @@ adds, dedupes, errors on an unknown icon.
 
 ## F. Found while fixing the above
 
-### F3. Stacking: `zIndex` - small/medium
-
-Children paint and hit-test in child order; an absolute child declared first ends up under
-its in-flow siblings, and the part of an absolute child outside its parent is drawn but not
-clickable (hit testing requires every ancestor to contain the point). Add `zIndex` (paint
-and hit-test order among siblings) and make hit testing descend into absolute children
-outside the parent box when the parent doesn't clip. Tests in `test/style.test.tsx`
-(draw order) and `test/input.test.tsx` (hits).
-
 ### F4. `onPointerDown` bubbling stops at a node with `onClick` - check
 
 Bubbling of `onPointerDown` ends at the first node with an `onClick`, even without
@@ -214,5 +205,5 @@ premultiplied space (as CSS does) and un-premultiply; test that
 ## Suggested order
 
 1. B2/B3 (Grid, aspectRatio), A3 (overflow warnings), B4 (wrap)
-2. C3 + F6 (gradients, premultiplied mixColor), F3 (zIndex), B5 (margin)
+2. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
 3. C2 (weights, spacing), A4, E1, F4

@@ -38,6 +38,11 @@ export interface Style {
   bottom?: number;
   /** Clip children to this node's box. */
   clip?: boolean;
+  /**
+   * Paint and hit-test order among siblings (default 0): higher is above, ties keep child
+   * order. It only orders siblings (no global stacking); overlays stay above everything.
+   */
+  zIndex?: number;
   // paint
   background?: Color;
   radius?: number;
@@ -374,6 +379,15 @@ export class UINode implements ElementRef {
     revealRequests.add(this);
     invalidate();
   }
+}
+
+/** Children in paint order, bottom to top: by zIndex, then child order. Allocates only when a child has a zIndex. */
+export function stacked(node: UINode): readonly UINode[] {
+  const kids = node.children;
+  for (const c of kids) {
+    if (c.style.zIndex) return [...kids].sort((a, b) => (a.style.zIndex ?? 0) - (b.style.zIndex ?? 0)); // stable
+  }
+  return kids;
 }
 
 /** Scrolls on some axis (and so clips its children). */

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Box, Button, Column, Row, Show, Slider, Text, TextField, Toggle, createInteraction, createSignal, theme } from "@nodebuilderjs/core";
 import type { UINode } from "@nodebuilderjs/core";
 import { findByText, interact, mount } from "@nodebuilderjs/core/testing";
@@ -57,7 +57,7 @@ test("the pointer finds a translated node where it is drawn", () => {
   expect(log).toEqual(["enter"]);
 });
 
-test("an absolute child is painted and hit in child order: declared last, it is on top of its siblings", () => {
+test("without zIndex, an absolute child is painted and hit in child order: declared last, it is on top", () => {
   const log: string[] = [];
   const { root } = mount(() => (
     <Column align="start">
@@ -72,8 +72,9 @@ test("an absolute child is painted and hit in child order: declared last, it is 
   expect(commandsOf(root, "rect").map((r) => r.color.join())).toEqual(["1,0,0,1", "0,1,0,1", "0,0,1,1"]);
   const ui = interact(root);
   for (const [x, y] of [[10, 10], [70, 10], [130, 10]] as const) (ui.down(x, y), ui.up(x, y));
-  // The in-flow box covers the first one; the one outside its parent's box is drawn but not hit.
-  expect(log).toEqual(["in flow", "last"]);
+  // The in-flow box covers the first one; the one outside its parent's box (which does not
+  // clip) is hit there too.
+  expect(log).toEqual(["in flow", "last", "outside"]);
 });
 
 test("clip with radius clips children to the rounded inside of the border", () => {
@@ -307,4 +308,60 @@ test("hoverStyle alone does not claim the press: no pointer down/up handlers (wi
   const [hoverOnly, pressing] = root.children[0]!.children;
   expect([hoverOnly!.handlers.onPointerDown, hoverOnly!.handlers.onPointerUp]).toEqual([undefined, undefined]);
   expect(typeof pressing!.handlers.onPointerDown).toBe("function");
+});
+
+describe("zIndex", () => {
+  const colors = (root: UINode) => commandsOf(root, "rect").map((r) => r.color.join(","));
+  const red = "1,0,0,1", green = "0,1,0,1", blue = "0,0,1,1", white = "1,1,1,1";
+
+  test("siblings paint by zIndex, then child order", () => {
+    const { root } = mount(() => (
+      <Box width={100} height={100}>
+        <Box position="absolute" left={0} top={0} width={50} height={50} background="#ff0000" zIndex={1} />
+        <Box height={20} background="#00ff00" />
+        <Box height={20} background="#0000ff" />
+      </Box>
+    ));
+    // The absolute red box comes first in the tree but paints above its in-flow siblings,
+    // which keep their child order (equal zIndex).
+    expect(colors(root)).toEqual([green, blue, red]);
+  });
+
+  test("a negative zIndex paints below its siblings; a raised node takes its children along", () => {
+    const { root } = mount(() => (
+      <Box width={100} height={100}>
+        <Box height={20} background="#ffffff" />
+        <Box height={20} background="#00ff00" zIndex={2}>
+          <Box height={10} background="#0000ff" />
+        </Box>
+        <Box height={20} background="#ff0000" zIndex={-1} />
+      </Box>
+    ));
+    expect(colors(root)).toEqual([red, white, green, blue]);
+  });
+
+  test("zIndex follows a signal", () => {
+    const [z, setZ] = createSignal(0);
+    const { root } = mount(() => (
+      <Box width={100} height={100}>
+        <Box height={20} background="#ff0000" zIndex={z} />
+        <Box height={20} background="#00ff00" />
+      </Box>
+    ));
+    expect(colors(root)).toEqual([red, green]);
+    setZ(1);
+    expect(colors(root)).toEqual([green, red]);
+  });
+
+  test("it only orders siblings: a raised child stays at its parent's place in the order", () => {
+    const { root } = mount(() => (
+      <Box width={100} height={100}>
+        <Box height={20}>
+          <Box height={10} background="#ff0000" zIndex={100} />
+        </Box>
+        <Box height={20} background="#00ff00" />
+      </Box>
+    ));
+    expect(colors(root)).toEqual([red, green]);
+  });
 });

@@ -74,8 +74,12 @@ or grid:
   inside its `padding`): out of the flow and at its natural size, unless both `left` and `right`
   (or `top` and `bottom`) are set without a `width` (`height`): then it stretches between them,
   so `left={0} right={0} top={0} bottom={0}` fills the parent. `right` alone places it from the
-  right edge. There is no `zIndex`: children are drawn and hit in order, so declare it last to be
-  on top. Inside a `Scroll` it scrolls with the content, like CSS.
+  right edge. Inside a `Scroll` it scrolls with the content, like CSS. What sticks out of a parent
+  that does not `clip` is drawn and clickable there too.
+- **`zIndex`** (default 0) orders siblings: higher is drawn and hit above, ties keep child order
+  (so without it, a later child covers an earlier one). It only orders siblings, with no global
+  stacking context: a raised node stays inside its parent's place in the order. Overlays stay
+  above everything.
 - `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
   drawn even without a `background` (the blurred box shows through).
 
