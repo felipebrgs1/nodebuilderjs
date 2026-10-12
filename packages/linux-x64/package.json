@@ -1,7 +1,7 @@
 {
   "name": "@nodebuilderjs/linux-x64",
-  "version": "0.2.1",
-  "description": "Núcleo nativo do nodebuilder para Linux x64 (glibc 2.34+). Instalado automaticamente por @nodebuilderjs/core.",
+  "version": "0.2.5",
+  "description": "Native core of nodebuilder for Linux x64 (glibc 2.34+). Installed automatically by @nodebuilderjs/core.",
   "license": "MIT",
   "repository": {
     "type": "git",

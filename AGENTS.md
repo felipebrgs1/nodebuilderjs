@@ -16,7 +16,7 @@ well, so as much of the framework as possible lives in TS, and the C stays small
 | `README.md` | framework users (it is also the npm package README) and the benchmarks |
 | `ARCHITECTURE.md` | how it works inside and how to measure performance |
 | `ROADMAP.md` | priorities and what has been done (still in Portuguese) |
-| `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps (still in Portuguese) |
+| `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps |
 
 ## Non-negotiable rules
 
@@ -289,11 +289,9 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   finish immediately.
 - Everything new is written in **English**: code comments, identifiers, docs (README,
   ARCHITECTURE, this file), commit messages and user-facing strings in examples and
-  widgets. Some files are still in Portuguese pending translation: `ROADMAP.md`, the app
-  template in `packages/create-nodebuilderjs/template/` (its `AGENTS.md` and the skills in
-  `.agents/skills/`) and the UI strings in `examples/`; when editing them, translate the
-  parts you touch instead of adding more Portuguese. Comments are short and explain why,
-  not what.
+  widgets. Some files are still in Portuguese pending translation: `ROADMAP.md` and the UI
+  strings in `examples/`; when editing them, translate the parts you touch instead of
+  adding more Portuguese. Comments are short and explain why, not what.
 - Use `ReturnType<typeof setInterval>`, not `NodeJS.Timeout`.
 
 ### C (native/)

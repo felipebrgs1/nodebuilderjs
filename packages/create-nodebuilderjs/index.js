@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bun create nodebuilderjs [dir] [--title "Meu App"] [--no-install] [--no-git]
+// bun create nodebuilderjs [dir] [--title "My App"] [--no-install] [--no-git]
 // Plain JS (not TS) so it runs under both `bun create` and `npm create`.
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
@@ -22,19 +22,19 @@ const { values: opts, positionals } = parseArgs({
 });
 
 if (opts.help) {
-  console.log(`uso: bun create nodebuilderjs [pasta] [--title "Meu App"] [--no-install] [--no-git]`);
+  console.log(`usage: bun create nodebuilderjs [folder] [--title "My App"] [--no-install] [--no-git]`);
   process.exit(0);
 }
 
 let dir = positionals[0];
 if (!dir) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  dir = (await rl.question("Nome do projeto: (meu-app) ")).trim() || "meu-app";
+  dir = (await rl.question("Project name: (my-app) ")).trim() || "my-app";
   rl.close();
 }
 const target = resolve(dir);
 if (existsSync(target) && readdirSync(target).length) {
-  console.error(`A pasta ${dir} já existe e não está vazia.`);
+  console.error(`The folder ${dir} already exists and is not empty.`);
   process.exit(1);
 }
 
@@ -84,8 +84,8 @@ const run = (cmd, args) => spawnSync(cmd, args, { cwd: target, stdio: "inherit" 
 const hasBun = spawnSync("bun", ["--version"], { stdio: "ignore" }).status === 0;
 
 if (!opts["no-install"]) {
-  if (!hasBun) console.warn("Bun não encontrado: instale em https://bun.sh e rode `bun install`.");
-  else if (!run("bun", ["install"])) console.warn("`bun install` falhou; rode de novo dentro da pasta.");
+  if (!hasBun) console.warn("Bun not found: install it from https://bun.sh and run `bun install`.");
+  else if (!run("bun", ["install"])) console.warn("`bun install` failed; run it again inside the folder.");
 }
 if (!opts["no-git"] && spawnSync("git", ["--version"], { stdio: "ignore" }).status === 0) {
   run("git", ["init", "-q"]);
@@ -93,10 +93,10 @@ if (!opts["no-git"] && spawnSync("git", ["--version"], { stdio: "ignore" }).stat
 
 const cd = relative(process.cwd(), target) || ".";
 console.log(`
-Pronto! ${title} criado em ${cd}
+Done! ${title} created in ${cd}
 
   cd ${cd}
-  bun run dev        # abre a janela e recarrega ao salvar
-  bun test           # testes sem janela
-  bun run package    # AppImage, .deb, .rpm e .tar.gz em dist/
+  bun run dev        # opens the window and reloads on save
+  bun test           # tests without a window
+  bun run package    # AppImage, .deb, .rpm and .tar.gz in dist/
 `);

@@ -1,50 +1,118 @@
 # Changelog
 
+## 0.2.5 (2026-10-12)
+
+### New
+- **Widgets:** `Toggle` (on/off switch), `RadioGroup`, `Slider`, `Select`, `Tabs`,
+  `Tooltip`, `Dialog`, `ProgressBar` (determinate or indeterminate) and `Spinner`. Every
+  control takes `disabled`: dimmed, out of the Tab order and the focus, ignores clicks and keys.
+- **Overlays:** `<Overlay>` draws above the whole window, outside the clip of its container:
+  covering the window (`modal` blocks the pointer and Tab behind it) or anchored to an element
+  (`anchor`, `placement`, `matchWidth`), with `onDismiss` on an outside press or Escape.
+- **Text:** `<Text>` wraps at spaces to fit its width; `\n` always breaks. New props
+  `wrap`, `maxLines` (cuts with "…"), `textAlign` and `lineHeight`; selection works across
+  lines.
+- **Scrolling:** draggable scrollbars (a press on the track pages), `<Scroll horizontal>`
+  (and both axes), Shift+wheel, PageUp/PageDown/Home/End/arrows, `scrollTo({ x, y })` and
+  `scrollIntoView()`.
+- **Control flow:** `<Switch>`/`<Match>`, `<Index>` and `<ErrorBoundary fallback={(error,
+  reset) => ...}>`; `<Show>` and `<Match>` take a function child that receives the value.
+- **Context and refs:** `createContext`/`useContext`; `ref={(el) => ...}` on every widget
+  (`focus()`, `blur()`, `scrollTo()`, `scrollIntoView()`, the laid-out box); `onResize`.
+- **Style:** `opacity` and `translateX`/`translateY` on any widget.
+- **Theme:** `setTheme("dark" | "light" | yourTheme)`, `darkTheme`, `lightTheme`,
+  `colorScheme()`. Widgets, `<Canvas>` and charts follow a switch at runtime.
+- **Animation:** `animate`, `createTween`, `createPresence`, `easing`, `mixColor`. `Dialog`,
+  `Select`, `Tooltip` and `Toggle` animate. Without a window (tests) animations finish at
+  once; `frames()` in `@nodebuilderjs/core/testing` drives the clock.
+- **Clipboard:** `clipboard.writeText`/`readText` (system clipboard on Wayland and X11),
+  paste in `TextField`, and `<Text selectable>` to select and copy fixed text.
+- **Testing:** `interact()` gains `down(x, y)`, `up(x, y)`, scroll with `dx`/`shift` and
+  `cursor`; `findByText` also searches overlays.
+- **Apps created with `bun create nodebuilderjs`** are in English (code, UI, `AGENTS.md` and
+  skills, now named `nodebuilder-ui`, `-from-react`, `-testing`, `-charts`, `-drawing`,
+  `-icons`, `-images`, `-packaging`, `-performance`) and show the dark theme toggle, a
+  `Tooltip` and a confirmation `Dialog`.
+
+### Changes that may affect your code
+- **Text wraps by default.** Text that used to overflow its box now breaks into lines
+  (a word longer than the line still overflows). Use `wrap={false}` for one line, or
+  `maxLines={1}` to cut it with "…".
+- **Row shrinking:** when a row has no room, children with `grow` shrink first, then the
+  others. A wrapping text can shrink down to its longest word.
+- **Scroll containers:** the content of what scrolls or clips no longer counts toward its
+  parent's minimum size, so `<Scroll grow={1}>` inside a column no longer needs
+  `minHeight={0}`.
+- **Effects:** a signal written inside an effect now runs the effects it triggers after the
+  current one finishes (as in SolidJS), instead of in the middle of it. Update loops are
+  reported instead of overflowing the stack.
+- **Theme colors:** `theme` values read inside functions follow `setTheme`; a value read once
+  (`color={theme.text.secondary}`) keeps the color of that moment. Use
+  `color={() => theme.text.secondary}` to follow the theme. Assigning `theme.x = ...` still
+  works, at any time.
+- **Disabled buttons** are now dimmed and leave the Tab order.
+- `Image`'s `opacity` is now the general `opacity` style (same usage).
+- The native addon and the core must have the same version (the scroll event carries the
+  modifier keys); installing `@nodebuilderjs/core` brings the matching addon.
+
+### Fixes
+- A `<For>` directly under a context provider, inside `<Show>` content or at the root
+  recreated all its rows on every list change; a component inside `<Show>` was rebuilt when
+  a `<Show>` inside it toggled.
+- The mouse wheel reached what was behind a modal overlay.
+- `ref` on a `Scroll` that scrolled during creation did nothing.
+
+### Performance
+- Same frame time as 0.2.1 in the benchmark scenes (1000 changing texts, 500-row table),
+  measured before and after each change; mounting and disposing a 500-row `<For>` is ~20%
+  faster.
+
 ## 0.2.1 (2026-10-11)
 
-- **Apps criados com `bun create nodebuilderjs`** vêm com um exemplo maior: contador, lista
-  de tarefas, gráfico ao vivo, ícones, o estado num módulo e testes que clicam e digitam
-  com `interact()`. A 0.2.0 foi publicada antes dessa mudança.
-- Nenhuma mudança no core em relação à 0.2.0.
+- **Apps created with `bun create nodebuilderjs`** come with a bigger example: counter,
+  task list, live chart, icons, the state in a module and tests that click and type with
+  `interact()`. 0.2.0 was published before this change.
+- No changes in the core since 0.2.0.
 
 ## 0.2.0 (2026-10-11)
 
-### Novidades
-- **Imagens:** widget `<Image>` com `fit` (`contain`, `cover`, `fill`), cantos e opacidade.
-  PNG, JPEG e WebP decodificados em TypeScript (idênticos a libpng, libjpeg-turbo e libwebp);
-  AVIF e HEIC pela `libheif` do sistema, opcional.
-- **Ícones:** widget `<Icon>` com um renderizador de SVG próprio, para Lucide
-  (`lucide-static` ou `lucide`) e Phosphor (`@phosphor-icons/core`). A cor é herdada como a
-  do texto e aplicada na GPU.
-- **Desenho livre:** widget `<Canvas draw={(g) => ...}>` com linhas, polígonos, círculos,
-  arcos e texto, desenhados pela GPU com antialiasing.
-- **Gráficos:** `@nodebuilderjs/core/charts`, com API no formato do Recharts: `LineChart`,
-  `AreaChart`, `BarChart`, `ComposedChart` e `PieChart`, com eixos, grade, legenda, tooltip,
-  empilhamento, linhas tracejadas e rótulos. Não pesa nada em apps que não o importam.
-- **Eventos:** `onPointerMove`; eventos de ponteiro ganham `localX`/`localY` (relativos ao
-  nó), e arrastar continua chegando ao nó onde o clique começou.
-- **Testes de apps:** `interact(root)` em `@nodebuilderjs/core/testing` simula mouse e
-  teclado sem janela (`hover`, `press`, `drag`, `scroll`, `key`, `type`).
-- **Apps criados com `bun create nodebuilderjs`** vêm com skills para agentes
-  (`.agents/skills/`, com links em `.claude/skills/`).
+### New
+- **Images:** `<Image>` widget with `fit` (`contain`, `cover`, `fill`), corners and opacity.
+  PNG, JPEG and WebP decoded in TypeScript (identical to libpng, libjpeg-turbo and libwebp);
+  AVIF and HEIC through the system's `libheif`, optional.
+- **Icons:** `<Icon>` widget with its own SVG renderer, for Lucide (`lucide-static` or
+  `lucide`) and Phosphor (`@phosphor-icons/core`). The color is inherited like text color
+  and applied on the GPU.
+- **Freehand drawing:** `<Canvas draw={(g) => ...}>` widget with lines, polygons, circles,
+  arcs and text, drawn by the GPU with antialiasing.
+- **Charts:** `@nodebuilderjs/core/charts`, with a Recharts-shaped API: `LineChart`,
+  `AreaChart`, `BarChart`, `ComposedChart` and `PieChart`, with axes, grid, legend, tooltip,
+  stacking, dashed lines and labels. Costs nothing in apps that don't import it.
+- **Events:** `onPointerMove`; pointer events gain `localX`/`localY` (relative to the
+  node), and a drag keeps reaching the node where the press started.
+- **App tests:** `interact(root)` in `@nodebuilderjs/core/testing` simulates mouse and
+  keyboard without a window (`hover`, `press`, `drag`, `scroll`, `key`, `type`).
+- **Apps created with `bun create nodebuilderjs`** come with skills for agents
+  (`.agents/skills/`, linked from `.claude/skills/`).
 
-### Desempenho
-- Culling: o que está fora da área visível de um `Scroll` não é posicionado, pintado nem
-  testado no clique. Tabela de 500 linhas: de 78 para 104 fps com teto de 120.
-- Medidas de texto guardadas por nó: "1 texto muda entre 1000" caiu de 39% para 23% de CPU.
+### Performance
+- Culling: what is outside the visible area of a `Scroll` is not laid out, painted or
+  hit-tested. 500-row table: from 78 to 104 fps with a 120 cap.
+- Text measurements kept per node: "1 text changes among 1000" went from 39% to 23% CPU.
 
-### Mudanças que podem afetar seu código
-- `PointerEvent` tem os campos novos `localX` e `localY`, e a interface `Painter` tem os
-  métodos novos `image`, `line`, `triangles` e `arc`. Só afeta quem cria esses objetos à mão.
-- Os arquivos de `src/` foram organizados em pastas (`render/`, `widgets/`...). As entradas
-  públicas (`@nodebuilderjs/core`, `/jsx-runtime`, `/testing`) não mudaram; caminhos internos
-  como `@nodebuilderjs/core/src/...` mudaram.
+### Changes that may affect your code
+- `PointerEvent` has the new fields `localX` and `localY`, and the `Painter` interface has
+  the new methods `image`, `line`, `triangles` and `arc`. Only affects code that creates
+  these objects by hand.
+- The files in `src/` were organized into folders (`render/`, `widgets/`...). The public
+  entry points (`@nodebuilderjs/core`, `/jsx-runtime`, `/testing`) did not change; internal
+  paths such as `@nodebuilderjs/core/src/...` did.
 
-### Correções
-- `click()` de `@nodebuilderjs/core/testing` mandava o botão do meio; agora manda o esquerdo.
+### Fixes
+- `click()` from `@nodebuilderjs/core/testing` sent the middle button; it now sends the left one.
 
 ## 0.1.1 (2026-10-11)
 
-Primeira versão publicada: reatividade estilo SolidJS, layout flexbox, widgets básicos,
-núcleo nativo Wayland/X11 com OpenGL ES 2, `bun create nodebuilderjs` e `nodebuilder package`
+First published version: SolidJS-style reactivity, flexbox layout, basic widgets, a native
+Wayland/X11 core with OpenGL ES 2, `bun create nodebuilderjs` and `nodebuilder package`
 (AppImage, `.deb`, `.rpm`, `.tar.gz`).
