@@ -259,40 +259,147 @@ test("absolute children: natural size (no stretch), placed inside the padding, n
   expect([fixed!.x, fixed!.y, fixed!.width, fixed!.height]).toEqual([10, 10, 30, 12]);
 });
 
-test("absolute children fill their parent with an explicit size taken from onResize", () => {
-  const [size, setSize] = createSignal({ width: 0, height: 0 });
+test("absolute children: left and right stretch to the parent's inner width, top and bottom to its height", () => {
   const { root } = mount(() => (
     <Column align="start">
-      <Box width={200} height={80} padding={10} onResize={setSize}>
-        <Box position="absolute" left={0} top={0} width={() => size().width - 20} height={() => size().height - 20} />
+      <Box width={320} height={120} padding={10}>
+        <Box position="absolute" left={0} right={0} top={0} bottom={0} />
+        <Box position="absolute" left={20} right={30} top={5} height={10} />
       </Box>
     </Column>
   ));
   const outer = root.children[0]!;
-  layout(outer, 400, 300); // reports the size; the next layout uses it
   layout(outer, 400, 300);
-  const fill = outer.children[0]!.children[0]!;
-  expect([fill.x, fill.y, fill.width, fill.height]).toEqual([10, 10, 180, 60]);
+  const [fill, inset] = outer.children[0]!.children;
+  expect([fill!.x, fill!.y, fill!.width, fill!.height]).toEqual([10, 10, 300, 100]);
+  expect([inset!.x, inset!.y, inset!.width, inset!.height]).toEqual([30, 15, 250, 10]);
 });
 
-test("inside a Scroll, an absolute child stays put; inside an in-flow child, it scrolls with the content", () => {
+test("absolute children: right or bottom alone places the child from that edge", () => {
+  const { root } = mount(() => (
+    <Column align="start">
+      <Box width={300} height={100}>
+        <Box position="absolute" right={10} bottom={10} width={50} height={20} />
+        <Box position="absolute" right={0} top={0}><Text>badge</Text></Box>
+      </Box>
+    </Column>
+  ));
+  const outer = root.children[0]!;
+  layout(outer, 400, 300);
+  const [corner, badge] = outer.children[0]!.children;
+  expect([corner!.x, corner!.y]).toEqual([240, 70]);
+  expect([badge!.x, badge!.y, badge!.width]).toEqual([300 - 40, 0, 40]); // natural width
+});
+
+test("absolute children: an explicit size or a max wins over left + right (right is then ignored, as in CSS)", () => {
+  const { root } = mount(() => (
+    <Column align="start">
+      <Box width={300} height={100}>
+        <Box position="absolute" left={10} right={10} width={50} height={20} />
+        <Box position="absolute" left={10} right={10} maxWidth={100} top={0} bottom={0} maxHeight={40} />
+        <Box position="absolute" left={10} right={290} minWidth={30} height={10} />
+      </Box>
+    </Column>
+  ));
+  const outer = root.children[0]!;
+  layout(outer, 400, 300);
+  const [sized, capped, floored] = outer.children[0]!.children;
+  expect([sized!.x, sized!.width]).toEqual([10, 50]);
+  expect([capped!.x, capped!.width, capped!.height]).toEqual([10, 100, 40]);
+  expect([floored!.x, floored!.width]).toEqual([10, 30]);
+});
+
+test("absolute children: wrapping text stretched by left + right gets the height of that width", () => {
+  const { root } = mount(() => (
+    <Column align="start">
+      <Box width={100} height={200}>
+        <Text position="absolute" left={0} right={0}>one two three four</Text>
+      </Box>
+    </Column>
+  ));
+  const outer = root.children[0]!;
+  layout(outer, 400, 300);
+  const text = outer.children[0]!.children[0]!;
+  expect([text.width, text.height]).toEqual([100, 40]); // "one two three" / "four"
+});
+
+test("inside a Scroll, an absolute child scrolls with the content, like the in-flow ones", () => {
   const { root } = mount(() => (
     <Scroll height={100}>
       <Column height={300} />
       <Box position="absolute" left={0} top={10} width={20} height={20} />
-      <Column>
-        <Box position="absolute" left={0} top={10} width={20} height={20} />
-      </Column>
+      <Box position="absolute" left={0} right={0} bottom={0} height={10} />
       <Column height={200} />
     </Scroll>
   ));
   const scroller = root.children[0]!;
   layout(scroller, 200, 100);
-  const pinned = scroller.children[1]!;
-  const carried = scroller.children[2]!.children[0]!;
-  expect(pinned.y).toBe(10);
-  expect(scroller.children[2]!.culled).toBe(true); // at y 300, below the view
+  const [, top, bottom] = scroller.children;
+  expect([top!.y, bottom!.y, bottom!.width]).toEqual([10, 90, 200]);
   scroller.scrollY = 250;
   layout(scroller, 200, 100);
-  expect([pinned.y, carried.y]).toEqual([10, 60]);
+  expect([top!.y, bottom!.y]).toEqual([-240, -160]);
+  expect([top!.culled, bottom!.culled]).toEqual([true, true]);
+});
+
+test("inside a horizontal Scroll, an absolute child scrolls sideways with the content", () => {
+  const { root } = mount(() => (
+    <Scroll horizontal width={100}>
+      <Row width={400} height={20} />
+      <Box position="absolute" left={30} top={0} width={20} height={20} />
+    </Scroll>
+  ));
+  const scroller = root.children[0]!;
+  layout(scroller, 100, 50);
+  const mark = scroller.children[1]!;
+  expect(mark.x).toBe(30);
+  scroller.scrollX = 25;
+  layout(scroller, 100, 50);
+  expect(mark.x).toBe(5);
+});
+
+test("alignSelf overrides the column's align for one child; its siblings keep the parent's", () => {
+  const { root } = mount(() => (
+    <Column width={200}>
+      <Text>stretched</Text>
+      <Text alignSelf="center">mid</Text>
+      <Text alignSelf="end">end</Text>
+      <Text alignSelf="start">start</Text>
+    </Column>
+  ));
+  const col = root.children[0]!;
+  layout(col, 200, 300);
+  expect(col.children.map((c) => [c.x, c.width])).toEqual([[0, 200], [88, 24], [176, 24], [0, 40]]);
+});
+
+test("alignSelf in a row: one child stretches or moves while the row aligns the rest to the start", () => {
+  const { root } = mount(() => (
+    <Row height={100} align="start">
+      <Box width={10} height={20} />
+      <Box width={10} alignSelf="stretch" />
+      <Box width={10} height={20} alignSelf="center" />
+      <Box width={10} height={20} alignSelf="end" />
+    </Row>
+  ));
+  const row = root.children[0]!;
+  layout(row, 200, 100);
+  expect(row.children.map((c) => [c.y, c.height])).toEqual([[0, 20], [0, 100], [40, 20], [80, 20]]);
+});
+
+test("alignSelf with wrapping text: a centered child wraps at the column's width and the column grows to fit", () => {
+  const { root } = mount(() => (
+    <Column align="start">
+      <Column width={100} align="end">
+        <Text alignSelf="center">one two three four</Text>
+        <Text alignSelf="stretch">ab</Text>
+      </Column>
+    </Column>
+  ));
+  const outer = root.children[0]!;
+  layout(outer, 400, 300);
+  const col = outer.children[0]!;
+  const [long, short] = col.children;
+  expect([long!.x, long!.width, long!.height]).toEqual([0, 100, 40]);
+  expect([short!.x, short!.width]).toEqual([0, 100]);
+  expect(col.height).toBe(60);
 });

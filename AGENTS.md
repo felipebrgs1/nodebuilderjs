@@ -364,7 +364,9 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
 
 ### Layout (render/layout.ts)
 - Flex: `direction` (column by default in `Column`/`Box`), `gap`, `padding`, `grow`,
-  `align` (**stretch** by default), `justify`, `min/max`, `position: "absolute"` (`left/top`).
+  `align` (**stretch** by default; `alignSelf` overrides it per child, read through `alignOf()`),
+  `justify`, `min/max`, `position: "absolute"` (`left/top/right/bottom` from the content box;
+  both edges without a size stretch, as in CSS; it scrolls with a `Scroll`'s content).
 - **Shrinking follows CSS `min-size: auto`:** a child does not shrink below its own
   content, unless it is `scrollable`/`clip` or has an explicit `minWidth/minHeight`.
   Wrapping text shrinks down to its longest word. Children with `grow` shrink first.

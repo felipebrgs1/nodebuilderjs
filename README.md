@@ -63,17 +63,19 @@ with tabs, a table and a chart.
 
 ### Layout
 
-A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch by default),
-`justify`, `min/max` sizes. There are no percentages or grid:
+A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch by default;
+`alignSelf` overrides it for one child), `justify`, `min/max` sizes. There are no percentages
+or grid:
 
 - **Equal or proportional columns:** `width={0} grow={1}` on each child (CSS `flex: 1 1 0`);
   the widths follow the `grow` values, not the content. In a column with a height,
   `height={0} grow={1}` does the same for rows.
-- **`position="absolute"`** with `left`/`top` (from the parent's corner, inside its `padding`; no
-  `right`/`bottom`): out of the flow and at its natural size (it does not stretch), so give it
-  `width`/`height`, taken from the parent's `onResize` to fill it. There is no `zIndex`:
-  children are drawn and hit in order, so declare it last to be on top. Inside a `Scroll` it
-  stays fixed in the visible area; inside an in-flow child of the `Scroll`, it scrolls with it.
+- **`position="absolute"`** with `left`/`top`/`right`/`bottom` (from the parent's content box,
+  inside its `padding`): out of the flow and at its natural size, unless both `left` and `right`
+  (or `top` and `bottom`) are set without a `width` (`height`): then it stretches between them,
+  so `left={0} right={0} top={0} bottom={0}` fills the parent. `right` alone places it from the
+  right edge. There is no `zIndex`: children are drawn and hit in order, so declare it last to be
+  on top. Inside a `Scroll` it scrolls with the content, like CSS.
 - `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
   drawn even without a `background` (the blurred box shows through).
 
