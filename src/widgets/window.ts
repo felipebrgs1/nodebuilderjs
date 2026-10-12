@@ -33,6 +33,18 @@ function WindowButton(props: { kind: "minimize" | "maximize" | "close"; onClick:
   return node;
 }
 
+/** Minimize, maximize/restore and close buttons, for a custom title bar (`<Window decorations={false}>`). */
+export function WindowControls(props: StyleProps = {}) {
+  const node = Row({ align: "center", gap: 10, ...props });
+  node.label = "WindowControls";
+  node.setSlot(node.addSlot(), [
+    WindowButton({ kind: "minimize", onClick: windowControls.minimize }),
+    WindowButton({ kind: "maximize", onClick: windowControls.toggleMaximize }),
+    WindowButton({ kind: "close", onClick: windowControls.close }),
+  ]);
+  return node;
+}
+
 export function Window(
   props: StyleProps & {
     title: string;
@@ -40,6 +52,8 @@ export function Window(
     height?: number;
     appId?: string;
     onClose?: () => boolean | void;
+    /** false: no built-in title bar; build your own with `dragRegion` and `<WindowControls />`. Border, corners and edge resizing stay. */
+    decorations?: boolean;
     children?: Child;
   },
 ) {
@@ -53,36 +67,27 @@ export function Window(
   if (props.borderColor === undefined) createEffect(() => node.set("borderColor", theme.window.border));
   createEffect(() => node.set("radius", windowState.maximized() || !windowState.transparent() ? 0 : theme.window.radius));
 
+  const content = Column({ grow: 1, minHeight: 0 });
+  insert(content, props.children);
+  node.setSlot(node.addSlot(), props.decorations === false ? [content] : [Titlebar(props.title), Divider(), content]);
+  // width/height are the window's initial size, not a style.
+  const { width: _w, height: _h, ...style } = props;
+  applyProps(node, style);
+  return node;
+}
+
+function Titlebar(text: string) {
   const bar = new UINode("Titlebar");
   Object.assign(bar.style, {
     direction: "row", align: "center", height: theme.window.titlebarHeight, padding: [0, 10], gap: 8,
   } satisfies Style);
   bar.dragRegion = true;
-  bar.handlers.onPointerDown = (e) => {
-    if (e.clicks === 2) {
-      windowControls.toggleMaximize();
-      e.stop();
-    }
-  };
-  const title = Text({ text: props.title, bold: true });
+  const title = Text({ text, bold: true });
   createEffect(() => title.set("color", windowState.activated() ? theme.text.primary : theme.text.secondary));
+  // A growing left side balances the controls, so the title stays centred.
   const left = Spacer({});
-  const right = Row({ grow: 1, justify: "end", gap: 10, align: "center" });
-  right.setSlot(right.addSlot(), [
-    WindowButton({ kind: "minimize", onClick: windowControls.minimize }),
-    WindowButton({ kind: "maximize", onClick: windowControls.toggleMaximize }),
-    WindowButton({ kind: "close", onClick: windowControls.close }),
-  ]);
-  // Balance the left side so the title stays centred.
-  left.style.grow = 1;
+  const right = Row({ grow: 1, justify: "end", align: "center" });
+  right.setSlot(right.addSlot(), [WindowControls()]);
   bar.setSlot(bar.addSlot(), [left, title, right]);
-
-  const content = Column({ grow: 1, minHeight: 0 });
-  insert(content, props.children);
-
-  node.setSlot(node.addSlot(), [bar, Divider(), content]);
-  // width/height are the window's initial size, not a style.
-  const { width: _w, height: _h, ...style } = props;
-  applyProps(node, style);
-  return node;
+  return bar;
 }

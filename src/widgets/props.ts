@@ -10,6 +10,8 @@ export type StyleProps = { [K in keyof Style]?: MaybeAccessor<NonNullable<Style[
   ref?: (el: ElementRef) => void;
   /** Accessible name, for elements without text (an icon-only button); tests find it with `findByLabel`. */
   ariaLabel?: MaybeAccessor<string>;
+  /** Pressing here moves the window and a double click toggles maximize (a custom title bar). Children that handle the press keep it. */
+  dragRegion?: MaybeAccessor<boolean>;
 };
 export type BoxProps = StyleProps & Handlers & { children?: Child };
 
@@ -34,6 +36,9 @@ export function applyProps(node: UINode, props: Record<string, any>) {
   const aria = props.ariaLabel;
   if (typeof aria === "function") createEffect(() => (node.ariaLabel = aria()));
   else if (aria !== undefined) node.ariaLabel = aria;
+  const drag = props.dragRegion;
+  if (typeof drag === "function") createEffect(() => (node.dragRegion = !!drag()));
+  else if (drag !== undefined) node.dragRegion = !!drag;
   props.ref?.(node);
 }
 

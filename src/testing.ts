@@ -146,6 +146,7 @@ export function interact(root: UINode) {
     resizable: () => false,
     setCursor: (name) => (cursor = name),
     move() {},
+    toggleMaximize() {},
     resize() {},
     invalidate() {},
     now: () => Date.now(),

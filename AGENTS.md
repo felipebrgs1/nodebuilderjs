@@ -279,8 +279,12 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   the returned accessor. Keys the control uses (arrows in `Slider`) call `e.stop()`,
   otherwise they scroll the surrounding `Scroll`.
 - Every widget passes its props through `applyProps`: it is what wires style, handlers,
-  `ariaLabel` (into `UINode.ariaLabel`; `UINode.label` is the debug label) and the `ref`
-  (the `ref` receives the `UINode`, typed as `ElementRef`). New widgets too.
+  `ariaLabel` (into `UINode.ariaLabel`; `UINode.label` is the debug label), `dragRegion`
+  (a node flag, not a `Style` field) and the `ref` (the `ref` receives the `UINode`, typed
+  as `ElementRef`). New widgets too.
+- A control inside a drag region keeps the press because it is clickable, focusable or has
+  `onPointerDown` (`pointerDown` in `runtime/input.ts`); a new pressable widget needs one of
+  those, otherwise pressing it in a custom title bar moves the window.
 - Focus by click only (e.g. `<Text selectable>`, which needs focus for Ctrl+C):
   `focusable = true` and `tabStop = false`, so it stays out of the Tab order.
 - Color/size defaults come from `theme.ts`, not hard-coded in widgets. Theme colors go
@@ -510,7 +514,8 @@ packages, all with the version from the root `package.json`:
 - No accessibility (AT-SPI), multi-window, IME
   (text-input-v3), DnD, real fractional scaling (KDE 125% renders at 2x and downscales).
 - Window always uses its own decoration (CSD): title bar, move, maximize,
-  resize from the edges (6 px). `xdg-decoration` (SSD on KDE) not yet.
+  resize from the edges (6 px); `decorations={false}` swaps the bar for the app's own
+  (`dragRegion` + `<WindowControls />`). `xdg-decoration` (SSD on KDE) not yet.
 - X11: timer-based frames (no Present extension, so there may be tearing without a
   compositor and ~5–10% lower fps than on Wayland); integer scale only; tested only via
   XWayland (KDE). A pure X11 session and the no-compositor path have not been tested yet.

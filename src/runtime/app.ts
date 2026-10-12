@@ -163,6 +163,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
     resizable: () => !maximized() && !!windowNode,
     setCursor: (name) => nat.setCursor(name),
     move: () => nat.move(),
+    toggleMaximize: windowControls.toggleMaximize,
     resize: (edges) => nat.resize(edges),
     invalidate: () => schedule(),
     now: () => Date.now(),
