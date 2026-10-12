@@ -45,7 +45,7 @@ export function Tooltip(
       else timer = setTimeout(() => setOpen(true), delay);
     },
     onPointerLeave: () => (own.onPointerLeave?.(), hide()),
-    // A clickable child keeps the press to itself, so the release hides it too.
+    // A press or release anywhere inside (both bubble up, a child's stop() aside) hides it.
     onPointerDown: (e) => (own.onPointerDown?.(e), hide()),
     onPointerUp: (e) => (own.onPointerUp?.(e), hide()),
   } satisfies Handlers);

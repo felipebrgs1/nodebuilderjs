@@ -27,24 +27,6 @@ effort inside each group. Delete an item from here when it ships (and add it to 
 
 ---
 
-## A. Agents and debugging
-
-### A4. Realistic text metrics in tests (report item 6) - small
-
-**Problem:** fake metrics (8 px/char) make overflow tests unrepresentative.
-
-**API:** `useRealTextMetrics()` in `@nodebuilderjs/core/testing` (loads the addon,
-`measureText` works without a window); `useFakeTextMetrics({ charWidth, lineHeight })`
-keeps being the default. Document the trade-off (real metrics depend on installed fonts).
-
-**Implementation:** `nat.measureText` already works without `open()`, and
-`nativeTextMeasurer(nat, scale)` (`src/runtime/native.ts`) is what screenshots use: install it.
-
-**Tests:** `test/testing.test.tsx`: with real metrics "iiii" is narrower than "MMMM";
-`skipIf` no addon.
-
----
-
 ## B. Layout
 
 ### B4. `wrap` on Row (report item 2) - medium
@@ -104,36 +86,18 @@ Done (D1). Left for later: server-side decorations via `xdg-decoration` on KDE.
 
 ## E. Ecosystem
 
-### E1. Icon imports (report item 12) - small
-
-**Problem:** 32 lines of `export { default as x } from "lucide-static/icons/x.svg" with {
-type: "text" }`.
-
-**Not** bundling Lucide in core (zero third-party content in the package, size). Instead,
-a code generator: `nodebuilder icons add play pause heart --from lucide-static` writes/updates
-`src/icons.ts` (sorted, deduped, camelCase names), validating that each file exists in
-`node_modules`. Supports `--from @phosphor-icons/core` (`-fill` variants). Works in the
-packaged executable (static imports with `type: "text"`).
-
-**Tests:** `test/cli.test.ts` with a fake `node_modules/lucide-static/icons/` in a temp dir:
-adds, dedupes, errors on an unknown icon.
-
-**Docs:** `nodebuilder-icons` skill.
-
----
+Done (E1).
 
 ---
 
 ## F. Found while fixing the above
 
-### F4. `onPointerDown` bubbling stops at a node with `onClick` - check
+All done (F1-F6).
 
-Bubbling of `onPointerDown` ends at the first node with an `onClick`, even without
-`stop()`. Decide whether it is intended (buttons own their press) and document it, or make
-it bubble until `stop()`. Test either way in `test/input.test.tsx`.
+---
 
 ## Suggested order
 
 1. B4 (wrap)
 2. B5 (margin)
-3. C2 (weights, spacing), A4, E1, F4
+3. C2 (weights, spacing)

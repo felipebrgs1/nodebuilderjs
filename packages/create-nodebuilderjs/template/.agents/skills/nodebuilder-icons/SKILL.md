@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-icons
-description: Icons and SVG in nodebuilder with the Icon widget, using Lucide (lucide-static or lucide) and Phosphor (@phosphor-icons/core). Use when adding icons to buttons, menus, sidebars or lists, when choosing an icon library, or when showing any .svg file.
+description: Icons and SVG in nodebuilder with the Icon widget, using Lucide (lucide-static or lucide) and Phosphor (@phosphor-icons/core). Use when adding icons to buttons, menus, sidebars or lists (generate the imports with `nodebuilder icons add`), when choosing an icon library, or when showing any .svg file.
 ---
 
 # Icons
@@ -34,6 +34,36 @@ const [liked, setLiked] = createSignal(false);
   </Row>
 </Column>
 ```
+
+## Adding icons: `nodebuilder icons add`
+
+For more than one or two icons, **generate the imports** instead of writing them:
+
+```sh
+bun run icons:add play pause heart arrow-left                  # lucide-static -> src/icons.ts
+bun run icons:add heart-fill house --from @phosphor-icons/core # Phosphor: weight by suffix
+nodebuilder icons list arrow                                   # names that contain "arrow"
+```
+
+<!-- no-check -->
+```tsx
+import { Icon } from "@nodebuilderjs/core";
+import { arrowLeft, heartFill } from "./icons.js"; // camelCase of the file name
+
+<Icon svg={arrowLeft} />;
+<Icon svg={heartFill} color="#e01b24" />;
+```
+
+- Install the package first (`bun add lucide-static`). `--out <file>` picks another module.
+- One sorted, deduplicated line per icon; the rest of `src/icons.ts` (hand-drawn icons) stays.
+  A name already used in the file is an error (rename yours, or pick another icon).
+- An unknown name fails with close matches (`did you mean heart-crack?`) and writes nothing:
+  run `nodebuilder icons list <part>` to find the right one.
+- Writing them by hand: `import x from "lucide-static/icons/x.svg" with { type: "text" };`.
+  **Never** `export { default as x } from "....svg" with { type: "text" }`: Bun drops the
+  attribute on re-exports, so `x` becomes the file's path, not its text (`Icon` happens to
+  read paths too, anything expecting SVG text breaks); `icons add` rewrites those lines into
+  `import x from "....svg" with { type: "text" }; export { x };`.
 
 ## Rules
 

@@ -139,6 +139,9 @@ the widget or pressing it:
 - `hoverStyle` alone leaves presses alone; `pressStyle` (and `createInteraction().props`)
   make the widget handle the press, so inside a window's drag region it no longer moves the
   window.
+- Like `:active`, a parent's `pressStyle` also shows while a child (a button in the card) is
+  pressed; `onPointerDown={(e) => e.stop()}` on the child (or on a `Box` around a `Button`)
+  keeps the press to the child.
 
 When something else depends on the state, such as a play button that only shows while its card
 is hovered, `createInteraction()` gives `hovered`, `pressed` and `focused` accessors and
@@ -158,6 +161,20 @@ The pointer is still over the card while it is over the play button. `props` add
 widget's own handlers and to `onPointerEnter`/`onPointerLeave`/... written next to it,
 before or after the spread; nothing is replaced, and several interactions can share a widget.
 `focused` only changes on focusable widgets (`Button`, `TextField`...).
+
+### Events
+
+Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onScroll`,
+`onKeyDown`, `onFocus` and `onBlur`. Pointer events carry `x`/`y` (window), `localX`/`localY`
+(node), `button` (0 left, 1 middle, 2 right) and `clicks` (2 = double click).
+
+- `onClick` is the left button only and runs on the innermost node that has one (pressed and
+  released on it): a button inside a clickable card clicks the button, not the card.
+- `onPointerDown`, `onPointerUp`, `onPointerMove`, `onScroll` and `onKeyDown` bubble from the
+  innermost node to the root until a handler calls `e.stop()`, also past nodes with `onClick`:
+  a list's `onPointerDown` with `e.button === 2` (context menu) sees a right press on any of
+  its clickable rows. On keys and the wheel, `stop()` also keeps the surrounding `Scroll` still.
+- While a button is held, `onPointerMove` keeps reaching the node where the press started.
 
 ### Images
 
@@ -212,6 +229,23 @@ Lucide. `fill` makes them solid, also as in Lucide: it replaces the fill of the 
 included, still wins. It can be reactive (`fill={liked}`). Gradients, text, filters, masks and `<use>` are not supported yet, so complex
 illustrations should be turned into PNG. React packages (`lucide-react`,
 `@phosphor-icons/react`) don't work: use `lucide-static`, `lucide` or `@phosphor-icons/core`.
+
+Many icons: let the CLI write the imports into one module instead of by hand.
+
+```sh
+bun add lucide-static
+nodebuilder icons add play pause heart arrow-left       # -> src/icons.ts (--out to change)
+nodebuilder icons add heart-fill house --from @phosphor-icons/core   # weights by suffix
+nodebuilder icons list arrow                            # names containing "arrow"
+```
+
+Each icon becomes one sorted, deduplicated line, `import arrowLeft from
+"lucide-static/icons/arrow-left.svg" with { type: "text" }; export { arrowLeft };` (camelCase
+name; the rest of the file is kept), so `import { arrowLeft } from "./icons.js"` gives the SVG
+text and `nodebuilder package` embeds it. Each file is checked in `node_modules`; an unknown
+name fails with close matches (`did you mean heart-crack?`) and writes nothing. Not
+`export { default as x } from "x.svg" with { type: "text" }`: Bun drops the attribute on a
+re-export and gives the file's path; the command rewrites such lines it finds.
 
 ### Freehand drawing
 
@@ -656,6 +690,30 @@ test("play and pause", () => {
   warnings of the last layout (see Layout); `expect(layoutWarnings()).toEqual([])` catches a
   child hidden by a too-narrow panel before a click finds it. `mount` does not fail on them by
   itself: a deliberate overflow (a clipped marquee) is allowed.
+- **Text metrics:** fake by default. `useFakeTextMetrics({ charWidth, lineHeight })` changes
+  them; `useRealTextMetrics()` makes this and every later `mount` measure with the installed
+  fonts (the native core's FreeType + HarfBuzz, still no window) and returns a function that
+  puts the previous metrics back. Real metrics catch overflow that 8 px per character hides,
+  but they depend on the machine's fonts: assert relations ("fits", "narrower than"), not
+  exact pixels, and guard with `test.skipIf(!canUseRealTextMetrics())`.
+
+```tsx
+import { afterEach, expect, test } from "bun:test";
+import { Row, Text } from "@nodebuilderjs/core";
+import { canUseRealTextMetrics, layoutWarnings, mount, useFakeTextMetrics, useRealTextMetrics } from "@nodebuilderjs/core/testing";
+
+afterEach(() => useFakeTextMetrics());
+
+test.skipIf(!canUseRealTextMetrics())("the header fits with real fonts", () => {
+  useRealTextMetrics();
+  const { root } = mount(() => (
+    <Row width={240} clip>
+      <Text>Recently played</Text>
+    </Row>
+  ));
+  expect(layoutWarnings(root)).toEqual([]);
+});
+```
 
 #### Seeing the UI: screenshots without a window
 
@@ -688,7 +746,7 @@ test.skipIf(!canScreenshot())("the banner is red", () => {
 `screenshot(root | view, { width, height, scale, background })` returns `{ width, height,
 scale, rgba, pixel(x, y), toPNG() }`; `rgba` has straight (not premultiplied) alpha, rows top
 to bottom, and what nothing covers stays transparent (the window's rounded corners too). The
-tree is laid out with real fonts for the shot and gets its fake metrics back afterwards.
+tree is laid out with real fonts for the shot and gets its own metrics (fake, by default) back afterwards.
 Pixels depend on the installed fonts and GPU driver: compare colors at points, not whole images.
 
 ## Distributing

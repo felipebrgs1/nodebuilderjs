@@ -96,8 +96,10 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
   (xkb names: `"Return"`, `"Escape"`, `"Tab"`, `"BackSpace"`, `"space"`, `"Up"`, `"Left"`, `"a"`),
   `text`, `ctrl`, `shift`, `alt`, `repeat`. `onScroll` gets `dx`/`dy`. `onClick` is the left button only
   (context menu: `onPointerDown` with `e.button === 2`) and runs only on the innermost node that
-  has one; the other events go up through the parents until a handler calls `e.stop()` (on keys
-  and the wheel, that also keeps the surrounding `Scroll` still).
+  has one (a button inside a clickable card clicks only the button); the other events go up
+  through the parents until a handler calls `e.stop()`, also past nodes with `onClick` (a
+  list's `onPointerDown` with `e.button === 2` sees a right press on any of its clickable
+  rows; on keys and the wheel, `stop()` also keeps the surrounding `Scroll` still).
 - Any prop accepts a fixed value or a function: `background={() => (sel() ? a : b)}`.
 - `onResize={(s) => ...}`: the node's size (`s.width`, `s.height`) after layout, the first
   time and whenever it changes. Use it to adapt the screen to the available width.
@@ -143,6 +145,9 @@ function SongCard(props: { title: string; onPlay: () => void }) {
   over its children. `focused` only changes on focusable widgets (`Button`, `TextField`).
 - `hoverStyle` alone does not take the press; `pressStyle` and `card.props` do, so inside a
   window's drag region (title bar) such a widget no longer drags the window.
+- Like CSS `:active`, a parent's `pressStyle` (and `pressed()`) also turns on while a child
+  inside it (a button in the card) is pressed; `onPointerDown={(e) => e.stop()}` on the child
+  (or on a `Box` around a `Button`) keeps the press to the child.
 
 ## Conditions, lists and errors
 

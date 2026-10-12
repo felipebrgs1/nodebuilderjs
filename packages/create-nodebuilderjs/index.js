@@ -74,6 +74,7 @@ const pkg = {
     test: "bun test",
     typecheck: "tsc --noEmit",
     screenshot: "nodebuilder screenshot src/main.tsx screenshot.png",
+    "icons:add": "nodebuilder icons add --out src/icons.ts",
     package: `nodebuilder package src/main.tsx --title "${title}" --app-id ${appId}`,
   },
   dependencies: { "@nodebuilderjs/core": `^${version}` },

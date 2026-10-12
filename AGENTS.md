@@ -56,6 +56,8 @@ bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settin
 bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]
 bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --wait-frames N]
                             # PNG of the app without a window or display server (EGL offscreen)
+bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
+                            # icon imports for an app (validated in its node_modules); `icons list [filter]`
 bun run npm:build           # npm packages in dist/npm/ (does not publish)
 scripts/compare.sh <label> <warmup-s> <sample-s> -- <command...>  # CPU/RAM of the process tree
 ```
@@ -80,7 +82,7 @@ from internal details, so that refactoring does not break tests for no reason.
 |---|---|
 | Reactivity, control flow (`For`/`Index`/`Show`/`Switch`) | signals and effects directly; count runs and disposals (a `Probe` with a counter in the body and in `onCleanup`) |
 | Errors (`ErrorBoundary`, `catchError`) | a component or effect that throws; check the `fallback`, that the scope was disposed (the effect no longer runs, `onCleanup` ran) and that, without a boundary, the error reaches the caller and the queue keeps going |
-| Widgets and layout | mount with `mount` (`@nodebuilderjs/core/testing`) or `insert` into a root `UINode`, run `layout()` and check `x`/`y`/`width`/`height` or `debugTree()`. Fake metrics: 8 px per character, 20 px line |
+| Widgets and layout | mount with `mount` (`@nodebuilderjs/core/testing`) or `insert` into a root `UINode`, run `layout()` and check `x`/`y`/`width`/`height` or `debugTree()`. Fake metrics: 8 px per character, 20 px line (`useRealTextMetrics()` for the installed fonts, `skipIf(!canUseRealTextMetrics())`) |
 | Painting and command buffer | `drawCommands(node)` / `decode(buffer)` from `test/helpers.ts` return named commands (`{ op: "line", x0, ... }`). A new draw primitive starts here |
 | Frame loop (when frames render) | `runWith(fakeNative, app, { maxFps: 1000 }, hooks)` from `runtime/app.ts` (see `test/app.test.tsx`): the fake records `render`/`requestFrame` and the test sends `configure`/`frame`/pointer events through `open`'s callback, then awaits a `setImmediate` tick. `hooks` inject `env`, `now`, `log`, `warn`. Close with `windowControls.close()` and reset the globals `run()` sets (text measurer, image backend, frame clock) |
 | Events (mouse, keyboard, focus) | `interact(root)` from `@nodebuilderjs/core/testing`, or `createInput(root, host)` from `runtime/input.ts` with a fake host that records move/resize/cursor and controls the clock |
@@ -119,7 +121,7 @@ What cannot be tested automatically is documented when closing the task:
   `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
   (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
   `input` (events), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
-  `cli` (the `nodebuilder` command, spawned),
+  `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
   `clipboard`, `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
   pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
@@ -157,7 +159,7 @@ src/                   one module per folder; relative imports with `.js`
   index.ts             public API (re-exports the modules)
   jsx-runtime.ts       own JSX runtime; jsx() only creates descriptions (ElementDesc)
   testing.ts           @nodebuilderjs/core/testing: mount, findBy/AllByText, findBy/AllByLabel, click, interact,
-                       layoutWarnings, screenshot/savePNG/canScreenshot
+                       layoutWarnings, screenshot/savePNG/canScreenshot, use{Fake,Real}TextMetrics
   theme.ts             lightTheme/darkTheme, `theme` (reactive getters), setTheme, colorScheme
   animation/index.ts   animate, createTween, createPresence, easing, mixColor
   assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts references it with preserve="true")
@@ -235,7 +237,8 @@ test/            one file per module (bun:test; bunfig.toml limits bun test to t
   charts/        tests for src/charts (scales and each chart type)
   fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
 examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
-cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
+cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts,
+                 icons.ts (`icons add/list`: writes an app's icon imports)
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces published together with core (see "Publishing to npm")
   linux-x64/     @nodebuilderjs/linux-x64: only the prebuilt addon (generated, not in git)
@@ -309,7 +312,10 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   as `ElementRef`). New widgets too.
 - A control inside a drag region keeps the press because it is clickable, focusable or has
   `onPointerDown` (`pointerDown` in `runtime/input.ts`); a new pressable widget needs one of
-  those, otherwise pressing it in a custom title bar moves the window.
+  those, otherwise pressing it in a custom title bar moves the window. Taking the press only
+  blocks the window move: `onPointerDown` keeps bubbling to every ancestor until `stop()`,
+  past clickable nodes too (a parent's `pressStyle` shows like CSS `:active`); only `onClick`
+  stops at the innermost node that has one.
 - Handlers are **chained, never replaced**: `applyProps` adds the app's handlers (and the
   ones from spread `createInteraction().props`, carried under a unique symbol key so a later
   `onPointerEnter={...}` cannot drop them) after the node's; a widget that sets a handler
@@ -641,6 +647,9 @@ packages, all with the version from the root `package.json`:
   `create-nodebuilderjs` renames it when copying. Relative symlinks also do not survive
   pack/`cpSync`: that is why the `.claude/skills/` links are created by `index.js`.
 - `Object.keys(native)` returns `[]` (non-enumerable properties); it is not an error.
+- Bun drops import attributes on re-exports: `export { default as x } from "x.svg" with
+  { type: "text" }` gives the file's path, not its text. Import, then export
+  (`import x from "x.svg" with { type: "text" }; export { x };`), as `nodebuilder icons add` writes.
 
 ### Frame loop
 - Code that runs inside `renderFrame` (`layout()`, `refreshHover()`, paint) must only call

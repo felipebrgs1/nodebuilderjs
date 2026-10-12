@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Box, Button, Column, For, Overlay, Row, Scroll, Text, TextField, Tooltip, Window, createSignal } from "@nodebuilderjs/core";
 import type { PointerEvent } from "@nodebuilderjs/core";
-import { click, findAllByLabel, findAllByText, findByLabel, findByText, interact, mount } from "@nodebuilderjs/core/testing";
+import {
+  canUseRealTextMetrics, click, findAllByLabel, findAllByText, findByLabel, findByText, interact, mount, useFakeTextMetrics, useRealTextMetrics,
+} from "@nodebuilderjs/core/testing";
 
 test("interact: hover, press and release go through the real event delivery", () => {
   const log: string[] = [];
@@ -266,5 +268,40 @@ describe("ariaLabel", () => {
       </Tooltip>
     ));
     expect(findByLabel(root, "Now playing")!.label).toBe("Tooltip");
+  });
+});
+
+describe("text metrics", () => {
+  test("fake metrics are the default (8 px per character, 20 px lines); options change them", () => {
+    const { root } = mount(() => <Column align="start"><Text>iiii</Text></Column>);
+    const text = findByText(root, "iiii")!;
+    expect([text.width, text.height]).toEqual([32, 20]);
+    useFakeTextMetrics({ charWidth: 10, lineHeight: 24 });
+    try {
+      const again = mount(() => <Column align="start"><Text>iiii</Text></Column>);
+      const t = findByText(again.root, "iiii")!;
+      expect([t.width, t.height]).toEqual([40, 24]);
+    } finally {
+      useFakeTextMetrics();
+    }
+  });
+
+  test.skipIf(!canUseRealTextMetrics())("useRealTextMetrics: mount measures with the installed fonts until restored", () => {
+    const restore = useRealTextMetrics();
+    try {
+      const { root } = mount(() => (
+        <Column align="start">
+          <Text>iiii</Text>
+          <Text>MMMM</Text>
+        </Column>
+      ));
+      const narrow = findByText(root, "iiii")!.width, wide = findByText(root, "MMMM")!.width;
+      expect(narrow).toBeGreaterThan(0);
+      expect(wide).toBeGreaterThan(narrow * 2);
+    } finally {
+      restore();
+    }
+    const { root } = mount(() => <Column align="start"><Text>iiii</Text></Column>);
+    expect(findByText(root, "iiii")!.width).toBe(32); // fake again
   });
 });
