@@ -3,7 +3,9 @@ export {
   type Accessor, type MaybeAccessor, type Setter,
   batch, createEffect, createMemo, createRoot, createSignal, onCleanup, read, untrack,
 } from "./reactive/signals.js";
-export { Show, For } from "./reactive/control.js";
+export { Show, Switch, Match, type ConditionalChildren } from "./reactive/control.js";
+export { For, Index } from "./reactive/list.js";
+export { ErrorBoundary } from "./reactive/error-boundary.js";
 export { createContext, useContext, type Context } from "./reactive/context.js";
 export { type Child, type Component, Fragment } from "./jsx-runtime.js";
 export { run, requestAnimationFrame, windowControls, windowState } from "./runtime/app.js";

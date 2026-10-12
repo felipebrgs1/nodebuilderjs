@@ -1,8 +1,8 @@
 // Context, as in SolidJS/React: a value provided by an ancestor and read by any
 // component below it, without passing it through every level of props.
 
-import { type Child, type Component, resolve } from "../jsx-runtime.js";
-import { createMemo, lookupContext, provideContext } from "./signals.js";
+import { type Child, type Component, render } from "../jsx-runtime.js";
+import { lookupContext, provideContext } from "./signals.js";
 
 export interface Context<T> {
   readonly id: symbol;
@@ -18,7 +18,7 @@ export function createContext<T>(defaultValue: T): Context<T> {
     defaultValue,
     // Children are resolved inside the providing scope: jsx() is lazy, so resolving them
     // anywhere else would run their components where the value is not visible.
-    Provider: (props) => provideContext(id, props.value, () => createMemo(() => resolve(props.children), { equals: false })),
+    Provider: (props) => provideContext(id, props.value, () => render(props.children)),
   };
 }
 

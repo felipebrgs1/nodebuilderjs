@@ -22,6 +22,8 @@ mudanças antes dele saem juntas no mesmo frame.
 - **`<For>` é keyed por referência:** recriar os objetos (`lista.map((x) => ({ ...x }))`)
   destrói e recria todas as linhas. Mantenha as referências e mude só o que mudou; para
   campos que mudam muito, guarde um signal dentro do item (`{ id, cpu: createSignal(0) }`).
+  Se os dados chegam sempre como objetos novos (um JSON a cada segundo) ou são primitivos,
+  use `<Index>`: as linhas ficam por posição e só o accessor `item()` muda.
 - **Atualize o mínimo:** um signal por valor que muda, e funções finas nos props
   (`text={() => fmt(item.cpu())}`) em vez de um signal gigante com o estado todo.
 - **Várias mudanças juntas:** `batch(() => { setA(1); setB(2); })` gera um único frame e

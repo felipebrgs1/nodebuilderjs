@@ -12,6 +12,8 @@ interface Owner {
   disposed: boolean;
   /** Values provided to this scope and below (createContext). */
   context?: Record<symbol, unknown>;
+  /** Receives errors thrown in this scope and below (catchError, ErrorBoundary). */
+  onError?: (error: unknown) => void;
 }
 
 interface Computation extends Owner {
@@ -57,20 +59,68 @@ function execute(c: Computation) {
   currentListener = c;
   try {
     c.run();
+  } catch (error) {
+    currentOwner = prevOwner;
+    currentListener = prevListener;
+    handleError(c.owner, error);
   } finally {
     currentOwner = prevOwner;
     currentListener = prevListener;
   }
 }
 
-function flushPending() {
-  let guard = 0;
-  while (pending.size) {
-    const c = pending.values().next().value!;
-    pending.delete(c);
-    if (!c.disposed) execute(c);
-    if (++guard > 100_000) throw new Error("nodebuilder: reactive update loop detected");
+/** Hands `error` to the nearest scope with a handler, from `owner` up; without one, rethrows. */
+function handleError(owner: Owner | null, error: unknown) {
+  let o = owner;
+  while (o && !o.onError) o = o.owner;
+  if (!o) throw error;
+  const prevOwner = currentOwner;
+  const prevListener = currentListener;
+  currentOwner = null;
+  currentListener = null;
+  // Writes made by the handler wait for the update in progress: whatever it disposes
+  // (the failed scope) is not disposed halfway through a computation that is still running.
+  batchDepth++;
+  try {
+    o.onError!(error);
+  } finally {
+    currentOwner = prevOwner;
+    currentListener = prevListener;
+    if (--batchDepth === 0) flushPending();
   }
+}
+
+function flushPending() {
+  // Writes made by the effects below only join the queue: an effect finishes before the
+  // ones it triggers run (no re-entrant runs), and an update loop is caught by the guard.
+  batchDepth++;
+  let guard = 0;
+  let failed = false;
+  let firstError: unknown;
+  try {
+    while (pending.size) {
+      try {
+        do {
+          const c = pending.values().next().value!;
+          pending.delete(c);
+          if (!c.disposed) execute(c);
+          if (++guard > 100_000) {
+            pending.clear();
+            throw new Error("nodebuilder: reactive update loop detected");
+          }
+        } while (pending.size);
+      } catch (error) {
+        // An error no scope handled: the rest of the queue still runs, then it is rethrown.
+        if (!failed) {
+          failed = true;
+          firstError = error;
+        }
+      }
+    }
+  } finally {
+    batchDepth--;
+  }
+  if (failed) throw firstError;
 }
 
 /** Runs `fn` with all signal writes coalesced; effects run once at the end. */
@@ -111,7 +161,7 @@ export function createSignal<T>(value: T, options?: { equals?: false | ((a: T, b
     if (state.equals(state.value, v)) return state.value;
     state.value = v;
     for (const o of state.observers) pending.add(o);
-    if (batchDepth === 0) batch(() => {});
+    if (batchDepth === 0) flushPending();
     return v;
   };
   return [read, write];
@@ -169,6 +219,27 @@ export function provideContext<T>(id: symbol, value: unknown, fn: () => T): T {
   currentOwner = scope;
   try {
     return fn();
+  } finally {
+    currentOwner = prevOwner;
+  }
+}
+
+/**
+ * Runs `fn` in a new child scope. Errors it throws, and errors thrown later by effects and
+ * memos created inside it (when a signal re-runs them), go to `onError` instead of up the
+ * stack. Returns `fn`'s result, or undefined if it threw.
+ */
+export function catchError<T>(fn: (dispose: () => void) => T, onError: (error: unknown) => void): T | undefined {
+  const scope: Owner = { owner: currentOwner, owned: [], cleanups: [], disposed: false, onError };
+  currentOwner?.owned.push(scope);
+  const prevOwner = currentOwner;
+  currentOwner = scope;
+  try {
+    return fn(() => disposeOwner(scope));
+  } catch (error) {
+    currentOwner = prevOwner;
+    handleError(scope, error);
+    return undefined;
   } finally {
     currentOwner = prevOwner;
   }

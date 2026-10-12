@@ -6,6 +6,10 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 ## Já existe (0.2)
 
 - Reatividade estilo SolidJS (signals, memos, effects, ownership), JSX próprio, `<For>` e `<Show>`
+- Controle de fluxo completo (2026-10-12): `<Switch>`/`<Match>`, `<Index>` (lista por
+  posição) e `<ErrorBoundary>` (erros na criação e em effects, com `reset`); filho-função
+  `{(valor) => ...}` no `<Show>` e no `<Match>`; mudanças internas não recriam mais os
+  componentes em volta (ex.: `<For>` logo abaixo de um `Provider`)
 - Layout flexbox, rolagem, recorte com cantos arredondados, sombras
 - Widgets: `Window` com decoração própria, `Column`/`Row`/`Box`, `Scroll`, `Text`, `Image`
   (PNG, JPEG, WebP; AVIF/HEIC via libheif), `Icon` (SVG: Lucide, Phosphor), `Canvas`

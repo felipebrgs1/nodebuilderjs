@@ -51,8 +51,9 @@ código como o Claude Code.
 - **Estilo são props, não CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
   `radius`, `color`, `fontSize`... O layout é flexbox.
 - **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
-  `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`, além de `<For>` e `<Show>`
-  para listas e condições, e de `createContext` para valores compartilhados pela árvore.
+  `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`, além de `<For>`/`<Index>`,
+  `<Show>`/`<Switch>` e `<ErrorBoundary>` para listas, condições e erros, e de
+  `createContext` para valores compartilhados pela árvore.
 
 Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens, ícones,
 desenho livre, gráficos, overlays (menu, diálogo e dica), texto (parágrafos, alinhamento,
@@ -145,6 +146,63 @@ grade, `label` em fatias e barras, e o eixo x omite rótulos que se sobrepõem. 
 desenhado com o `<Canvas>`, pela GPU, e vem no próprio core: quem não importa
 `@nodebuilderjs/core/charts` não leva nada no executável (quem usa, ~15 KB). Ainda não
 existem gráficos de dispersão e radar, `ReferenceLine`, `Brush` nem eixos secundários.
+
+### Condições, listas e erros
+
+Como no SolidJS: componentes que decidem quando criar (e descartar) os filhos.
+
+```tsx
+import { Button, Column, ErrorBoundary, For, Index, Match, Show, Switch, Text, createSignal } from "@nodebuilderjs/core";
+
+const [usuario, setUsuario] = createSignal<{ nome: string } | null>(null);
+const [status, setStatus] = createSignal<"carregando" | "erro" | "ok">("carregando");
+const [tarefas] = createSignal([{ titulo: "Comprar pão" }]);
+const [notas] = createSignal([7, 9, 10]);
+
+// Show: com filho-função, recebe o valor (verdadeiro) como accessor.
+<Show when={usuario} fallback={<Text>Entre na sua conta</Text>}>
+  {(u) => <Text>{() => `Olá, ${u().nome}`}</Text>}
+</Show>;
+
+// Switch: o primeiro Match verdadeiro; o conteúdo só é recriado quando muda o Match escolhido.
+<Switch fallback={<Text>Tudo certo</Text>}>
+  <Match when={() => status() === "carregando"}><Text>Carregando...</Text></Match>
+  <Match when={() => status() === "erro"}><Text color="#c01c28">Falhou</Text></Match>
+</Switch>;
+
+// For: keyed por referência (a linha acompanha o objeto); i é um accessor.
+<For each={tarefas} fallback={<Text>Nada a fazer</Text>}>
+  {(t, i) => <Text>{() => `${i() + 1}. ${t.titulo}`}</Text>}
+</For>;
+
+// Index: por posição (bom para primitivos); item é um accessor, i é um número fixo.
+<Index each={notas}>{(nota, i) => <Text>{() => `Prova ${i + 1}: ${nota()}`}</Text>}</Index>;
+
+// ErrorBoundary: um erro ao criar os filhos ou num effect deles mostra o fallback.
+<ErrorBoundary
+  fallback={(erro, tentarDeNovo) => (
+    <Column gap={8}>
+      <Text>{`Algo deu errado: ${erro instanceof Error ? erro.message : String(erro)}`}</Text>
+      <Button label="Tentar de novo" onClick={tentarDeNovo} />
+    </Column>
+  )}
+>
+  <Text>{() => usuario()!.nome}</Text>
+</ErrorBoundary>;
+```
+
+- `when` aceita valor ou accessor. O filho-função precisa declarar o parâmetro
+  (`{(u) => ...}`); uma função sem parâmetros (`{() => ...}`) continua sendo um filho
+  reativo comum. O accessor guarda o último valor verdadeiro, então um effect da linha que
+  rode antes de ela ser descartada não vê `null`.
+- `<Switch>` só aceita `<Match>` como filho (ou `false`/`null`, para `{cond && <Match>}`);
+  `<Match>` fora de um `<Switch>` é erro.
+- `<ErrorBoundary>` captura o que é lançado ao criar os componentes filhos e, depois, pelos
+  effects e memos deles (inclusive quando um clique muda um signal e um effect falha). O que
+  os filhos criaram é descartado (effects, `onCleanup`, overlays). O `fallback` pode ser
+  conteúdo ou uma função `(erro, reset)`; `reset()` cria os filhos de novo. Não captura o
+  que o próprio handler (`onClick`...) lança: esse erro chega a quem chamou o handler, como
+  no React e no Solid. Erros sem boundary continuam aparecendo como antes.
 
 ### Contexto, `ref` e tamanho
 

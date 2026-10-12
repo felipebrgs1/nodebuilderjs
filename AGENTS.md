@@ -77,7 +77,8 @@ de desenho, pixels), não dos detalhes internos, para que refatorar não quebre 
 
 | Camada | Como testar sem janela |
 |---|---|
-| Reatividade, `For`/`Show` | signals e effects direto; conte execuções e descartes |
+| Reatividade, controle de fluxo (`For`/`Index`/`Show`/`Switch`) | signals e effects direto; conte execuções e descartes (um `Probe` com contador no corpo e no `onCleanup`) |
+| Erros (`ErrorBoundary`, `catchError`) | componente ou effect que lança; confira o `fallback`, que o escopo foi descartado (o effect não roda mais, `onCleanup` rodou) e que, sem boundary, o erro chega a quem chamou e a fila continua |
 | Widgets e layout | monte com `mount` (`@nodebuilderjs/core/testing`) ou `insert` num `UINode` raiz, rode `layout()` e confira `x`/`y`/`width`/`height` ou `debugTree()`. Métricas falsas: 8 px por caractere, linha de 20 px |
 | Pintura e command buffer | `drawCommands(node)` / `decode(buffer)` de `test/helpers.ts` devolvem os comandos com nome (`{ op: "line", x0, ... }`). Primitiva de desenho nova começa aqui |
 | Eventos (mouse, teclado, foco) | `interact(root)` de `@nodebuilderjs/core/testing`, ou `createInput(root, host)` de `runtime/input.ts` com um host falso que registra mover/redimensionar/cursor e controla o relógio |
@@ -100,7 +101,9 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
 
 ### Organização dos testes
 
-- Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `context`, `ref`
+- Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `control-flow`
+  (`Show`, `Switch`/`Match`, `Index`, aninhamento sem recriar componentes),
+  `error-boundary` (erros, fila de effects), `context`, `ref`
   (`ref`, foco e rolagem por código, `onResize`), `overlay`, `style` (`opacity`, `translate`),
   `text` (quebra de linha, alinhamento, `maxLines`, seleção em várias linhas),
   `input` (eventos),
@@ -135,8 +138,10 @@ src/                   um módulo por pasta; imports relativos com `.js`
   theme.ts             cores/tamanhos padrão (tema claro)
   assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts referencia com preserve="true")
   reactive/
-    signals.ts         createSignal/Effect/Memo/Root, onCleanup, batch, untrack, read
-    control.ts         <Show>, <For> (keyed por referência)
+    signals.ts         createSignal/Effect/Memo/Root, onCleanup, batch, untrack, read, catchError
+    control.ts         <Show>, <Switch>/<Match> (condições)
+    list.ts            <For> (keyed por referência), <Index> (por posição)
+    error-boundary.ts  <ErrorBoundary> (sobre catchError)
     context.ts         createContext/useContext (valor guardado no escopo dono)
   render/              árvore -> layout -> command buffer
     node.ts            UINode (árvore retida), Style, handlers, invalidate(), measureText(), displayScale()
@@ -222,11 +227,22 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
   `background={() => hovered() ? a : b}`. Valor estático = não reativo. Não existe
   compilador estilo Solid; isso é intencional (só `tsc`/Bun transformam o JSX).
 - **`jsx()` é preguiçoso:** retorna `ElementDesc`; o componente executa quando inserido
-  (`insert`/`resolve`). Isso permite `<Show>`/`<For>` decidirem quando instanciar.
+  (`insert`/`render`). Isso permite `<Show>`/`<Switch>`/`<For>` decidirem quando instanciar.
 - **Filhos ficam em slots** (`UINode.addSlot/setSlot`). Cada filho-função vira um slot
   reativo com seu próprio effect; ao reexecutar, o dono descarta os filhos antigos.
+- **Construir, depois coletar:** quem monta filhos dentro de uma computação usa
+  `render(child)` (`jsx-runtime.ts`), não `createMemo(() => resolve(child))`: `build` executa
+  os componentes uma vez e faz de cada filho-função um memo próprio, e `resolve` só coleta os
+  nós. Resolver descrições dentro de um memo faria uma mudança interna recriar tudo em volta.
 - **Ownership:** tudo criado dentro de um effect/root é descartado com ele (`onCleanup`).
-  `<For>` cria um `createRoot` por item e o descarta quando o item sai da lista.
+  `<For>` cria um `createRoot` por item e o descarta quando o item sai da lista; `<Index>`,
+  um por posição.
+- **Fila de effects:** escritas feitas durante a fila (`flushPending`) só entram nela; o
+  effect termina antes dos que disparou. Um erro sem tratador não trava a fila (os outros
+  rodam; o primeiro erro é relançado no fim).
+- **Erros sobem pelos donos:** `execute` captura o erro de um effect/memo e o entrega ao
+  `onError` do escopo mais próximo (`catchError`, usado pelo `<ErrorBoundary>`); sem
+  tratador, relança. Handlers de evento não passam por isso.
 
 ## Convenções de código
 
@@ -437,6 +453,9 @@ todos com a versão do `package.json` da raiz:
   (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms, WebP 105–180 ms); sem mipmaps (reduzir
   muito uma imagem serrilha) e sem versão @2x.
 - `opacity` multiplica o alfa de cada comando (não é de grupo); sem `scale`/`rotate`.
+- `<ErrorBoundary>` não cobre o código do próprio handler de evento (só os effects que as
+  escritas dele disparam); `<Switch>` não aceita filho-função que devolva `<Match>`
+  (os `Match` precisam estar no JSX, para serem lidos sem executar nada).
 - Sem acessibilidade (AT-SPI), API de animações/transições, tema escuro, multi-janela, IME
   (text-input-v3), DnD, escala fracionária real (KDE 125% renderiza em 2x e reduz).
 - Janela sempre com decoração própria (CSD): barra de título, mover, maximizar,

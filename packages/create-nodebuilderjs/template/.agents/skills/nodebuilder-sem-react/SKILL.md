@@ -22,7 +22,11 @@ nem Solid**. O JSX parece o de sempre, mas os elementos são os widgets do
 | `div`, `span`, `p`, `h1` | `Column`, `Row`, `Box`, `Text fontSize={24} bold` |
 | `onChange` de input | `TextField value={v} onInput={setV}` |
 | `list.map(...)` em JSX | `<For each={list}>{(item) => ...}</For>` |
+| `list.map((x, i) => ...)` com `key={i}` (lista de primitivos) | `<Index each={list}>{(item, i) => ...}</Index>`; `item` é accessor (`item()`), `i` é número |
 | `cond && <X/>` | `<Show when={() => cond()}><X/></Show>` |
+| `cond ? <A/> : <B/>`, `switch` que devolve JSX | `<Show when={...} fallback={<B/>}><A/></Show>`; vários casos: `<Switch fallback={...}><Match when={() => s() === "a"}>...</Match></Switch>` |
+| `user && <X name={user.name}/>` | `<Show when={user}>{(u) => <X name={u().name} />}</Show>` (no Solid: igual) |
+| error boundary (`componentDidCatch`, `react-error-boundary`) | `<ErrorBoundary fallback={(erro, reset) => ...}>` (como no Solid); pega erros ao criar e nos effects, não no código do `onClick` |
 | `createContext` / `useContext` | iguais: `createContext(padrão)`, `<Ctx.Provider value={...}>`, `useContext(Ctx)`; valor que muda vai como accessor |
 | `useRef` + `ref={r}` / `el.focus()` | `ref={(el) => ...}` em qualquer widget: `el.focus()`, `el.blur()`, `el.scrollTo(y)`, `el.width` |
 | `ResizeObserver`, media queries | `onResize={(s) => setLargura(s.width)}` + signal |

@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Show, theme), contexto (createContext), ref (focar, rolar, medir), onResize, overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
+description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), contexto (createContext), ref (focar, rolar, medir), onResize, overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
 ---
 
 # Interface com nodebuilder
@@ -25,7 +25,10 @@ props planas. Reatividade estilo SolidJS: **só funções são reativas** (veja 
 | `Card` | coluna com fundo, borda, raio 12, padding 16, gap 8 | estilo |
 | `Divider` / `Spacer` | linha de 1 px / espaço flexível (`size` fixo opcional) | |
 | `<For each={lista}>{(item, i) => ...}</For>` | lista keyed por referência; `i` é um accessor | `fallback` |
-| `<Show when={() => ...} fallback={...}>` | condicional | |
+| `<Index each={lista}>{(item, i) => ...}</Index>` | lista por posição (primitivos); `item` é um accessor, `i` um número | `fallback` |
+| `<Show when={() => ...} fallback={...}>` | condicional; filho `{(v) => ...}` recebe o valor como accessor | |
+| `<Switch fallback={...}><Match when={...}>...</Match></Switch>` | vários casos: o primeiro `Match` verdadeiro | `Match` aceita `{(v) => ...}` |
+| `<ErrorBoundary fallback={(erro, reset) => ...}>` | troca filhos que lançaram erro pelo `fallback` | `reset()` tenta de novo |
 
 ```tsx
 const [nome, setNome] = createSignal("");
@@ -55,6 +58,43 @@ const [nome, setNome] = createSignal("");
 - `ref={(el) => ...}` em qualquer widget: `el.focus()`, `el.blur()`, `el.scrollTo(y)` (num
   `Scroll`) e `el.x`/`y`/`width`/`height` do último layout. É chamado na criação, antes do
   layout: guarde o `el` e leia a caixa depois (num clique, por exemplo).
+
+## Condições, listas e erros
+
+```tsx
+import { Button, ErrorBoundary, Index, Match, Show, Switch, Text, createSignal } from "@nodebuilderjs/core";
+
+const [pedido, setPedido] = createSignal<{ id: number } | null>(null);
+const [etapa, setEtapa] = createSignal<"carrinho" | "pagamento" | "fim">("carrinho");
+const [notas] = createSignal([7, 9, 10]);
+
+<Show when={pedido} fallback={<Text>Nenhum pedido</Text>}>
+  {(p) => <Text>{() => `Pedido ${p().id}`}</Text>}
+</Show>;
+
+<Switch fallback={<Text>Obrigado!</Text>}>
+  <Match when={() => etapa() === "carrinho"}><Text>Seu carrinho</Text></Match>
+  <Match when={() => etapa() === "pagamento"}><Text>Pagamento</Text></Match>
+</Switch>;
+
+<Index each={notas}>{(nota, i) => <Text>{() => `Prova ${i + 1}: ${nota()}`}</Text>}</Index>;
+
+<ErrorBoundary fallback={(erro, reset) => <Button label="Tentar de novo" onClick={reset} />}>
+  <Text>{() => `Pedido ${pedido()!.id}`}</Text>
+</ErrorBoundary>;
+```
+
+- `<For>` x `<Index>`: `For` acompanha cada **objeto** (a linha sobrevive a reordenar; recriar
+  os objetos recria as linhas). `Index` acompanha cada **posição**: a linha fica e o accessor
+  `item()` muda; bom para listas de números/strings ou dados que chegam sempre como objetos
+  novos.
+- Filho-função de `Show`/`Match` só com parâmetro: `{(p) => ...}` recebe o valor como
+  accessor; `{() => ...}` (sem parâmetro) é um filho reativo comum.
+- `Switch` só aceita `Match` como filhos, escritos no JSX (não gerados por função).
+- `ErrorBoundary` pega erros ao criar os filhos e nos effects deles depois (ex.: um clique
+  muda um signal e um texto lança). Descarta tudo que os filhos criaram e mostra o
+  `fallback`; `reset()` recria os filhos. O que o próprio `onClick` lança não é capturado:
+  trate com `try/catch` no handler.
 
 ## Contexto, ref e tamanho
 

@@ -86,3 +86,22 @@ test("children inside a provider are disposed with it", () => {
   setOn(false);
   expect(cleaned).toBe(1);
 });
+
+test("a <For> right inside a provider keeps its rows when the list changes", () => {
+  const [items, setItems] = createSignal(["a"]);
+  let rows = 0;
+  mount(() => (
+    <Column>
+      <Lang.Provider value="en">
+        <For each={items}>
+          {(item) => {
+            rows++;
+            return <Text>{item}</Text>;
+          }}
+        </For>
+      </Lang.Provider>
+    </Column>
+  ));
+  setItems(["a", "b"]);
+  expect(rows).toBe(2);
+});

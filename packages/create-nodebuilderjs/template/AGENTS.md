@@ -12,8 +12,10 @@ App nodebuilder: UI nativa para Linux em TSX, **sem DOM e sem React**. Leia ante
 - **Só funções são reativas.** `<Text>{count}</Text>` ou `text={() => ...}` atualizam;
   `<Text>{count()}</Text>` é lido uma vez e nunca muda. O mesmo vale para estilo:
   `background={() => (ativo() ? "#3584e4" : "#0000")}`.
-- Listas: `<For each={lista}>{(item) => ...}</For>` (chave por referência). Condicional:
-  `<Show when={() => ...} fallback={...}>`.
+- Listas: `<For each={lista}>{(item) => ...}</For>` (chave por referência) ou
+  `<Index each={lista}>{(item) => ...}</Index>` (por posição; `item` é accessor).
+  Condicional: `<Show when={() => ...} fallback={...}>`; vários casos: `<Switch>` com
+  `<Match when={...}>`. Erros: `<ErrorBoundary fallback={(erro, reset) => ...}>`.
 - Estilo são props planas (`padding`, `gap`, `grow`, `background`...), não CSS. Não existem
   `className`, `style={{}}`, `div`, `useState` nem bibliotecas de React (ex.: `lucide-react`).
 
@@ -23,7 +25,7 @@ que suportam skills as carregam sozinhos; os outros devem ler a skill do assunto
 
 | Skill | Quando |
 |---|---|
-| `nodebuilder-ui` | telas, widgets, props de estilo, layout, `For`/`Show`, contexto, `ref` (focar, rolar), `onResize`, `Overlay` (diálogo, menu, dica), `opacity`/`translate`, tema, texto selecionável, copiar/colar |
+| `nodebuilder-ui` | telas, widgets, props de estilo, layout, `For`/`Index`/`Show`/`Switch`, `ErrorBoundary`, contexto, `ref` (focar, rolar), `onResize`, `Overlay` (diálogo, menu, dica), `opacity`/`translate`, tema, texto selecionável, copiar/colar |
 | `nodebuilder-sem-react` | antes de instalar bibliotecas ou portar código React/web |
 | `nodebuilder-imagens` | imagens (PNG, JPEG, WebP, AVIF), arquivos no app |
 | `nodebuilder-icones` | ícones (Lucide, Phosphor) e SVG com `Icon` |

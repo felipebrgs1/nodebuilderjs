@@ -9,7 +9,7 @@ para as regras e convenções de quem mexe no código, veja o [AGENTS.md](AGENTS
  seu app (.tsx)
      │  componentes, signals
 ┌────▼──────────────────────────────── TypeScript (src/) ──────────────────────┐
-│ reactive/     signals, effects, memos, ownership; <For>, <Show>              │
+│ reactive/     signals, effects, memos, ownership; controle de fluxo, erros   │
 │ jsx-runtime   JSX -> descrições preguiçosas                                  │
 │ widgets/      Window, Column, Text, Image, Icon, Button... criam UINodes     │
 │ image/        fontes de imagem; decodificadores PNG, JPEG, WebP              │
@@ -44,6 +44,12 @@ O modelo é o do SolidJS, implementado do zero em `src/reactive/signals.ts`:
 
 - `createSignal` guarda um valor e sabe quem o leu. Ao mudar, reexecuta só esses leitores.
 - `createEffect` e `createMemo` registram as leituras feitas durante a execução.
+- **Fila de atualização:** uma escrita fora de `batch` roda na hora os effects afetados
+  (`flushPending`). Enquanto essa fila roda, novas escritas só entram nela: o effect que
+  escreveu termina antes dos que ele disparou (nunca roda reentrante, no meio de si mesmo),
+  e um ciclo de atualizações é detectado pelo limite de 100 000 execuções, não estoura a
+  pilha. Um erro que nenhum escopo trata não trava a fila: os demais effects pendentes rodam
+  e o primeiro erro é relançado no fim, para quem escreveu o signal.
 - **Ownership:** tudo que é criado dentro de um effect ou `createRoot` é descartado junto
   com ele (`onCleanup`). É assim que trocar de aba, por exemplo, libera tudo da aba antiga.
 - **Contexto** (`reactive/context.ts`) também mora na árvore de donos: o `Provider` cria um
@@ -51,10 +57,24 @@ O modelo é o do SolidJS, implementado do zero em `src/reactive/signals.ts`:
   outro lugar, os componentes rodariam fora do escopo). `useContext` sobe pelos donos. Um
   `createRoot` não é descartado pelo dono em volta, mas guarda a referência a ele só para essa
   busca: assim as linhas do `<For>`, que são raízes, enxergam o contexto de fora.
+- **Erros** também sobem pela árvore de donos. `catchError(fn, onError)` cria um escopo com
+  um tratador (`Owner.onError`); `execute`, que roda todo effect e memo, captura o que a
+  execução lançar e entrega ao tratador mais próximo subindo pelos donos (passando pelas
+  raízes do `<For>`/`<Index>`, como o contexto). Sem tratador, relança como antes. O
+  tratador roda com as escritas adiadas até o fim da atualização em curso, para que o escopo
+  com erro não seja descartado no meio de uma computação que ainda está rodando.
+  `<ErrorBoundary>` (`reactive/error-boundary.ts`) cria os filhos num `catchError`: erro
+  durante a criação é visto logo depois dela; erro posterior (um effect reexecutado por um
+  signal) agenda uma nova execução do boundary. Nos dois casos o escopo dos filhos é
+  descartado inteiro (effects, `onCleanup`, overlays) e o `fallback` aparece; `reset()`
+  cria os filhos de novo. Handlers de evento não passam por `execute`: o que eles lançam
+  chega a quem os chamou (o input), como no React e no Solid.
 
 Não há compilador de JSX próprio: o TypeScript/Bun transforma o JSX em chamadas `jsx()`, que
 só criam **descrições** (`ElementDesc`). O componente executa quando a descrição é inserida
-na árvore. Isso permite que `<Show>` e `<For>` decidam quando (e se) instanciar os filhos.
+na árvore. Isso permite que `<Show>`, `<Switch>` e `<For>` decidam quando (e se)
+instanciar os filhos; o `<Switch>` lê as props de cada `<Match>` direto da descrição, sem
+executar nada.
 
 Como não há compilador, a regra é explícita: **só funções são reativas**. Uma prop
 `text={() => ...}` ou um filho `{count}` vira um effect que atualiza o nó diretamente; um
@@ -62,7 +82,21 @@ valor comum é lido uma vez. Componentes rodam uma única vez; não existe re-re
 
 Filhos ficam em **slots** (`UINode.addSlot/setSlot`). Cada filho-função é um slot com seu
 próprio effect: quando reexecuta, substitui só os nós daquele trecho. `<For>` é keyed por
-referência e cria um `createRoot` por item, descartado quando o item sai da lista.
+referência e cria um `createRoot` por item, descartado quando o item sai da lista; `<Index>`
+cria uma raiz por posição, com o valor num signal, e só cria ou descarta linhas quando o
+tamanho muda.
+
+**Construir e coletar** (`build`/`render` em `jsx-runtime.ts`): quem monta filhos dentro de
+uma computação (o slot, o `Provider`, as linhas do `<For>`/`<Index>`, o `<ErrorBoundary>`)
+primeiro executa os componentes uma vez (`build`), transformando cada filho-função num memo
+do próprio conteúdo, e só depois coleta os nós (`resolve`). Assim, quando um trecho reativo
+interno muda (um `<Show>` dentro de uma linha, a lista de um `<For>` logo abaixo de um
+`Provider`), reexecuta só aquele memo e quem está em volta apenas recoleta os nós, sem
+recriar componentes nem perder o estado deles. Conteúdo sem nenhuma função não ganha memo.
+Medido sem janela (2026-10-12, mediana de 4 rodadas alternadas): montar e descartar um
+`<For>` de 500 linhas 100 vezes caiu de ~123 para ~100 ms (linhas estáticas não alocam
+mais um memo); o `try/catch` no `execute` e a fila sem reentrada não mudaram o custo das
+atualizações (1000 effects × 1000 atualizações em `batch`: ~264 e ~267 ms, dentro do ruído).
 
 ## Um frame
 
