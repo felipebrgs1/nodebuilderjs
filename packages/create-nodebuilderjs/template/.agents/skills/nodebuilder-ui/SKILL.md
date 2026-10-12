@@ -339,6 +339,12 @@ let button: ElementRef | undefined;
   lose height (only what scrolls vertically gives up height).
 - In a `Row` without room, whoever has `grow` shrinks first: the long text gets
   `grow={1}` (and `maxLines={1}` to become "…"), the short labels next to it stay whole.
+- **Something does not show up?** In development the app prints an overflow warning once per
+  node when children need more room than they get and a `clip` ancestor or the window cuts
+  them off: `layout: Row > Text("Artists") overflows Box(panel) by 42px (children need 342px,
+  300px available)`; `debugTree(root)` marks the container `[overflow +42]` and tests read the
+  list with `layoutWarnings()` (see the testing skill). Fix: a `Scroll horizontal`, wrapping
+  text, `grow` with `width={0}`, `minWidth={0}` plus `clip` on what may be cut, or more room.
 - Text wraps by itself at the width it gets (`\n` also breaks); a word longer than the line
   overflows. A single line: `wrap={false}` (overflows) or `maxLines={1}` (truncates with "…").
 - There are no percentages, `flex-wrap` or grid: build rows with `Row` and fixed widths (see

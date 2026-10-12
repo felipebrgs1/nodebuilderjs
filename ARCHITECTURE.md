@@ -258,6 +258,31 @@ because it tests each child's box before descending (a list has many children of
 Computing every frame whether each subtree can shrink cost ~7% of the layout; that is why
 `shrinks()` only runs when something needs to shrink.
 
+### Overflow warnings
+
+After placing a container's in-flow children, `place()` calls `checkOverflow()`
+(`src/render/overflow.ts`). It compares what the children need along the container's
+direction (their sizes after shrinking, so wrapping text and `grow` children have already
+given up what they can) with the inner size, and across it the widest child with the inner
+cross size; an axis the container scrolls on is skipped. That is two comparisons per
+container in the ordinary frame, and culled subtrees are never visited. Only when something
+overflows does it look for the first child that reaches past the visible region `place()`
+was given (narrowed by every clipping ancestor and the window), then for the nearest
+clipping node that cuts it off: a `Scroll` along that axis means the excess is reachable by
+scrolling, so nothing is reported; otherwise a warning names the container, the child, the
+clip (or "the window") and the numbers, and `UINode.overflow` holds the excess for
+`debugTree()` (`[overflow +42]`). Spilling content that stays visible is not reported.
+
+Warnings are collected per root for the last layout (`overflowWarnings(root)`), never
+printed by layout itself: tests read them with `layoutWarnings()`, and `run()` prints each
+one once per session (keyed by the container's path from the root, the child and the axis)
+when not in production (`NODE_ENV=production` or a packaged executable, detected by Bun's
+`/$bunfs/` in `import.meta.url`). Measured on 2026-10-12 without a window (sidebar + 1000-row
+table, 400 layouts x 5 runs alternating with the check disabled): 1.10–1.17 ms both ways,
+within the noise. With a window (`NB_STATS`, alternating runs): `bun run bench` layout
+1.67–1.68 → 1.60–1.65 ms; `bench:dashboard` (500-row table) 2.52–2.70 → 2.61–2.75 ms (means
+2.60 → 2.69), overlapping ranges.
+
 ### Overlays
 
 `<Overlay>` leaves a zero-size marker (`position: "absolute"`) where it was declared and

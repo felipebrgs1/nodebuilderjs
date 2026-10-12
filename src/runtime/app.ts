@@ -5,6 +5,7 @@ import { writeFileSync } from "node:fs";
 import { type Child, insert } from "../jsx-runtime.js";
 import { setImageBackend } from "../image/source.js";
 import { layout } from "../render/layout.js";
+import { overflowWarnings } from "../render/overflow.js";
 import { nativeClipboard, setClipboardBackend } from "./clipboard.js";
 import { createInput } from "./input.js";
 import { frameNow, hasFrameCallbacks, runFrameCallbacks, setAnimating, setFrameClock } from "./frames.js";
@@ -63,6 +64,9 @@ interface FrameReason {
   /** Requested while a frame was being laid out or painted. */
   inFrame: boolean;
 }
+
+/** Inside an executable from `nodebuilder package` (Bun's embedded file system): no dev warnings. */
+const packaged = import.meta.url.includes("/$bunfs/");
 
 /** Frames in a row that request themselves, with nothing else changing, before the dev warning. */
 const LOOP_FRAMES = 30;
@@ -239,7 +243,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
   // microseconds, so they are taken only when tracing, or for the rare request made while
   // a frame is being built (dev only).
   const trace = (env.NB_TRACE ?? "").split(",").includes("frames");
-  const dev = env.NODE_ENV !== "production";
+  const dev = env.NODE_ENV !== "production" && !packaged;
   let why: FrameReason | null = null; // the first request since the last frame
   let selfRequest: string | null = null; // stack of a request made while building the last frame
   let outsideRequest = false; // anything else asked since then (state changed)
@@ -291,6 +295,16 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
     outsideRequest = false;
   }
 
+  // Overflow warnings (dev): each container/child pair once per session, however many frames show it.
+  const overflowReported = new Set<string>();
+  function reportOverflow() {
+    for (const w of overflowWarnings(root)) {
+      if (overflowReported.has(w.key)) continue;
+      overflowReported.add(w.key);
+      warn(w.message);
+    }
+  }
+
   function renderFrame() {
     scheduled = false;
     if (!dirty || !open) return;
@@ -303,6 +317,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
     dirty = false; // everything changed so far is in this frame
     const tState = now();
     layout(root, width(), height());
+    if (dev) reportOverflow();
     input.refreshHover();
     const t1 = now();
     buffer.reset();

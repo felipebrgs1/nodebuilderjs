@@ -262,6 +262,8 @@ export class UINode implements ElementRef {
   scrollY = 0;
   /** Outside the visible area in the last layout: its box is set, its subtree is stale and skipped. */
   culled = false;
+  /** Px its children overflow by where the excess is hidden, in the last layout (dev warnings, debugTree). */
+  overflow = 0;
   /** Scrollbar under the pointer or being dragged (set by input, drawn wider by paint). */
   activeScrollbar: { axis: Axis; pressed: boolean } | null = null;
 
@@ -384,7 +386,8 @@ export function scrolls(n: UINode): boolean {
 export function debugTree(node: UINode, indent = ""): string {
   const box = `${Math.round(node.x)},${Math.round(node.y)} ${Math.round(node.width)}x${Math.round(node.height)}`;
   const aria = node.ariaLabel === undefined ? "" : ` ariaLabel=${JSON.stringify(node.ariaLabel)}`;
-  let out = `${indent}${node.label}${aria} [${box}]\n`;
+  const overflow = node.overflow ? ` [overflow +${node.overflow}]` : "";
+  let out = `${indent}${node.label}${aria} [${box}]${overflow}\n`;
   for (const c of node.children) out += debugTree(c, indent + "  ");
   return out;
 }

@@ -29,12 +29,12 @@ that support skills load them on their own; others should read the topic's skill
 
 | Skill | When |
 |---|---|
-| `nodebuilder-ui` | screens, widgets (incl. custom title bar with `dragRegion`/`WindowControls`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`, `Tooltip`, `Dialog`, `ProgressBar`, `disabled`), style props, hover/press (`hoverStyle`, `pressStyle`, `createInteraction`), layout (equal columns with `width={0} grow={1}`, `position="absolute"`, `clip`, `shadow`), events, own components, `For`/`Index`/`Show`/`Switch`, `ErrorBoundary`, scrolling (horizontal, scrollbars, keyboard, `scrollIntoView`), context, `ref` (focus, scroll), `onResize`, `Overlay` (dialog, menu, tooltip), `opacity`/`translate`, theme (light/dark, `setTheme`), animations (`createTween`, `animate`, `easing`, `mixColor`), selectable text, copy/paste |
+| `nodebuilder-ui` | screens, widgets (incl. custom title bar with `dragRegion`/`WindowControls`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`, `Tooltip`, `Dialog`, `ProgressBar`, `disabled`), style props, hover/press (`hoverStyle`, `pressStyle`, `createInteraction`), layout (equal columns with `width={0} grow={1}`, `position="absolute"`, `clip`, `shadow`, overflow warnings), events, own components, `For`/`Index`/`Show`/`Switch`, `ErrorBoundary`, scrolling (horizontal, scrollbars, keyboard, `scrollIntoView`), context, `ref` (focus, scroll), `onResize`, `Overlay` (dialog, menu, tooltip), `opacity`/`translate`, theme (light/dark, `setTheme`), animations (`createTween`, `animate`, `easing`, `mixColor`), selectable text, copy/paste |
 | `nodebuilder-from-react` | before installing libraries or porting React/web code |
 | `nodebuilder-images` | images (PNG, JPEG, WebP, AVIF), files in the app |
 | `nodebuilder-icons` | icons (Lucide, Phosphor) and SVG with `Icon` |
 | `nodebuilder-charts` | ready-made charts (`@nodebuilderjs/core/charts`, Recharts API) |
 | `nodebuilder-drawing` | freehand drawing with `Canvas` (reactive `draw`, dashed lines, text cut to a width with "…") |
-| `nodebuilder-testing` | tests without a window (`mount`, `findByText`/`findAllByText`, `findByLabel` (`ariaLabel`), `click`, `interact`, hidden targets that throw, `frames`, clipboard), screenshots (`nodebuilder screenshot`, `screenshot()`) |
+| `nodebuilder-testing` | tests without a window (`mount`, `findByText`/`findAllByText`, `findByLabel` (`ariaLabel`), `click`, `interact`, hidden targets that throw, `layoutWarnings()`, `frames`, clipboard), screenshots (`nodebuilder screenshot`, `screenshot()`) |
 | `nodebuilder-packaging` | AppImage/.deb/.rpm, embedded files, icon and app id |
 | `nodebuilder-performance` | slowness, long lists, live data, animation, CPU use while idle (`NB_STATS`, `NB_TRACE=frames`) |

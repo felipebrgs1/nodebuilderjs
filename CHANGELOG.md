@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### New
+- **Overflow warnings:** in development, `run()` prints once per node when children need more
+  room than their container gives them and a `clip` ancestor or the window hides the excess
+  (`layout: Row > Text("Artists") overflows Box(panel) by 42px (children need 342px, 300px
+  available)`); `debugTree()` marks the container `[overflow +42]`, and tests read them with
+  `layoutWarnings()` (from `mount`, or `layoutWarnings(root)` in `@nodebuilderjs/core/testing`).
+  Silent with `NODE_ENV=production` and in packaged executables (which also silences the frame
+  loop warning there).
 - **Font fallback and color emoji:** characters the UI font lacks (`▲`, `↑`, CJK...) come from
   the system's fallback fonts (fontconfig order), and emoji are drawn in color (Noto Color
   Emoji and other CBDT/sbix/COLRv0 fonts), including ZWJ sequences, skin tones and flags.

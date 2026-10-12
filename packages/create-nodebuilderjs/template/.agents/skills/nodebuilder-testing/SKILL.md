@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-testing
-description: Write and debug tests for nodebuilder apps with bun test, without opening a window (mount, findByText, findByLabel, click, interact for mouse and keyboard, layout, debugTree), and look at the UI with screenshots (nodebuilder screenshot, screenshot()). Use when creating tests, when verifying a behavior, layout or visual change, or when a component test fails.
+description: Write and debug tests for nodebuilder apps with bun test, without opening a window (mount, findByText, findByLabel, click, interact for mouse and keyboard, layout, debugTree, layoutWarnings for hidden overflow), and look at the UI with screenshots (nodebuilder screenshot, screenshot()). Use when creating tests, when verifying a behavior, layout or visual change, or when a component test fails.
 ---
 
 # Tests without a window
@@ -27,8 +27,14 @@ test("adds a task", () => {
 
 ## API (`@nodebuilderjs/core/testing`)
 
-- `mount(view, size?)` → `{ root, relayout, dispose }`. Layout runs once in `mount`;
-  call `relayout()` before checking `x`, `y`, `width`, `height` after changing state.
+- `mount(view, size?)` → `{ root, relayout, dispose, layoutWarnings }`. Layout runs once in
+  `mount`; call `relayout()` before checking `x`, `y`, `width`, `height` after changing state.
+- `layoutWarnings()` (from `mount`, or `layoutWarnings(root)`): overflow warnings of the last
+  layout, e.g. `layout: Row > Text("Artists") overflows Box(panel) by 42px (children need
+  342px, 300px available)`: children that need more room than they get, cut off by a `clip`
+  ancestor or the window (past a `Scroll` on its scrolling axis does not count). `mount` does
+  not fail on them; assert `expect(layoutWarnings()).toEqual([])` in screen tests so a hidden
+  chip fails right away instead of when a click finds it.
 - `findByText(root, "text" | /regex/)`: first `Text` whose entire content matches;
   `findAllByText` returns every match (e.g. a title repeated in a list and in a player bar).
 - `findByLabel(root, "label" | /regex/)` / `findAllByLabel`: by `ariaLabel`, for elements
@@ -86,7 +92,8 @@ test("plays a genre that starts off screen", () => {
   expect(findAllByText(root, /o/)).toHaveLength(3); // Rock, Pop, Soul
 });
 ```
-- `debugTree(node)` (from `@nodebuilderjs/core`): tree with positions, great for inspecting layout.
+- `debugTree(node)` (from `@nodebuilderjs/core`): tree with positions, great for inspecting
+  layout; a container whose children overflow a clip is marked `[overflow +42]`.
 - Animations finish immediately in tests (there is no window): a closed `Dialog` leaves the
   tree at once. To test the animation, `const clock = frames()` after `mount()` and
   `clock.advance(ms)` (16 ms frames).

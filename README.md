@@ -78,6 +78,14 @@ or grid:
   on top. Inside a `Scroll` it scrolls with the content, like CSS.
 - `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
   drawn even without a `background` (the blurred box shows through).
+- **Overflow warnings (development):** when children need more room than their container
+  gives them (after wrapping text and `grow` children have shrunk) and the excess is hidden by
+  a `clip` ancestor or the window, `run()` prints it once per node, e.g.
+  `layout: Row > Text("Artists") overflows Box(panel) by 42px (children need 342px, 300px
+  available)`, and `debugTree()` marks the container `[overflow +42]`. Content past a `Scroll`
+  on its scrolling axis is not reported (scrolling shows it). Silent with
+  `NODE_ENV=production` and in packaged executables. Fix it with a `Scroll horizontal`,
+  wrapping, `minWidth={0}` plus `clip` on the child that may be cut, or more room.
 
 ### Hover and press
 
@@ -610,6 +618,10 @@ test("play and pause", () => {
   a `Scroll`) or its center is clipped by an ancestor or the window. The error names the node
   and the ancestor; bring it into view with `scrollIntoView()` and `relayout()`, or give it
   room. Window positions (`down(x, y)`...) are not checked.
+- `layoutWarnings()` (returned by `mount`, or `layoutWarnings(root)`) lists the overflow
+  warnings of the last layout (see Layout); `expect(layoutWarnings()).toEqual([])` catches a
+  child hidden by a too-narrow panel before a click finds it. `mount` does not fail on them by
+  itself: a deliberate overflow (a clipped marquee) is allowed.
 
 #### Seeing the UI: screenshots without a window
 

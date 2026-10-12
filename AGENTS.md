@@ -107,7 +107,8 @@ What cannot be tested automatically is documented when closing the task:
 ### Test organization
 
 - One file per subject: `core` (reactivity, tree, layout, culling), `app` (`run()` with a
-  fake native: idle renders nothing, frame reasons, `NB_TRACE`, frame loop warning), `control-flow`
+  fake native: idle renders nothing, frame reasons, `NB_TRACE`, frame loop and overflow
+  warnings), `overflow` (overflow detection, `layoutWarnings()`), `control-flow`
   (`Show`, `Switch`/`Match`, `Index`, nesting without recreating components),
   `error-boundary` (errors, effect queue), `context`, `ref`
   (`ref`, programmatic focus and scrolling, `onResize`), `overlay`, `style` (`opacity`, `translate`),
@@ -155,7 +156,7 @@ src/                   one module per folder; relative imports with `.js`
   index.ts             public API (re-exports the modules)
   jsx-runtime.ts       own JSX runtime; jsx() only creates descriptions (ElementDesc)
   testing.ts           @nodebuilderjs/core/testing: mount, findBy/AllByText, findBy/AllByLabel, click, interact,
-                       screenshot/savePNG/canScreenshot
+                       layoutWarnings, screenshot/savePNG/canScreenshot
   theme.ts             lightTheme/darkTheme, `theme` (reactive getters), setTheme, colorScheme
   animation/index.ts   animate, createTween, createPresence, easing, mixColor
   assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts references it with preserve="true")
@@ -168,6 +169,7 @@ src/                   one module per folder; relative imports with `.js`
   render/              tree -> layout -> command buffer
     node.ts            UINode (retained tree), Style, handlers, invalidate(), measureText(), displayScale()
     layout.ts          simplified flexbox + culling
+    overflow.ts        overflow warnings: children cut off by a clip or the window (layoutWarnings, run() in dev)
     paint.ts           tree -> CommandBuffer (Float32Array) + parseColor
     shapes.ts          polyline (LINE segments) and fillPolygon (triangulation + AA fringe)
     scrollbar.ts       clamped scroll position and scrollbar geometry (painting and input)
@@ -438,6 +440,12 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
   painted (`paintTree`) or hit-tested on click (`hitTest`). Coordinates of descendants of a
   `culled` node are stale; never use them without checking the flag.
 - Clip (`clip`/scroll) clips inside the border, with radius `radius - borderWidth`.
+- **Overflow warnings:** `place()` ends with `checkOverflow()` (`render/overflow.ts`): children
+  that need more than the inner size on an axis the node does not scroll, cut off by a clip or
+  the window (a `Scroll` on that axis does not count). Collected per root for the last layout,
+  never printed by layout: `run()` prints each once in dev, tests read `layoutWarnings()`. Keep
+  the ordinary path at two comparisons per container; anything costlier runs only when
+  something overflows.
 
 - `translateX/Y` add to the position in `place()` (after flex); everything else sees the
   shifted position. Overlays: `root.layers` is recomputed on every `layout()`; a test that
