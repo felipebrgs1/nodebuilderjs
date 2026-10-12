@@ -1,6 +1,6 @@
 import { type Child, setTextFactory } from "../jsx-runtime.js";
 import { edges } from "../render/layout.js";
-import { type Handlers, UINode, invalidate, measureText, metricsGeneration } from "../render/node.js";
+import { type Handlers, UINode, displayScale, invalidate, measureText, metricsGeneration } from "../render/node.js";
 import { type TextLine, minContentWidth, wrapText } from "../render/text-wrap.js";
 import { type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
 import { clipboard } from "../runtime/clipboard.js";
@@ -82,14 +82,14 @@ export function Text(
     /** What measure() returns. */
     box: { width: number; height: number };
   }
-  let metrics = { size: 0, bold: false, generation: -1, height: 0 };
-  /** Height of a line of this font (ascent + descent do not depend on the text). */
-  const lineMetrics = (size: number, bold: boolean) => {
+  let metrics = { size: 0, bold: false, generation: -1, height: 0, ascent: 0, descent: 0 };
+  /** Vertical metrics of this font (they do not depend on the text); `height` is a line's. */
+  const fontMetrics = (size: number, bold: boolean) => {
     if (metrics.size !== size || metrics.bold !== bold || metrics.generation !== metricsGeneration()) {
       const m = measureText(value, size, bold);
-      metrics = { size, bold, generation: metricsGeneration(), height: Math.ceil(m.ascent + m.descent) };
+      metrics = { size, bold, generation: metricsGeneration(), height: Math.ceil(m.ascent + m.descent), ascent: m.ascent, descent: m.descent };
     }
-    return metrics.height;
+    return metrics;
   };
   let natural: Layout | null = null;
   let sized: Layout | null = null;
@@ -106,7 +106,7 @@ export function Text(
     const slot = w === Infinity ? natural : sized;
     if (slot && slot.width === w && slot.value === value && slot.size === size && slot.bold === bold && slot.options === options && slot.generation === metricsGeneration()) return slot;
     const widthOf = (s: string) => measureText(s, size, bold).width;
-    const glyphHeight = lineMetrics(size, bold);
+    const glyphHeight = fontMetrics(size, bold).height;
     const lines = wrapText(value, w, widthOf, options);
     const lineHeight = Math.ceil(glyphHeight * options.lineHeight);
     const box = { width: Math.ceil(lines.reduce((m, line) => Math.max(m, line.width), 0)), height: lines.length * lineHeight };
@@ -152,6 +152,7 @@ export function Text(
     const [from, to] = range();
     const color = inherited(n, "color") ?? theme.text.primary;
     const leading = (l.lineHeight - l.glyphHeight) / 2;
+    const underline = inherited(n, "underline") ? underlineOf(size, bold) : null;
     for (let i = 0; i < l.lines.length; i++) {
       const line = l.lines[i]!;
       const x = l.lineX(i);
@@ -164,7 +165,15 @@ export function Text(
         p.rect(x + xs[a]!, y, right - xs[a]!, l.lineHeight, theme.selection);
       }
       p.text(x, y + leading, line.text, size, color, bold);
+      if (underline && line.width > 0) p.rect(x, underline.snap(y + leading + underline.offset), line.width, underline.thickness, color);
     }
+  };
+  /** Below the baseline, a third into the descent; snapped to device pixels so it stays crisp. */
+  const underlineOf = (size: number, bold: boolean) => {
+    const { ascent, descent } = fontMetrics(size, bold);
+    const scale = displayScale();
+    const snap = (v: number) => Math.round(v * scale) / scale;
+    return { offset: ascent + descent / 3, thickness: Math.max(1, snap(size / 14)), snap };
   };
 
   if (props.selectable) {

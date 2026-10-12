@@ -160,7 +160,7 @@ src/                   one module per folder; relative imports with `.js`
     paint.ts           tree -> CommandBuffer (Float32Array) + parseColor
     shapes.ts          polyline (LINE segments) and fillPolygon (triangulation + AA fringe)
     scrollbar.ts       clamped scroll position and scrollbar geometry (painting and input)
-    text-wrap.ts       <Text> line wrapping (greedy, at spaces) and maxLines with "…"
+    text-wrap.ts       <Text> line wrapping (greedy, at spaces), maxLines with "…", truncate()
   runtime/
     app.ts             run(): window, frame scheduling, NB_STATS; wires input to the addon
     input.ts           events -> UI: hit test, hover, cursor, focus, clicks, capture, scrolling, keyboard
@@ -277,7 +277,7 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   (`MaybeAccessor` of each `Style` field).
 - **When adding a field to `Style`**, also add it to `STYLE_KEYS` (`widgets/props.ts`);
   new handlers go in `Handlers` (`render/node.ts`) and `HANDLER_KEYS`.
-- Inherited through the tree: `color`, `fontSize`, `bold` (the `inherited` function).
+- Inherited through the tree: `color`, `fontSize`, `bold`, `underline` (the `inherited` function).
 - A widget that opens something on top returns `[node, <Show><Overlay>]` (the `Overlay` stays
   outside the node, so the list's events do not bubble up through the trigger); the trigger
   keeps focus and handles keys while it is open.
@@ -495,7 +495,8 @@ packages, all with the version from the root `package.json`:
 
 - TextField: no selection, copy, undo (paste exists); Text: a word longer than the line
   overflows (selection only with `selectable`, no Shift+click or keyboard); a single font
-  (no fallback: emojis do not show up).
+  (no fallback: emojis do not show up), regular and bold only (no other weights, italics or
+  letter spacing); `underline` is painted in TS and `TextField` ignores it.
 - `<Canvas>`: a self-intersecting polygon is not drawn; translucent lines get darker at the
   joins (each segment is drawn separately); adjacent pie slices show a thin light seam
   (both edges antialiased, as in browsers); triangulating radial shapes with thousands of

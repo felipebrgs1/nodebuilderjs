@@ -15,7 +15,7 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 | `Window` | root, one per app, with its own title bar | `title`, `width`, `height` (initial size), `appId`, `onClose` (return `false` to keep it open) |
 | `Column` / `Row` / `Box` | flex container (column, row; `Box` is a column) | style + events |
 | `Scroll` | scrolling: vertical (default), `horizontal` or `horizontal vertical` (both) | needs `grow={1}` or a size; see "Scrolling" below |
-| `Text` | text; wraps at spaces to fit the width | children (`{count}`, `"a"`) or `text={() => ...}`, `wrap` (default `true`), `maxLines` (truncates with "…"), `textAlign`, `lineHeight`, `selectable` |
+| `Text` | text; wraps at spaces to fit the width | children (`{count}`, `"a"`) or `text={() => ...}`, `wrap` (default `true`), `maxLines` (truncates with "…"), `textAlign`, `lineHeight`, `underline`, `selectable` |
 | `Image` | PNG, JPEG, WebP, AVIF | see the `nodebuilder-images` skill |
 | `Icon` | SVG icon (Lucide, Phosphor), color inherited like text | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icons` |
 | `Canvas` | free drawing: lines, polygons, arcs, text | `draw={(g) => ...}` + size; skill `nodebuilder-drawing` |
@@ -65,7 +65,18 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
 - `shadow` is the node's rounded box, blurred `blur` px on each side of its edge and moved down
   by `y` (no x offset, no spread). It is drawn even without `background`: then the whole blurred
   shape shows (a soft glow), and a translucent background lets it show through.
-- Text (inherited by children): `color`, `fontSize`, `bold`. Cursor: `cursor="pointer"`.
+- Text (inherited by children): `color`, `fontSize`, `bold`, `underline` (a line under each
+  line of text, in its color; `underline={false}` turns it off below; `TextField` ignores it).
+  Cursor: `cursor="pointer"`. A link that underlines on hover:
+
+  ```tsx
+  import { Text, createSignal, theme } from "@nodebuilderjs/core";
+
+  const [hovered, setHovered] = createSignal(false);
+  <Text color={() => theme.accent.base} underline={hovered} cursor="pointer"
+    onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}
+    onClick={() => console.log("open docs")}>Read the docs</Text>;
+  ```
 - Colors are hex strings (`"#3584e4"`, `"#00000010"` with alpha) or `"transparent"`.
 - Events on any container: `onClick`, `onPointerDown/Up/Enter/Leave`,
   `onPointerMove`, `onScroll`, `onKeyDown`, `onFocus`, `onBlur`. Pointer events carry

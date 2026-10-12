@@ -149,8 +149,10 @@ caps, filled polygons (concave ones included), circles and arcs (pie, donut, gau
 text. Coordinates are local to the canvas; `g.width` and `g.height` give its size. `draw` is
 reactive: it runs inside an effect, so the signals it reads (data, `theme` colors) are tracked
 and changing one of them redraws. Geometry is computed when the data changes, not every frame.
-`g.text(text, x, y, color, size?, bold?)` draws one line, with no maximum width or ellipsis:
-measure with `g.measureText(text, size?, bold?)` (`{ width, height }`) to align or cut it.
+`g.text(text, x, y, color, size?, bold?, { maxWidth, ellipsis })` draws one line; with
+`maxWidth` text that does not fit is cut and ends in "…" (`ellipsis: false` just cuts it;
+nothing is drawn when not even the "…" fits). `g.measureText(text, size?, bold?)`
+(`{ width, height }`) measures it, to align it.
 Lines take a dash pattern (`g.line(..., cap, [4, 3])`, `g.polyline(..., { dash })`).
 Limits: a self-intersecting polygon is not drawn, and lines with a translucent color get darker
 at the joins.
@@ -423,6 +425,11 @@ import { Row, Text, theme } from "@nodebuilderjs/core";
 - `maxLines`: truncates and ends the last line with "…"; `maxLines={1}` shortens a single line.
 - `textAlign` (`"start"`, `"center"`, `"end"`) and `lineHeight` (a multiple of the font's line
   spacing, default 1).
+- `underline`: a line under each line of text, in the text color (it follows wrapping,
+  `textAlign` and the "…" of `maxLines`). Like `color`, `fontSize` and `bold` it is inherited,
+  so `<Button underline>` or a `Row underline` underlines the text inside; `underline={false}`
+  turns it off again below. `TextField` ignores it. A link that underlines on hover:
+  `<Text underline={hovered} onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}>`.
 - In a `Row` without room, children with `grow` shrink first (like Flutter's `Expanded`); text
   that wraps can shrink down to its longest word, and with `maxLines` down to the "…".
 
@@ -641,7 +648,8 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
 ## Current limitations
 
 - Linux x64 only (arm64, Windows and macOS are on the roadmap).
-- Text with a single font (emojis don't show up); a word longer than the line overflows.
+- Text with a single font (emojis don't show up), in regular and bold only (no other weights,
+  italics or letter spacing); a word longer than the line overflows.
 - Text field without selection, copy or undo (paste works).
 - SVG only in the icon subset (no gradients, text, filters); AVIF/HEIC depend on the system
   `libheif`.

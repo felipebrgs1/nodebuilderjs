@@ -109,9 +109,9 @@ export function wrapText(value: string, maxWidth: number, widthOf: (s: string) =
   return kept;
 }
 
-/** The longest start of `chars` that fits in `maxWidth` followed by "…". */
-function fit(chars: string[], maxWidth: number, widthOf: (s: string) => number): { text: string; width: number } {
-  const candidate = (n: number) => trimEnd(chars.slice(0, n).join("")) + ELLIPSIS;
+/** The longest start of `chars` followed by `mark` that fits in `maxWidth` (just `mark` if none does). */
+function fit(chars: string[], maxWidth: number, widthOf: (s: string) => number, mark = ELLIPSIS): { text: string; width: number } {
+  const candidate = (n: number) => trimEnd(chars.slice(0, n).join("")) + mark;
   let lo = 0;
   let hi = chars.length;
   while (lo < hi) {
@@ -121,6 +121,17 @@ function fit(chars: string[], maxWidth: number, widthOf: (s: string) => number):
   }
   const t = candidate(lo);
   return { text: t, width: widthOf(t) };
+}
+
+/**
+ * A single line cut to fit `maxWidth`: unchanged when it fits, otherwise its longest start
+ * plus "…" (or no mark with `ellipsis: false`). Empty when not even the "…" fits.
+ */
+export function truncate(text: string, maxWidth: number, widthOf: (s: string) => number, ellipsis = true): { text: string; width: number } {
+  const width = widthOf(text);
+  if (width <= maxWidth) return { text, width };
+  const cut = fit(Array.from(text), maxWidth, widthOf, ellipsis ? ELLIPSIS : "");
+  return cut.width <= maxWidth ? cut : { text: "", width: 0 };
 }
 
 /** Narrowest width the text can wrap to: its widest word. */

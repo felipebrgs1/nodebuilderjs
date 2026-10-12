@@ -178,6 +178,10 @@ these shortcuts, cost 7.9 and 4.4 ms.
 The wrapping itself lives in `render/text-wrap.ts`: greedy, at spaces, like CSS's
 `overflow-wrap: normal` (a word longer than the line overflows). Word widths are summed
 instead of measuring the whole line again; a line that fits whole is measured only once.
+Its "…" truncation is also exported as `truncate()`, which `<Canvas>`'s `g.text(..., { maxWidth })`
+uses. `underline` needs no opcode: `Text` paints a RECT under each line it drew, as wide as
+that line, a third of the descent below the baseline (ascent from the font metrics), with a
+thickness of `max(1, fontSize / 14)` and both snapped to device pixels so it stays sharp.
 
 **Culling:** each node that clips (`Scroll`, `clip`, the `Window`) narrows the visible region
 passed to its children. A child entirely outside it (counting its shadow) gets its own box,

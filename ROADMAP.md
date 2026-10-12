@@ -106,6 +106,9 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
 - ~~Quebra de linha e texto com várias linhas~~ **feito** (2026-10-12): quebra por padrão,
   `wrap`, `maxLines` com "…", `textAlign`, `lineHeight`, seleção em várias linhas. Falta
   hifenização e quebrar palavra longa no meio (opcional, como `overflow-wrap: anywhere`).
+- ~~Underline~~ **done** (2026-10-12): `underline` on `Text` (inherited like `bold`), and
+  `<Canvas>` text cut to a `maxWidth` with "…". Still missing: font weights beyond bold,
+  italics and letter spacing.
 - Fallback de fontes (emojis, CJK) e escolha de família de fonte
 - Seleção no `TextField` (com Ctrl+C/Ctrl+X); seleção primária (colar com o botão do meio);
   Shift+clique e setas para estender a seleção do `<Text selectable>`
