@@ -1,10 +1,13 @@
 // Props shared by every widget: style keys, event handlers, inheritance and interaction state.
 
 import type { Child } from "../jsx-runtime.js";
-import { type Handlers, type Style, UINode } from "../render/node.js";
+import { type ElementRef, type Handlers, type Style, UINode } from "../render/node.js";
 import { type MaybeAccessor, createEffect, createSignal } from "../reactive/signals.js";
 
-export type StyleProps = { [K in keyof Style]?: MaybeAccessor<NonNullable<Style[K]>> };
+export type StyleProps = { [K in keyof Style]?: MaybeAccessor<NonNullable<Style[K]>> } & {
+  /** Called with the widget's element when it is created: focus(), scrollTo(), its laid-out box. */
+  ref?: (el: ElementRef) => void;
+};
 export type BoxProps = StyleProps & Handlers & { children?: Child };
 
 const STYLE_KEYS: (keyof Style)[] = [
@@ -13,7 +16,7 @@ const STYLE_KEYS: (keyof Style)[] = [
   "shadow", "color", "fontSize", "bold", "cursor",
 ];
 const HANDLER_KEYS: (keyof Handlers)[] = [
-  "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur",
+  "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur", "onResize",
 ];
 
 /** Binds style props (static or reactive) and event handlers onto a node. */
@@ -25,6 +28,7 @@ export function applyProps(node: UINode, props: Record<string, any>) {
     else node.set(key, value);
   }
   for (const key of HANDLER_KEYS) if (props[key]) node.handlers[key] = props[key];
+  props.ref?.(node);
 }
 
 export function inherited<K extends "color" | "fontSize" | "bold">(node: UINode, key: K): Style[K] | undefined {

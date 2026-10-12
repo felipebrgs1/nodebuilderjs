@@ -46,6 +46,11 @@ O modelo é o do SolidJS, implementado do zero em `src/reactive/signals.ts`:
 - `createEffect` e `createMemo` registram as leituras feitas durante a execução.
 - **Ownership:** tudo que é criado dentro de um effect ou `createRoot` é descartado junto
   com ele (`onCleanup`). É assim que trocar de aba, por exemplo, libera tudo da aba antiga.
+- **Contexto** (`reactive/context.ts`) também mora na árvore de donos: o `Provider` cria um
+  escopo com o valor e resolve os filhos dentro dele (o `jsx()` é preguiçoso; resolvidos em
+  outro lugar, os componentes rodariam fora do escopo). `useContext` sobe pelos donos. Um
+  `createRoot` não é descartado pelo dono em volta, mas guarda a referência a ele só para essa
+  busca: assim as linhas do `<For>`, que são raízes, enxergam o contexto de fora.
 
 Não há compilador de JSX próprio: o TypeScript/Bun transforma o JSX em chamadas `jsx()`, que
 só criam **descrições** (`ElementDesc`). O componente executa quando a descrição é inserida
@@ -203,6 +208,13 @@ redimensionar, foco, clique e duplo clique, captura do ponteiro enquanto um bot�
 pressionado, rolagem e teclado com Tab. O que é janela (mover, redimensionar, cursor,
 relógio) passa por uma interface `InputHost`; o `run()` liga isso ao addon, e os testes (e o
 `interact()` de `@nodebuilderjs/core/testing`) usam um host sem janela.
+
+O `createInput` registra o foco na raiz (`root.focusHost`); é por ali que o `focus()` e o
+`blur()` de um `ref` chegam ao input. Um `focus()` feito enquanto o widget é criado (ainda
+fora da árvore) é repetido num microtask, quando a árvore já está montada. O `onResize` é
+coletado durante o `layout()` e entregue em lote depois que a árvore inteira foi posicionada,
+para que o handler possa mudar estado (e a árvore) sem atrapalhar o layout em andamento; a
+mudança entra no frame seguinte.
 
 ## Wayland e X11
 

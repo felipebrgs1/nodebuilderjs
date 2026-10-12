@@ -12,6 +12,7 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   (desenho livre na GPU), `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`
 - Gráficos (`@nodebuilderjs/core/charts`) com API no formato do Recharts
 - `onPointerMove` e `interact()` para testar mouse e teclado sem janela
+- `createContext`/`useContext`, `ref` (foco, rolagem e caixa do layout) e `onResize`
 - Área de transferência do sistema (texto, Wayland e X11): `clipboard`, colar no `TextField`,
   `<Text selectable>` para selecionar e copiar texto fixo
 - `bun create nodebuilderjs` gera o app com `AGENTS.md` e skills para agentes (`.agents/skills`)

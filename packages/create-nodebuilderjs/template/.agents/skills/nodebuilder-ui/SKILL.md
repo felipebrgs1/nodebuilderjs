@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Show, theme), texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
+description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Show, theme), contexto (createContext), ref (focar, rolar, medir) e onResize, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
 ---
 
 # Interface com nodebuilder
@@ -48,6 +48,41 @@ const [nome, setNome] = createSignal("");
   `onPointerMove` continua chegando ao nó onde o clique começou, mesmo fora dele (arrastar,
   sliders). `onKeyDown` só chega pelo caminho do elemento focado.
 - Qualquer prop aceita valor fixo ou função: `background={() => (sel() ? a : b)}`.
+- `onResize={(s) => ...}`: tamanho do nó (`s.width`, `s.height`) depois do layout, na primeira
+  vez e quando muda. Use para adaptar a tela à largura disponível.
+- `ref={(el) => ...}` em qualquer widget: `el.focus()`, `el.blur()`, `el.scrollTo(y)` (num
+  `Scroll`) e `el.x`/`y`/`width`/`height` do último layout. É chamado na criação, antes do
+  layout: guarde o `el` e leia a caixa depois (num clique, por exemplo).
+
+## Contexto, ref e tamanho
+
+```tsx
+import { Column, Scroll, TextField, Text, createContext, createSignal, useContext } from "@nodebuilderjs/core";
+import type { Accessor, ElementRef } from "@nodebuilderjs/core";
+
+// Valor compartilhado pela árvore (tema, idioma, usuário logado), sem passar por props.
+const Usuario = createContext<Accessor<string>>(() => "anônimo");
+function Saudacao() {
+  const usuario = useContext(Usuario);
+  return <Text>{() => `Olá, ${usuario()}`}</Text>;
+}
+const [usuario, setUsuario] = createSignal("Ana");
+<Usuario.Provider value={usuario}><Saudacao /></Usuario.Provider>;
+
+// Focar um campo ao abrir e rolar uma lista até o fim.
+const [busca, setBusca] = createSignal("");
+let lista: ElementRef | undefined;
+<Column grow={1} minHeight={0}>
+  <TextField ref={(el) => el.focus()} value={busca} onInput={setBusca} />
+  <Scroll ref={(el) => (lista = el)} grow={1}>{/* ... */}</Scroll>
+</Column>;
+const irParaOFim = () => lista?.scrollTo(Infinity);
+```
+
+- O valor do contexto é lido uma vez, quando o componente roda. Para um valor que muda, passe
+  um accessor (signal) e chame-o dentro de uma função reativa, como acima.
+- `useContext` só funciona no corpo do componente (não dentro de um `onClick` ou `setTimeout`):
+  leia lá e guarde numa variável.
 
 ## Regras do layout (flexbox simplificado)
 
@@ -68,7 +103,7 @@ const [nome, setNome] = createSignal("");
   `theme.danger.base`, `theme.divider`...). Mude `theme` antes de `run()` para personalizar.
 - `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`;
   `windowState.width()`, `.height()`, `.maximized()`, `.activated()` são accessors.
-- Ainda não existem: tema escuro, animações, quebra de linha, seleção no `TextField`
+- Ainda não existem: tema escuro reativo, animações, quebra de linha, seleção no `TextField`
   (e Ctrl+C nele), IME, várias janelas.
 
 ## Selecionar e copiar texto

@@ -116,6 +116,13 @@ export function createInput(root: UINode, host: InputHost) {
     });
   }
 
+  root.focusHost = {
+    get focused() {
+      return focused;
+    },
+    setFocus,
+  };
+
   function focusables(node: UINode, out: UINode[] = []) {
     if (node.focusable && node.tabStop) out.push(node);
     for (const c of node.children) focusables(c, out);

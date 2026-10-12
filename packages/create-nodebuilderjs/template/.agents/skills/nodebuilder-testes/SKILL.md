@@ -45,6 +45,9 @@ ui.key("Return");           // dispara o onSubmit
 ui.drag(slider, 80, 0);     // arrasta 80 px para a direita
 ```
 - `debugTree(node)` (de `@nodebuilderjs/core`): árvore com posições, ótimo para ver o layout.
+- `ref={(el) => el.focus()}` (foco ao criar) vale num microtask: crie o `interact(root)` e
+  faça `await Promise.resolve()` antes de digitar. `onResize` dispara a cada `relayout()`
+  em que o tamanho mudou.
 
 ## Área de transferência e seleção
 

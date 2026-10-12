@@ -2,8 +2,10 @@
 // justify, min/max sizes, absolute children and vertical scrolling.
 
 import type { Edges, Size, UINode } from "./node.js";
+import { batch } from "../reactive/signals.js";
 
 let cache = new Map<UINode, Size>();
+let resized: UINode[] = [];
 
 /** Visible region in absolute logical pixels; narrowed by every clipping node. */
 export interface Rect {
@@ -15,7 +17,12 @@ export interface Rect {
 
 export function layout(root: UINode, width: number, height: number) {
   cache = new Map();
+  resized = [];
   place(root, 0, 0, width, height, { x0: 0, y0: 0, x1: width, y1: height });
+  // After the whole tree is placed: handlers may change state (and the tree) freely.
+  const nodes = resized;
+  resized = [];
+  if (nodes.length) batch(() => nodes.forEach((n) => n.handlers.onResize?.(n.reportedSize!)));
 }
 
 /** How far a node's own drawing reaches outside its box (shadows). */
@@ -97,6 +104,10 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   node.y = y;
   node.width = width;
   node.height = height;
+  if (node.handlers.onResize && (node.reportedSize?.width !== width || node.reportedSize.height !== height)) {
+    node.reportedSize = { width, height };
+    resized.push(node);
+  }
   // Culling: an invisible node keeps its box (scroll extents and hit tests stay right),
   // but its subtree is not placed, painted nor hit-tested until it comes back into view.
   node.culled = outside(node, view);

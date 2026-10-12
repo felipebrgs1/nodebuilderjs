@@ -100,7 +100,8 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
 
 ### Organização dos testes
 
-- Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `input` (eventos),
+- Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `context`, `ref`
+  (`ref`, foco e rolagem por código, `onResize`), `input` (eventos),
   `clipboard`, `text-selection`, `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulação), `draw` (primitivas e `shapes.ts`), `canvas` e `charts/`. Assunto novo ganha arquivo novo; quando o `core` crescer, divida-o.
 - Testes rápidos e determinísticos: sem rede, sem relógio, sem janela. A suíte toda roda em
@@ -130,6 +131,7 @@ src/                   um módulo por pasta; imports relativos com `.js`
   reactive/
     signals.ts         createSignal/Effect/Memo/Root, onCleanup, batch, untrack, read
     control.ts         <Show>, <For> (keyed por referência)
+    context.ts         createContext/useContext (valor guardado no escopo dono)
   render/              árvore -> layout -> command buffer
     node.ts            UINode (árvore retida), Style, handlers, invalidate(), measureText(), displayScale()
     layout.ts          flexbox simplificado + culling
@@ -234,6 +236,8 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
 - **Ao adicionar um campo em `Style`**, inclua-o também em `STYLE_KEYS` (`widgets/props.ts`);
   handlers novos vão em `Handlers` (`render/node.ts`) e `HANDLER_KEYS`.
 - Herdáveis via árvore: `color`, `fontSize`, `bold` (função `inherited`).
+- Todo widget passa as props por `applyProps`: é ele que liga estilo, handlers e o `ref`
+  (o `ref` recebe o `UINode`, tipado como `ElementRef`). Widget novo também.
 - Foco só pelo clique (ex.: `<Text selectable>`, que precisa do foco para o Ctrl+C):
   `focusable = true` e `tabStop = false`, para não entrar na ordem do Tab.
 - Defaults de cor/tamanho vêm de `theme.ts`, não hard-coded nos widgets.

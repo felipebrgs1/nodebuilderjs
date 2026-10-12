@@ -23,7 +23,9 @@ nem Solid**. O JSX parece o de sempre, mas os elementos são os widgets do
 | `onChange` de input | `TextField value={v} onInput={setV}` |
 | `list.map(...)` em JSX | `<For each={list}>{(item) => ...}</For>` |
 | `cond && <X/>` | `<Show when={() => cond()}><X/></Show>` |
-| `useContext` | módulos com signals exportados (estado global simples) |
+| `createContext` / `useContext` | iguais: `createContext(padrão)`, `<Ctx.Provider value={...}>`, `useContext(Ctx)`; valor que muda vai como accessor |
+| `useRef` + `ref={r}` / `el.focus()` | `ref={(el) => ...}` em qualquer widget: `el.focus()`, `el.blur()`, `el.scrollTo(y)`, `el.width` |
+| `ResizeObserver`, media queries | `onResize={(s) => setLargura(s.width)}` + signal |
 | CSS `:hover` | `onPointerEnter`/`onPointerLeave` + signal |
 | texto selecionável (padrão na web) | só com `<Text selectable>`; sem a prop não seleciona (como `user-select: none`) |
 | `navigator.clipboard.writeText/readText` | `clipboard.writeText(t)` / `await clipboard.readText()` |
@@ -45,6 +47,7 @@ nem Solid**. O JSX parece o de sempre, mas os elementos são os widgets do
 
 ## Erros comuns
 
+- Chamar `useContext` dentro de um handler ou `setTimeout`: só funciona no corpo do componente.
 - Ler o signal no corpo do componente (`const x = count();`) e esperar que atualize.
 - Desestruturar props reativas (`const { value } = props`) e perder a função.
 - Colocar `createSignal` dentro de um effect para "resetar" estado: crie fora e use `set`.

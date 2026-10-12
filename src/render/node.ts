@@ -84,6 +84,8 @@ export interface Handlers {
   onKeyDown?: (e: KeyEvent) => void;
   onFocus?: () => void;
   onBlur?: () => void;
+  /** After a layout that gave the node a new size (and after the first one). */
+  onResize?: (size: Size) => void;
 }
 
 export interface Size {
@@ -154,7 +156,19 @@ export function invalidate() {
   scheduleFrame();
 }
 
-export class UINode {
+/** What a `ref` receives: the box from the last layout (window coordinates) and imperative actions. */
+export interface ElementRef {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly scrollY: number;
+  focus(): void;
+  blur(): void;
+  scrollTo(y: number): void;
+}
+
+export class UINode implements ElementRef {
   readonly style: Style = {};
   readonly handlers: Handlers = {};
   parent: UINode | null = null;
@@ -222,6 +236,36 @@ export class UINode {
   }
 
   isRoot = false;
+  /** On a root: the input system's focus, set by createInput (what focus()/blur() go through). */
+  focusHost?: { readonly focused: UINode | null; setFocus(node: UINode | null): void };
+  /** Last size given to onResize. */
+  reportedSize: Size | null = null;
+
+  private host() {
+    let n: UINode = this;
+    while (n.parent) n = n.parent;
+    return n.isRoot ? n.focusHost : undefined;
+  }
+
+  /** Focuses the node if it is focusable. Called while the node is being created, it waits until it is in the tree. */
+  focus() {
+    if (!this.focusable) return;
+    const host = this.host();
+    if (host) host.setFocus(this);
+    else queueMicrotask(() => this.host()?.setFocus(this));
+  }
+
+  blur() {
+    const host = this.host();
+    if (host?.focused === this) host.setFocus(null);
+  }
+
+  /** Scrolls a scrollable node; layout clamps the position to the content. */
+  scrollTo(y: number) {
+    if (!this.scrollable) return;
+    this.scrollY = Math.max(0, y);
+    invalidate();
+  }
 }
 
 export function debugTree(node: UINode, indent = ""): string {

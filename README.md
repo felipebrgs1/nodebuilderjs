@@ -52,7 +52,7 @@ código como o Claude Code.
   `radius`, `color`, `fontSize`... O layout é flexbox.
 - **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
   `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`, além de `<For>` e `<Show>`
-  para listas e condições.
+  para listas e condições, e de `createContext` para valores compartilhados pela árvore.
 
 Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens, ícones,
 desenho livre, gráficos e um painel
@@ -144,6 +144,36 @@ grade, `label` em fatias e barras, e o eixo x omite rótulos que se sobrepõem. 
 desenhado com o `<Canvas>`, pela GPU, e vem no próprio core: quem não importa
 `@nodebuilderjs/core/charts` não leva nada no executável (quem usa, ~15 KB). Ainda não
 existem gráficos de dispersão e radar, `ReferenceLine`, `Brush` nem eixos secundários.
+
+### Contexto, `ref` e tamanho
+
+```tsx
+import { Box, Column, TextField, Text, createContext, createSignal, useContext } from "@nodebuilderjs/core";
+
+// Contexto: um valor que qualquer descendente lê, sem passar por props em cada nível.
+const Idioma = createContext("pt");
+function Saudacao() {
+  return <Text>{useContext(Idioma) === "pt" ? "Olá" : "Hello"}</Text>;
+}
+<Idioma.Provider value="en"><Saudacao /></Idioma.Provider>;
+
+// ref: o elemento do widget, para focar, rolar e ler a caixa do último layout.
+const [nome, setNome] = createSignal("");
+<TextField ref={(el) => el.focus()} value={nome} onInput={setNome} />;
+
+// onResize: o tamanho do nó depois do layout (na primeira vez e quando muda).
+const [largura, setLargura] = createSignal(0);
+<Box grow={1} onResize={(s) => setLargura(s.width)}>
+  <Column>{() => (largura() > 600 ? "largo" : "estreito")}</Column>
+</Box>;
+```
+
+- Para um valor que muda, passe um accessor no contexto (`value={tema}`, com `tema` um
+  signal) e chame-o onde usa (`useContext(Tema)()`).
+- O `ref` recebe um `ElementRef`: `x`, `y`, `width` e `height` do último layout (coordenadas
+  da janela), `focus()`, `blur()` e, num `Scroll`, `scrollTo(y)` e `scrollY`. O `ref` é
+  chamado quando o widget é criado, antes do layout; um `focus()` nessa hora vale assim que
+  o widget entra na árvore.
 
 ### Área de transferência
 

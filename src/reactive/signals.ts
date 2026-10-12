@@ -10,6 +10,8 @@ interface Owner {
   owned: Owner[];
   cleanups: (() => void)[];
   disposed: boolean;
+  /** Values provided to this scope and below (createContext). */
+  context?: Record<symbol, unknown>;
 }
 
 interface Computation extends Owner {
@@ -145,7 +147,8 @@ export function createMemo<T>(fn: (prev: T | undefined) => T, options?: { equals
 
 /** Creates an ownership scope that lives until `dispose` is called. */
 export function createRoot<T>(fn: (dispose: () => void) => T): T {
-  const root: Owner = { owner: null, owned: [], cleanups: [], disposed: false };
+  // Not owned by the current scope (only `dispose` ends it), but it still sees its context.
+  const root: Owner = { owner: currentOwner, owned: [], cleanups: [], disposed: false };
   const prevOwner = currentOwner;
   const prevListener = currentListener;
   currentOwner = root;
@@ -156,6 +159,25 @@ export function createRoot<T>(fn: (dispose: () => void) => T): T {
     currentOwner = prevOwner;
     currentListener = prevListener;
   }
+}
+
+/** Runs `fn` in a new child scope that provides `value` under `id` to everything created inside. */
+export function provideContext<T>(id: symbol, value: unknown, fn: () => T): T {
+  const scope: Owner = { owner: currentOwner, owned: [], cleanups: [], disposed: false, context: { [id]: value } };
+  currentOwner?.owned.push(scope);
+  const prevOwner = currentOwner;
+  currentOwner = scope;
+  try {
+    return fn();
+  } finally {
+    currentOwner = prevOwner;
+  }
+}
+
+/** The value provided under `id` by the nearest enclosing scope, if any. */
+export function lookupContext(id: symbol): { value: unknown } | undefined {
+  for (let o = currentOwner; o; o = o.owner) if (o.context && id in o.context) return { value: o.context[id] };
+  return undefined;
 }
 
 /** Registers `fn` to run when the current scope is disposed or re-executed. */
