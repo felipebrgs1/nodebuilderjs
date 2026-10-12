@@ -27,11 +27,15 @@ export interface FakeTextMetrics {
 let metrics: TextMeasurer = fakeMeasurer({});
 
 function fakeMeasurer({ charWidth = 8, lineHeight = 20 }: FakeTextMetrics): TextMeasurer {
-  return (text) => ({ width: text.length * charWidth, ascent: lineHeight * 0.75, descent: lineHeight * 0.25 });
+  return (text, _size, font) => ({
+    width: text.length * charWidth + (font?.letterSpacing ? Array.from(text).length * font.letterSpacing : 0),
+    ascent: lineHeight * 0.75,
+    descent: lineHeight * 0.25,
+  });
 }
 
 /**
- * Fake text metrics, the default: 8 px per character and 20 px lines unless given, so
+ * Fake text metrics, the default: 8 px per character (plus `letterSpacing` after each) and 20 px lines unless given, so
  * layout is deterministic without fonts. Also restores them after useRealTextMetrics().
  */
 export function useFakeTextMetrics(options: FakeTextMetrics = {}) {

@@ -332,10 +332,11 @@ static napi_value js_render_offscreen(napi_env env, napi_callback_info info) {
   return out;
 }
 
-// measureText(text, size, font) -> [width, ascent, descent] in logical px
+// measureText(text, size, font, scale?, letterSpacing?) -> [width, ascent, descent] in logical px.
+// `font`: a font id (weight * 2 + italic).
 static napi_value js_measure_text(napi_env env, napi_callback_info info) {
-  size_t argc = 4;
-  napi_value argv[4];
+  size_t argc = 5;
+  napi_value argv[5];
   CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
   if (!nb_text_init()) {
     napi_throw_error(env, NULL, "text engine initialisation failed");
@@ -355,8 +356,12 @@ static napi_value js_measure_text(napi_env env, napi_callback_info info) {
     CHECK(napi_get_value_double(env, argv[3], &s));
     if (s >= 1) scale = (float)s;
   }
+  double spacing = 0;
+  napi_valuetype spacing_type = napi_undefined;
+  if (argc > 4) napi_typeof(env, argv[4], &spacing_type);
+  if (spacing_type == napi_number) CHECK(napi_get_value_double(env, argv[4], &spacing));
   int px = (int)(size * scale + 0.5);
-  float w = nb_text_measure(font, text ? text : "", px, &ascent, &descent);
+  float w = nb_text_measure(font, text ? text : "", px, (float)spacing * scale, &ascent, &descent);
   free(text);
 
   napi_value out, n;

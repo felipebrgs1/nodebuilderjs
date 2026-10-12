@@ -1,9 +1,9 @@
 import { edges } from "../render/layout.js";
-import { type Style, UINode, invalidate, measureText } from "../render/node.js";
+import { type FontStyle, type Style, UINode, invalidate, measureText } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, createSignal, onCleanup, read, untrack } from "../reactive/signals.js";
 import { clipboard } from "../runtime/clipboard.js";
 import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, inherited, interaction } from "./props.js";
+import { type StyleProps, applyProps, disableable, inherited, inheritedFont, interaction } from "./props.js";
 
 export function TextField(
   props: StyleProps & {
@@ -59,10 +59,12 @@ export function TextField(
   onCleanup(() => clearInterval(blink));
 
   const size = () => inherited(node, "fontSize") ?? theme.font.size;
-  const widthOf = (s: string) => measureText(s, size()).width;
+  let lastFont: FontStyle | undefined;
+  const face = () => (lastFont = inheritedFont(node, lastFont));
+  const widthOf = (s: string) => measureText(s, size(), face()).width;
 
   node.measure = () => {
-    const m = measureText("Ag", size());
+    const m = measureText("Ag", size(), face());
     return { width: 160, height: Math.ceil(m.ascent + m.descent) };
   };
 
@@ -78,8 +80,8 @@ export function TextField(
     if (widthOf(value) - scrollX < innerW) scrollX = Math.max(0, widthOf(value) - innerW + 2);
 
     p.clip(innerX - 1, n.y, innerW + 2, n.height);
-    if (value) p.text(innerX - scrollX, n.y + pt, value, size(), inherited(n, "color") ?? theme.text.primary);
-    else if (props.placeholder) p.text(innerX, n.y + pt, read(props.placeholder), size(), theme.field.placeholder);
+    if (value) p.text(innerX - scrollX, n.y + pt, value, size(), inherited(n, "color") ?? theme.text.primary, face());
+    else if (props.placeholder) p.text(innerX, n.y + pt, read(props.placeholder), size(), theme.field.placeholder, face());
     if (state.focused() && blinkOn()) {
       p.rect(Math.round(innerX + caretX - scrollX), n.y + pt, 1.5, n.height - pt - pb, theme.field.focus);
     }

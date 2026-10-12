@@ -80,7 +80,14 @@ export interface Style {
   // text
   color?: Color;
   fontSize?: number;
+  /** Shorthand for `fontWeight` 700 (true) or 400 (false); a `fontWeight` on the same node wins. Inherited. */
   bold?: boolean;
+  /** 1..1000, like CSS (400 regular, 700 bold); the closest the system has, any value with a variable font. Inherited. */
+  fontWeight?: number;
+  /** The italic face (or, without one, the upright glyphs slanted). Inherited. */
+  italic?: boolean;
+  /** Extra px after every character (grapheme cluster), the last one too, as in browsers; may be negative. Inherited. */
+  letterSpacing?: number;
   /** A line under the text of <Text> (inherited, like `bold`). */
   underline?: boolean;
   // interaction
@@ -149,7 +156,8 @@ export interface Painter {
   opacity: number;
   rect(x: number, y: number, w: number, h: number, color: Paint, radius?: number, borderWidth?: number, borderColor?: Color): void;
   shadow(x: number, y: number, w: number, h: number, color: Color, radius: number, blur: number): void;
-  text(x: number, y: number, text: string, size: number, color: Color, bold?: boolean): void;
+  /** `font`: true for bold (the old flag), or the weight, italic and letter spacing. */
+  text(x: number, y: number, text: string, size: number, color: Color, font?: FontInput): void;
   /** Draws `uv` (a sub-rectangle of the image, 0..1) stretched over the box, multiplied by `tint` (default white). */
   image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius?: number, opacity?: number, tint?: Color): void;
   /** A thick segment with antialiased edges; each end is round or butt (flat at the point). */
@@ -171,10 +179,43 @@ export interface TextMetrics {
   descent: number;
 }
 
-export type TextMeasurer = (text: string, size: number, bold: boolean) => TextMetrics;
+/** The face text is drawn with, resolved: weight 1..1000, italic, and letterSpacing in px. */
+export interface FontStyle {
+  weight: number;
+  italic: boolean;
+  letterSpacing: number;
+}
+/** `true`/`false` = bold or regular (the old flag); an object fills in the rest from regular. */
+export type FontInput = boolean | Partial<FontStyle>;
+
+export const REGULAR: FontStyle = Object.freeze({ weight: 400, italic: false, letterSpacing: 0 });
+const BOLD: FontStyle = Object.freeze({ weight: 700, italic: false, letterSpacing: 0 });
+
+export function fontStyle(font: FontInput | undefined): FontStyle {
+  if (font === undefined || font === false) return REGULAR;
+  if (font === true) return BOLD;
+  if (font.weight !== undefined && font.italic !== undefined && font.letterSpacing !== undefined) return font as FontStyle;
+  return { weight: font.weight ?? 400, italic: font.italic ?? false, letterSpacing: font.letterSpacing ?? 0 };
+}
+
+/** The addon's font id (TEXT command, measureText): the weight, rounded into 1..1000, times 2, plus 1 if italic. */
+export function fontId(weight: number, italic: boolean): number {
+  const w = Math.min(1000, Math.max(1, Math.round(weight) || 400));
+  return w * 2 + (italic ? 1 : 0);
+}
+
+/**
+ * Text metrics in logical px. The width must include `font.letterSpacing` after every
+ * character, as the addon does, so wrapping and selection match what gets drawn.
+ */
+export type TextMeasurer = (text: string, size: number, font: FontStyle) => TextMetrics;
 
 let scheduleFrame: () => void = () => {};
-let measurer: TextMeasurer = (text, size) => ({ width: text.length * size * 0.55, ascent: size * 0.9, descent: size * 0.25 });
+let measurer: TextMeasurer = (text, size, font) => ({
+  width: text.length * size * 0.55 + Array.from(text).length * font.letterSpacing,
+  ascent: size * 0.9,
+  descent: size * 0.25,
+});
 let generation = 0;
 
 /** Wired by the app runtime; tests can install a fake measurer. */
@@ -205,8 +246,8 @@ export function displayScale() {
 export function setDisplayScale(value: number) {
   scale = value;
 }
-export function measureText(text: string, size: number, bold = false): TextMetrics {
-  return measurer(text, size, bold);
+export function measureText(text: string, size: number, font?: FontInput): TextMetrics {
+  return measurer(text, size, fontStyle(font));
 }
 export function invalidate() {
   scheduleFrame();

@@ -2,7 +2,9 @@
 
 import { createRequire } from "node:module";
 import type { ImageBackend } from "../image/source.js";
-import type { TextMeasurer } from "../render/node.js";
+import { type TextMeasurer, fontId } from "../render/node.js";
+
+export { fontId };
 
 export type NativeKeyEvent = { type: "keydown" | "keyup"; key: string; text: string; repeat: boolean; ctrl: boolean; shift: boolean; alt: boolean; super: boolean };
 
@@ -19,8 +21,11 @@ export interface Native {
   open(options: { title: string; appId: string; width: number; height: number }, onEvents: (events: NativeEvent[]) => void): void;
   close(): void;
   render(commands: Float32Array, texts: string[]): void;
-  /** Logical px. `scale` (default: the window's) is the device scale the text is hinted for. */
-  measureText(text: string, size: number, font: number, scale?: number): [width: number, ascent: number, descent: number];
+  /**
+   * Logical px. `font` is a font id (`fontId(weight, italic)`); `scale` (default: the window's) is the
+   * device scale the text is hinted for; `letterSpacing` (logical px) goes after every character.
+   */
+  measureText(text: string, size: number, font: number, scale?: number, letterSpacing?: number): [width: number, ascent: number, descent: number];
   /**
    * Draws `commands` without a window (no display needed) into a `width*scale` x `height*scale`
    * target and returns its pixels: RGBA8, straight alpha, rows top to bottom. Throws
@@ -96,15 +101,16 @@ export function loadNative(): Native {
   );
 }
 
-/** Real text metrics from the addon (FreeType + HarfBuzz) at device `scale`, cached by text, size and weight. */
+/** Real text metrics from the addon (FreeType + HarfBuzz) at device `scale`, cached by text, size, font and letter spacing. */
 export function nativeTextMeasurer(nat: Native, scale: number): TextMeasurer {
   const metrics = new Map<string, { width: number; ascent: number; descent: number }>();
-  return (text, size, bold) => {
-    const key = `${bold ? 1 : 0}|${size}|${text}`;
+  return (text, size, font) => {
+    const id = fontId(font.weight, font.italic);
+    const key = `${id}|${font.letterSpacing}|${size}|${text}`;
     let m = metrics.get(key);
     if (!m) {
       if (metrics.size > 20_000) metrics.clear();
-      const [width, ascent, descent] = nat.measureText(text, size, bold ? 1 : 0, scale);
+      const [width, ascent, descent] = nat.measureText(text, size, id, scale, font.letterSpacing);
       m = { width, ascent, descent };
       metrics.set(key, m);
     }

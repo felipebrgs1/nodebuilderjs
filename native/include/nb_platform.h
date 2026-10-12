@@ -78,16 +78,23 @@ void nb_platform_flush(void);
 
 // ---- fonts ------------------------------------------------------------------
 
-/** Path of the system UI font file for NB_FONT_REGULAR / NB_FONT_BOLD (malloc'd), or NULL. */
-char *nb_platform_font_path(int font);
+/**
+ * JS thread. The system UI font file closest to `weight` (1..1000, CSS scale: 400 regular, 700
+ * bold) and `italic`: the path (malloc'd) or NULL, the face index inside it (collections, named
+ * instances of variable fonts) in *face_index, and *oblique = true when italic was asked but
+ * the match is upright (the core slants it). A variable match gets its `wght` axis set by the
+ * core, so it need not be the exact weight. Called once per (weight, italic).
+ */
+char *nb_platform_font_path(int weight, bool italic, int *face_index, bool *oblique);
 /**
  * JS thread. A font file with a glyph for `codepoint`, to draw what the UI font lacks: the
- * system's fallback order for `font` (NB_FONT_REGULAR / NB_FONT_BOLD), or, when `emoji`, only
- * color fonts (emoji presentation). Returns the path (malloc'd) and the face index inside it
- * (font collections) in *face_index, or NULL when no font has it. May be slow (the core
- * caches the answer per codepoint); the first call may build the fallback list.
+ * system's fallback order for that `weight` and `italic`, or, when `emoji`, only color fonts
+ * (emoji presentation; weight and italic ignored). Returns the path (malloc'd) and the face
+ * index inside it (font collections) in *face_index, or NULL when no font has it. May be slow
+ * (the core caches the answer per codepoint and font); the first call per font may build the
+ * fallback list.
  */
-char *nb_platform_font_fallback(uint32_t codepoint, int font, bool emoji, int *face_index);
+char *nb_platform_font_fallback(uint32_t codepoint, int weight, bool italic, bool emoji, int *face_index);
 
 // ---- image codecs -----------------------------------------------------------
 

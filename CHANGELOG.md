@@ -67,11 +67,21 @@
   maximizes; controls inside keep the press) and `<WindowControls />`.
 - **Layout:** `alignSelf`; `right`/`bottom` on absolute children (`left={0} right={0}` stretches).
 - **Text:** `underline` (inherited). Canvas `g.text(..., { maxWidth, ellipsis })`.
+- **Font weights, italics, letter spacing:** `fontWeight` (1..1000; `bold` is 700),
+  `italic` and `letterSpacing` (px after every character, may be negative) on every widget,
+  inherited like `fontSize`. The closest face the system has (fontconfig), any weight with a
+  variable font, a slanted upright face when there is no italic; fallback fonts follow the
+  weight and slant. Canvas `g.text`/`g.measureText` take `{ weight, italic, letterSpacing }`.
+  `TextField` follows them too.
 - **Frame tracing:** `NB_STATS` shows why frames were drawn (`why: inv ev raf`);
   `NB_TRACE=frames` prints the stack that asked for each frame; in development a warning names
   code that invalidates inside every frame.
 
 ### Changed
+- **Text measurers:** the third argument of a `setTextMeasurer` function is now the font
+  (`{ weight, italic, letterSpacing }`) instead of `bold`, and the width it returns must
+  include `letterSpacing` after every character. A custom `Painter.text` gets the same font
+  (or `true` for bold).
 - **Testing:** `click(node)` and the node helpers of `interact()` throw when the node can't be
   reached (culled, clipped by an ancestor or the window, not in the tree, overlay not shown)
   instead of silently missing. `click(node)` uses the node's center, and `localX/localY` are

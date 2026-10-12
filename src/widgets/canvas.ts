@@ -7,7 +7,7 @@
 
 import { edges } from "../render/layout.js";
 import { type CanvasGradient, type GradientStop, isGradient, offsetGradient } from "../render/gradient.js";
-import { type Color, type Handlers, type LineCap, type Paint, type Painter, UINode, invalidate, measureText } from "../render/node.js";
+import { type Color, type FontStyle, type Handlers, type LineCap, type Paint, type Painter, UINode, fontStyle, invalidate, measureText } from "../render/node.js";
 import { type PolylineOptions, fillPolygon, polyline } from "../render/shapes.js";
 import { truncate } from "../render/text-wrap.js";
 import { createEffect, createSignal } from "../reactive/signals.js";
@@ -38,10 +38,19 @@ export interface DrawContext {
   linearGradient(x0: number, y0: number, x1: number, y1: number, stops: readonly GradientStop[]): CanvasGradient;
   /** `y` is the top of the line box. With `maxWidth`, text that does not fit is cut and ends in "…". */
   text(text: string, x: number, y: number, color: Color, size?: number, bold?: boolean, options?: CanvasTextOptions): void;
-  measureText(text: string, size?: number, bold?: boolean): { width: number; height: number };
+  measureText(text: string, size?: number, bold?: boolean, options?: CanvasFontOptions): { width: number; height: number };
 }
 
-export interface CanvasTextOptions {
+/** Like the <Text> props of the same names. */
+export interface CanvasFontOptions {
+  /** 1..1000 (400 regular, 700 bold); wins over the `bold` argument. */
+  weight?: number;
+  italic?: boolean;
+  /** Extra px after every character, the last one too; may be negative. */
+  letterSpacing?: number;
+}
+
+export interface CanvasTextOptions extends CanvasFontOptions {
   /** Cut the text to this width; nothing is drawn when not even the "…" fits. */
   maxWidth?: number;
   /** End cut text with "…" (default true); false just cuts it. */
@@ -52,6 +61,11 @@ type Op = (p: Painter, ox: number, oy: number) => void;
 
 /** A paint moved with the canvas (gradients are in canvas coordinates). */
 const at = (paint: Paint, ox: number, oy: number): Paint => (isGradient(paint) ? offsetGradient(paint, ox, oy) : paint);
+
+function canvasFont(bold: boolean, options: CanvasFontOptions | undefined): FontStyle {
+  if (!options) return fontStyle(bold);
+  return fontStyle({ weight: options.weight ?? (bold ? 700 : 400), italic: options.italic ?? false, letterSpacing: options.letterSpacing ?? 0 });
+}
 
 /**
  * Shapes are turned into primitives (segments, triangles) once, when recorded, in local
@@ -91,12 +105,13 @@ function record(width: number, height: number, scale: number, ops: Op[]): DrawCo
     circle: (cx, cy, radius, color) => ops.push((p, ox, oy) => p.arc(cx + ox, cy + oy, radius, 0, 0, 2 * Math.PI, at(color, ox, oy))),
     arc: (cx, cy, outer, inner, start, sweep, color) => ops.push((p, ox, oy) => p.arc(cx + ox, cy + oy, outer, inner, start, sweep, at(color, ox, oy))),
     text: (text, x, y, color, size = theme.font.size, bold = false, options) => {
-      const shown = options?.maxWidth === undefined ? text : truncate(text, options.maxWidth, (s) => measureText(s, size, bold).width, options.ellipsis ?? true).text;
-      if (shown) ops.push((p, ox, oy) => p.text(x + ox, y + oy, shown, size, color, bold));
+      const face = canvasFont(bold, options);
+      const shown = options?.maxWidth === undefined ? text : truncate(text, options.maxWidth, (s) => measureText(s, size, face).width, options.ellipsis ?? true).text;
+      if (shown) ops.push((p, ox, oy) => p.text(x + ox, y + oy, shown, size, color, face));
     },
     linearGradient: (x0, y0, x1, y1, stops) => ({ x0, y0, x1, y1, stops: [...stops] }),
-    measureText: (text, size = theme.font.size, bold = false) => {
-      const m = measureText(text, size, bold);
+    measureText: (text, size = theme.font.size, bold = false, options) => {
+      const m = measureText(text, size, canvasFont(bold, options));
       return { width: m.width, height: m.ascent + m.descent };
     },
   };

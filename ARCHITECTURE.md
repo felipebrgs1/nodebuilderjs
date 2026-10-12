@@ -237,6 +237,21 @@ uses. `underline` needs no opcode: `Text` paints a RECT under each line it drew,
 that line, a third of the descent below the baseline (ascent from the font metrics), with a
 thickness of `max(1, fontSize / 14)` and both snapped to device pixels so it stays sharp.
 
+**Weights, italics, letter spacing.** `inheritedFont()` (`widgets/props.ts`) resolves a
+node's `FontStyle` (`{ weight, italic, letterSpacing }`; the nearest `fontWeight` or `bold`
+up the tree gives the weight) and keeps the same object while nothing changed, so the
+per-node layout caches compare it by identity. The measurer receives it, and the TEXT
+command carries it as a font id (`weight * 2 + italic`, `fontId()`) plus the spacing. In
+`text.c` each font id gets its UI face from `nb_platform_font_path(weight, italic, ...)` the
+first time it is used (fontconfig's closest match; an upright match for italic comes back
+with `oblique` and gets a FreeType shear). A variable font is opened at its base index with
+the `wght` axis set (HarfBuzz ignores the coordinates FreeType gives a named instance), and
+gets one face per weight; a static file is shared by every weight that maps to it. Fallback
+fonts are asked per (weight, italic) too. Letter spacing is added in `layout_runs` after the
+last glyph of every HarfBuzz cluster, the last one included, so `width(a + b) = width(a) +
+width(b)` keeps holding: wrapping sums word widths and selection measures prefixes, and both
+stay exact. A nonzero spacing turns `liga`/`clig` off, as CSS does.
+
 **Culling:** each node that clips (`Scroll`, `clip`, the `Window`) narrows the visible region
 passed to its children. A child entirely outside it (counting its shadow) gets its own box,
 so that the content height and the scrollbars stay correct, but is marked `culled`: its
@@ -245,7 +260,7 @@ visible ones reach painting and HarfBuzz. Limitation: a descendant that overflow
 a culled node (e.g., an absolute popup) disappears along with it.
 
 The natural size of all children is still computed every frame, because the content height
-depends on them; each `Text` keeps its last measurement (text, size, bold) so this does not
+depends on them; each `Text` keeps its last measurement (text, size, font) so this does not
 cost a trip to the global cache. Incremental layout is on the
 [roadmap](ROADMAP.md).
 
@@ -353,7 +368,7 @@ Painting does not call the C node by node: `render/paint.ts` writes everything i
 | Op | Code | Following floats |
 |---|---|---|
 | RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
-| TEXT | 2 | x y(line top) size font(0/1 bold) · r g b a · index into `texts[]` |
+| TEXT | 2 | x y(line top) size font id (weight * 2 + italic) · r g b a · index into `texts[]` · letterSpacing |
 | CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |

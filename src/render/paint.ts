@@ -3,7 +3,7 @@
 
 import { type ImageSource, imageHandle } from "../image/source.js";
 import { boxGradient, isGradient, isLinearGradient, resolveStops } from "./gradient.js";
-import { type Color, type LineCap, type Paint, type Painter, type UINode, scrolls, stacked } from "./node.js";
+import { type Color, type FontInput, type LineCap, type Paint, type Painter, type UINode, fontId, fontStyle, scrolls, stacked } from "./node.js";
 import { scrollbar } from "./scrollbar.js";
 import { theme } from "../theme.js";
 
@@ -109,10 +109,11 @@ export class CommandBuffer implements Painter {
     this.push(OP_SHADOW, x, y, w, h, ...this.rgba(color), radius, blur);
   }
 
-  text(x: number, y: number, text: string, size: number, color: Color, bold = false) {
+  text(x: number, y: number, text: string, size: number, color: Color, font?: FontInput) {
     if (!text) return;
     this.texts.push(text);
-    this.push(OP_TEXT, x, y, size, bold ? 1 : 0, ...this.rgba(color), this.texts.length - 1);
+    const f = fontStyle(font);
+    this.push(OP_TEXT, x, y, size, fontId(f.weight, f.italic), ...this.rgba(color), this.texts.length - 1, f.letterSpacing);
   }
 
   image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius = 0, opacity = 1, tint: Color = "#ffffff") {

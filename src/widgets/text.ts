@@ -1,11 +1,11 @@
 import { type Child, setTextFactory } from "../jsx-runtime.js";
 import { edges } from "../render/layout.js";
-import { type Handlers, UINode, displayScale, invalidate, measureText, metricsGeneration } from "../render/node.js";
+import { type FontStyle, type Handlers, REGULAR, UINode, displayScale, invalidate, measureText, metricsGeneration } from "../render/node.js";
 import { type TextLine, minContentWidth, wrapText } from "../render/text-wrap.js";
 import { type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
 import { clipboard } from "../runtime/clipboard.js";
 import { theme } from "../theme.js";
-import { type StyleProps, applyProps, inherited } from "./props.js";
+import { type StyleProps, applyProps, inherited, inheritedFont } from "./props.js";
 import { boundaryAt, charAt, charEdges, wordAt } from "./text-selection.js";
 
 function textOf(child: Child): string {
@@ -43,10 +43,11 @@ export function Text(
   const chars = () => (charList ??= Array.from(value));
   let selection = { anchor: 0, focus: 0 }; // in characters; empty when equal
   let options = { wrap: true, maxLines: undefined as number | undefined, align: "start" as TextAlign, lineHeight: 1 };
-  const font = () => ({ size: inherited(node, "fontSize") ?? theme.font.size, bold: inherited(node, "bold") ?? false });
+  let lastFont: FontStyle | undefined;
+  const font = () => ({ size: inherited(node, "fontSize") ?? theme.font.size, face: (lastFont = inheritedFont(node, lastFont)) });
   const narrowest = () => {
-    const { size, bold } = font();
-    const widthOf = (s: string) => measureText(s, size, bold).width;
+    const { size, face } = font();
+    const widthOf = (s: string) => measureText(s, size, face).width;
     return Math.ceil(options.maxLines !== undefined ? widthOf("…") : minContentWidth(value, widthOf));
   };
   // Only text that can wrap tells layout its narrowest width (its height then depends on the width).
@@ -77,24 +78,24 @@ export function Text(
   // Lines for a width. Every row of a long list is measured each frame (scroll extent), so
   // results are kept per node: one for the natural size, one for the last width given.
   interface Layout {
-    value: string; size: number; bold: boolean; options: typeof options; generation: number; width: number;
+    value: string; size: number; face: FontStyle; options: typeof options; generation: number; width: number;
     lines: TextLine[]; lineHeight: number; glyphHeight: number;
     /** What measure() returns. */
     box: { width: number; height: number };
   }
-  let metrics = { size: 0, bold: false, generation: -1, height: 0, ascent: 0, descent: 0 };
+  let metrics = { size: 0, face: REGULAR, generation: -1, height: 0, ascent: 0, descent: 0 };
   /** Vertical metrics of this font (they do not depend on the text); `height` is a line's. */
-  const fontMetrics = (size: number, bold: boolean) => {
-    if (metrics.size !== size || metrics.bold !== bold || metrics.generation !== metricsGeneration()) {
-      const m = measureText(value, size, bold);
-      metrics = { size, bold, generation: metricsGeneration(), height: Math.ceil(m.ascent + m.descent), ascent: m.ascent, descent: m.descent };
+  const fontMetrics = (size: number, face: FontStyle) => {
+    if (metrics.size !== size || metrics.face !== face || metrics.generation !== metricsGeneration()) {
+      const m = measureText(value, size, face);
+      metrics = { size, face, generation: metricsGeneration(), height: Math.ceil(m.ascent + m.descent), ascent: m.ascent, descent: m.descent };
     }
     return metrics;
   };
   let natural: Layout | null = null;
   let sized: Layout | null = null;
   const layoutFor = (width: number): Layout => {
-    const { size, bold } = font();
+    const { size, face } = font();
     // Without spaces or a line limit, the lines are the same at any width.
     const fixed = options.maxLines === undefined && (!options.wrap || !hasSpace);
     const w = fixed ? Infinity : width;
@@ -104,13 +105,13 @@ export function Text(
       if (n.lines.every((line) => line.width <= width)) return n;
     }
     const slot = w === Infinity ? natural : sized;
-    if (slot && slot.width === w && slot.value === value && slot.size === size && slot.bold === bold && slot.options === options && slot.generation === metricsGeneration()) return slot;
-    const widthOf = (s: string) => measureText(s, size, bold).width;
-    const glyphHeight = fontMetrics(size, bold).height;
+    if (slot && slot.width === w && slot.value === value && slot.size === size && slot.face === face && slot.options === options && slot.generation === metricsGeneration()) return slot;
+    const widthOf = (s: string) => measureText(s, size, face).width;
+    const glyphHeight = fontMetrics(size, face).height;
     const lines = wrapText(value, w, widthOf, options);
     const lineHeight = Math.ceil(glyphHeight * options.lineHeight);
     const box = { width: Math.ceil(lines.reduce((m, line) => Math.max(m, line.width), 0)), height: lines.length * lineHeight };
-    const result = { value, size, bold, options, generation: metricsGeneration(), width: w, lines, lineHeight, glyphHeight, box };
+    const result = { value, size, face, options, generation: metricsGeneration(), width: w, lines, lineHeight, glyphHeight, box };
     if (w === Infinity) natural = result;
     else sized = result;
     return result;
@@ -136,10 +137,10 @@ export function Text(
   const lineEdges = (line: TextLine) => {
     let xs = edgeCache.get(line);
     if (!xs) {
-      const { size, bold } = font();
+      const { size, face } = font();
       const own = chars().slice(line.start, line.end);
       if (own[own.length - 1] === "\n") own.pop();
-      xs = charEdges(own, (s) => measureText(s, size, bold).width);
+      xs = charEdges(own, (s) => measureText(s, size, face).width);
       edgeCache.set(line, xs);
     }
     return xs;
@@ -147,12 +148,12 @@ export function Text(
   const range = () => [Math.min(selection.anchor, selection.focus), Math.max(selection.anchor, selection.focus)] as const;
 
   node.paint = (p, n) => {
-    const { size, bold } = font();
+    const { size, face } = font();
     const l = placed(n);
     const [from, to] = range();
     const color = inherited(n, "color") ?? theme.text.primary;
     const leading = (l.lineHeight - l.glyphHeight) / 2;
-    const underline = inherited(n, "underline") ? underlineOf(size, bold) : null;
+    const underline = inherited(n, "underline") ? underlineOf(size, face) : null;
     for (let i = 0; i < l.lines.length; i++) {
       const line = l.lines[i]!;
       const x = l.lineX(i);
@@ -164,13 +165,13 @@ export function Text(
         const right = xs[Math.min(b, xs.length - 1)]!;
         p.rect(x + xs[a]!, y, right - xs[a]!, l.lineHeight, theme.selection);
       }
-      p.text(x, y + leading, line.text, size, color, bold);
+      p.text(x, y + leading, line.text, size, color, face);
       if (underline && line.width > 0) p.rect(x, underline.snap(y + leading + underline.offset), line.width, underline.thickness, color);
     }
   };
   /** Below the baseline, a third into the descent; snapped to device pixels so it stays crisp. */
-  const underlineOf = (size: number, bold: boolean) => {
-    const { ascent, descent } = fontMetrics(size, bold);
+  const underlineOf = (size: number, face: FontStyle) => {
+    const { ascent, descent } = fontMetrics(size, face);
     const scale = displayScale();
     const snap = (v: number) => Math.round(v * scale) / scale;
     return { offset: ascent + descent / 3, thickness: Math.max(1, snap(size / 14)), snap };

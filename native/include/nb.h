@@ -48,7 +48,9 @@ void nb_push_event(const nb_event *e);
 
 // ---- core/text.c ------------------------------------------------------------
 
-enum { NB_FONT_REGULAR = 0, NB_FONT_BOLD = 1, NB_FONT_COUNT };
+// Font id: weight (1..1000, CSS: 400 regular, 700 bold) * 2 + italic (0/1). Out of range: regular.
+#define NB_FONT_ID(weight, italic) ((weight) * 2 + ((italic) ? 1 : 0))
+enum { NB_FONT_REGULAR = NB_FONT_ID(400, 0), NB_FONT_BOLD = NB_FONT_ID(700, 0) };
 
 // `color`: the quad samples the color atlas (emoji: premultiplied RGBA, not tinted) instead of
 // the alpha atlas (tinted by the text color).
@@ -56,9 +58,10 @@ typedef void (*nb_glyph_emit)(void *ud, float x0, float y0, float x1, float y1,
                               float u0, float v0, float u1, float v1, bool color);
 
 bool nb_text_init(void);
-// All values in physical pixels.
-float nb_text_measure(int font, const char *utf8, int px, float *ascent, float *descent);
-void nb_text_draw(int font, const char *utf8, int px, float x, float top, nb_glyph_emit emit, void *ud);
+// All values in physical pixels. `font`: a font id. `spacing`: letter spacing, added after every
+// grapheme cluster (the last one too); nonzero turns ligatures off.
+float nb_text_measure(int font, const char *utf8, int px, float spacing, float *ascent, float *descent);
+void nb_text_draw(int font, const char *utf8, int px, float spacing, float x, float top, nb_glyph_emit emit, void *ud);
 const uint8_t *nb_text_atlas(int *size, bool *dirty);
 void nb_text_atlas_uploaded(void);
 /** Premultiplied RGBA color-glyph atlas; NULL (and not dirty) until a color glyph is drawn. */
@@ -70,7 +73,7 @@ void nb_text_color_atlas_uploaded(void);
 // Command buffer opcodes (producer: src/render/paint.ts; keep both in sync).
 enum {
   NB_OP_RECT = 1,
-  NB_OP_TEXT = 2,
+  NB_OP_TEXT = 2 /* x y(line top) size font(id)  r g b a  text_index  letter_spacing */,
   NB_OP_CLIP = 3 /* x y w h radius */,
   NB_OP_UNCLIP = 4,
   NB_OP_SHADOW = 5,
