@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), rolagem (vertical, horizontal, barras, teclado, scrollIntoView), contexto (createContext), ref (focar, rolar, medir), onResize, overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
+description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), rolagem (vertical, horizontal, barras, teclado, scrollIntoView), contexto (createContext), ref (focar, rolar, medir), onResize, overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
 ---
 
 # Interface com nodebuilder
@@ -20,8 +20,13 @@ props planas. Reatividade estilo SolidJS: **só funções são reativas** (veja 
 | `Icon` | ícone SVG (Lucide, Phosphor), cor herdada como texto | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icones` |
 | `Canvas` | desenho livre: linhas, polígonos, arcos, texto | `draw={(g) => ...}` + tamanho; skill `nodebuilder-desenho` |
 | `Button` | botão com foco e teclado | `label` ou filhos, `variant` (`default`, `primary`, `danger`, `flat`), `disabled`, `onClick` |
-| `TextField` | campo de texto controlado | `value` (accessor), `onInput(valor)`, `onSubmit`, `placeholder` |
-| `Checkbox` | caixa de seleção | `checked` (accessor), `onChange(marcado)`, `label` |
+| `TextField` | campo de texto controlado | `value` (accessor), `onInput(valor)`, `onSubmit`, `placeholder`, `disabled` |
+| `Checkbox` | caixa de seleção | `checked` (accessor), `onChange(marcado)`, `label`, `disabled` |
+| `Toggle` | interruptor liga/desliga (`Switch` é o controle de fluxo) | `checked` (accessor), `onChange(ligado)`, `label`, `disabled` |
+| `RadioGroup` | uma opção entre várias; uma parada do Tab, setas trocam | `value` (accessor), `onChange(v)`, `options=[{ value, label, disabled? }]`, `disabled` |
+| `Slider` | número arrastando ou com setas/PageUp/Home/End | `value` (accessor), `onChange(n)`, `min` (0), `max` (100), `step` (1), `width` (200), `disabled` |
+| `ProgressBar` | barra de progresso, 6 px | `value` de 0 a 1 (sem ele: indeterminada) |
+| `Spinner` | ocupado, sem medida | `size` (20), `color` |
 | `Card` | coluna com fundo, borda, raio 12, padding 16, gap 8 | estilo |
 | `Divider` / `Spacer` | linha de 1 px / espaço flexível (`size` fixo opcional) | |
 | `<For each={lista}>{(item, i) => ...}</For>` | lista keyed por referência; `i` é um accessor | `fallback` |
@@ -35,7 +40,12 @@ const [nome, setNome] = createSignal("");
 <TextField value={nome} onInput={setNome} onSubmit={salvar} placeholder="Nome" />
 <Checkbox checked={ativo} onChange={setAtivo} label="Ativo" />
 <Button label="Salvar" variant="primary" disabled={() => !nome()} onClick={salvar} />
+<Toggle checked={wifi} onChange={setWifi} label="Wi-Fi" />
+<Slider value={volume} onChange={setVolume} max={100} step={5} />
 ```
+
+`disabled` (valor ou função) em qualquer controle: esmaece, tira do Tab e do foco e ignora
+cliques e teclas. Não simule com `opacity` + `onClick` vazio.
 
 ## Props de estilo (qualquer widget)
 

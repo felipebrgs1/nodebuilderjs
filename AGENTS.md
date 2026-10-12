@@ -48,7 +48,7 @@ bun run build:native        # compila native/build/<platform>-<arch>/nodebuilder
 bun run typecheck           # tsc 7 --noEmit (~0,1 s)
 bun test                    # todos os testes, sem janela (~0,1 s)
 bun test test/svg.test.tsx  # um arquivo; -t "padrão" filtra pelo nome do teste
-bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll   # exemplos
+bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll | widgets   # exemplos
 bun run dev                 # todo com --watch
 bun run bench               # stress test com NB_STATS=1 (env: N=1000 MODE=one|all|static)
 bun run bench:dashboard     # app realista (env: TAB=overview|table|logs|settings ROWS=500
@@ -105,7 +105,8 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
   (`Show`, `Switch`/`Match`, `Index`, aninhamento sem recriar componentes),
   `error-boundary` (erros, fila de effects), `context`, `ref`
   (`ref`, foco e rolagem por código, `onResize`), `overlay`, `style` (`opacity`, `translate`),
-  `text` (quebra de linha, alinhamento, `maxLines`, seleção em várias linhas), `scroll`
+  `text` (quebra de linha, alinhamento, `maxLines`, seleção em várias linhas), `controls`
+  (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `scroll`
   (horizontal e dois eixos, barras, roda, teclado, mínimos de quem contém um `Scroll`),
   `input` (eventos),
   `clipboard`, `text-selection`, `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
@@ -160,6 +161,7 @@ src/                   um módulo por pasta; imports relativos com `.js`
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps, inherited, interaction
     containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
     text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
+    toggle.ts radio.ts slider.ts progress.ts   controles (Toggle, RadioGroup, Slider, ProgressBar/Spinner)
     overlay.ts         <Overlay>: camada acima da janela (marcador na árvore + root.layers)
     text-selection.ts  posições de caracteres, palavra sob o clique (Text selectable; TextField)
   image/
@@ -202,7 +204,7 @@ test/            um arquivo por módulo (bun:test; bunfig.toml limita o bun test
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> comandos com nome
   charts/        testes de src/charts (escalas e cada tipo de gráfico)
   fixtures/      entradas e saídas de referência (.raw, .pnm do djpeg, PNG do librsvg...)
-examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, bench, dashboard (.tsx) + assets/
+examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
 cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.ts
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces publicados junto com o core (veja "Publicação no npm")
@@ -262,6 +264,9 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
 - **Ao adicionar um campo em `Style`**, inclua-o também em `STYLE_KEYS` (`widgets/props.ts`);
   handlers novos vão em `Handlers` (`render/node.ts`) e `HANDLER_KEYS`.
 - Herdáveis via árvore: `color`, `fontSize`, `bold` (função `inherited`).
+- Controle novo aceita `disabled` via `disableable(node, props)` (`widgets/props.ts`): esmaece,
+  tira do foco e do Tab e troca o cursor; os handlers do controle checam o accessor devolvido.
+  Teclas que o controle usa (setas no `Slider`) chamam `e.stop()`, senão rolam o `Scroll` em volta.
 - Todo widget passa as props por `applyProps`: é ele que liga estilo, handlers e o `ref`
   (o `ref` recebe o `UINode`, tipado como `ElementRef`). Widget novo também.
 - Foco só pelo clique (ex.: `<Text selectable>`, que precisa do foco para o Ctrl+C):

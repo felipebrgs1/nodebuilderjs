@@ -293,10 +293,13 @@ export class UINode implements ElementRef {
 
   /** Focuses the node if it is focusable. Called while the node is being created, it waits until it is in the tree. */
   focus() {
-    if (!this.focusable) return;
     const host = this.host();
-    if (host) host.setFocus(this);
-    else queueMicrotask(() => this.host()?.setFocus(this));
+    if (host) {
+      if (this.focusable) host.setFocus(this);
+    } else {
+      // Still being created: widgets may set `focusable` after handing out the ref.
+      queueMicrotask(() => this.focusable && this.host()?.setFocus(this));
+    }
   }
 
   blur() {

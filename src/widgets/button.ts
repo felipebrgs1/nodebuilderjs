@@ -1,8 +1,8 @@
 import { type Child, insert, jsx } from "../jsx-runtime.js";
 import { type Style, UINode } from "../render/node.js";
-import { type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
+import { type MaybeAccessor, createEffect } from "../reactive/signals.js";
 import { theme } from "../theme.js";
-import { type StyleProps, applyProps, interaction } from "./props.js";
+import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
 import { Text } from "./text.js";
 
 type Variant = "default" | "primary" | "danger" | "flat";
@@ -25,13 +25,12 @@ export function Button(
 ) {
   const node = new UINode("Button");
   const colors = palette(props.variant ?? "default");
-  const disabled = () => !!read(props.disabled ?? false);
   Object.assign(node.style, {
     direction: "row", align: "center", justify: "center", gap: 6, padding: [8, 16], radius: theme.radius, cursor: "pointer",
     color: colors.text, bold: props.variant === "primary" || props.variant === "danger",
   } satisfies Style);
-  node.focusable = true;
   applyProps(node, props);
+  const disabled = disableable(node, props);
 
   const state = interaction(node);
   const activate = () => !disabled() && props.onClick?.();
@@ -51,7 +50,6 @@ export function Button(
     node.set("borderWidth", state.focused() ? 2 : 0);
     node.set("borderColor", theme.focusRing);
   });
-  createEffect(() => node.set("cursor", disabled() ? "default" : "pointer"));
 
   if (props.label !== undefined) insert(node, jsx(Text, { text: props.label }));
   insert(node, props.children);

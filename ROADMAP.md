@@ -154,8 +154,8 @@ Em andamento, nesta ordem:
 
 Depois:
 
-- Novos widgets no core: slider, seleção (dropdown), abas, tooltip, diálogo modal, menu de
-  contexto
+- Novos widgets no core: ~~slider, interruptor, rádio, progresso, `disabled` em todos~~
+  **feito** (2026-10-12); seleção (dropdown), abas, tooltip, diálogo modal, menu de contexto
 - Imagens: decodificar fora da thread do JS, mipmaps para imagens muito reduzidas, versões
   @2x para HiDPI e animações (GIF, WebP animado)
 - Animações e transições (já dá para animar `opacity`/`translate` à mão); `scale`/`rotate`

@@ -13,6 +13,8 @@ export const theme = {
   focusRing: "#3584e480",
   selection: "#3584e44d",
   divider: "#0000001a",
+  /** Opacity of disabled controls. */
+  disabledOpacity: 0.45,
   /** Overlay scrollbars: a thin thumb that widens (to `hoverSize`) under the pointer. */
   scrollbar: { thumb: "#00000040", hover: "#00000066", pressed: "#00000080", track: "#0000000f", size: 4, hoverSize: 8, margin: 3, minThumb: 24 },
 };

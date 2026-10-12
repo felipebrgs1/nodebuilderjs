@@ -2,7 +2,8 @@
 
 import type { Child } from "../jsx-runtime.js";
 import { type ElementRef, type Handlers, type Style, UINode } from "../render/node.js";
-import { type MaybeAccessor, createEffect, createSignal } from "../reactive/signals.js";
+import { type Accessor, type MaybeAccessor, createEffect, createSignal, read } from "../reactive/signals.js";
+import { theme } from "../theme.js";
 
 export type StyleProps = { [K in keyof Style]?: MaybeAccessor<NonNullable<Style[K]>> } & {
   /** Called with the widget's element when it is created: focus(), scrollTo(), its laid-out box. */
@@ -51,4 +52,20 @@ export function interaction(node: UINode) {
     onBlur: () => (setFocused(false), prev.onBlur?.()),
   } satisfies Handlers);
   return { hovered, pressed, focused };
+}
+
+/**
+ * `disabled` for a control: dimmed, out of focus and of the Tab order, default cursor
+ * (`cursor` when enabled). Returns the accessor; the control's own handlers check it.
+ */
+export function disableable(node: UINode, props: { disabled?: MaybeAccessor<boolean>; opacity?: unknown }, cursor = "pointer"): Accessor<boolean> {
+  const disabled = () => !!read(props.disabled ?? false);
+  createEffect(() => {
+    const off = disabled();
+    node.focusable = !off;
+    if (props.opacity === undefined) node.set("opacity", off ? theme.disabledOpacity : 1);
+    node.set("cursor", off ? "default" : cursor);
+    if (off) node.blur();
+  });
+  return disabled;
 }

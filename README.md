@@ -51,7 +51,8 @@ código como o Claude Code.
 - **Estilo são props, não CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
   `radius`, `color`, `fontSize`... O layout é flexbox.
 - **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
-  `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`, além de `<For>`/`<Index>`,
+  `Button`, `TextField`, `Checkbox`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`,
+  `Card`, `Divider`, `Spacer`, além de `<For>`/`<Index>`,
   `<Show>`/`<Switch>` e `<ErrorBoundary>` para listas, condições e erros, e de
   `createContext` para valores compartilhados pela árvore.
 
@@ -271,6 +272,32 @@ const linhas: ElementRef[] = [];
   `Scroll grow={1}` dentro encolhe sem `minHeight={0}`.
 - Um `<Overlay modal>` aberto bloqueia roda, teclas e barras do que está atrás.
 
+### Controles
+
+```tsx
+import { ProgressBar, RadioGroup, Slider, Toggle, createSignal } from "@nodebuilderjs/core";
+
+const [wifi, setWifi] = createSignal(true);
+const [tamanho, setTamanho] = createSignal("m");
+const [volume, setVolume] = createSignal(40);
+<Toggle checked={wifi} onChange={setWifi} label="Wi-Fi" />;
+<RadioGroup value={tamanho} onChange={setTamanho} options={[
+  { value: "p", label: "Pequeno" },
+  { value: "m", label: "Médio" },
+  { value: "g", label: "Grande", disabled: true },
+]} />;
+<Slider value={volume} onChange={setVolume} min={0} max={100} step={5} />;
+<ProgressBar value={() => volume() / 100} />; // sem value: indeterminada
+```
+
+- Todo controle aceita `disabled` (valor ou função): fica esmaecido
+  (`theme.disabledOpacity`), sai da ordem do Tab, perde o foco e não responde.
+- Teclado: `Toggle`/`Checkbox`/`Button` com Espaço ou Enter; `RadioGroup` é uma parada só do
+  Tab e as setas trocam a opção (pulando as desabilitadas); `Slider` com setas (um `step`),
+  PageUp/PageDown (um décimo), Home/End.
+- `Toggle` é o interruptor liga/desliga: o nome `Switch` já é do controle de fluxo.
+- `Spinner` gira enquanto está na tela (`size`, `color`).
+
 ### Texto
 
 `<Text>` quebra linha nos espaços para caber na largura que recebe, como na web; `\n` sempre
@@ -466,6 +493,8 @@ Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#me
 - Campo de texto sem seleção, cópia e desfazer (colar funciona).
 - SVG só no subconjunto para ícones (sem gradientes, texto, filtros); AVIF/HEIC dependem da
   `libheif` do sistema.
+- `ProgressBar` indeterminada e `Spinner` pedem um frame atrás do outro enquanto aparecem
+  (CPU baixa, mas não zero); esconda-os quando a espera acabar.
 - Sem API de animações (dá para animar `opacity`/`translate` com `requestAnimationFrame`),
   sem `scale`/`rotate`, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).
 - `opacity` é aplicada a cada coisa desenhada, não ao grupo: filhos que se sobrepõem
