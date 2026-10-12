@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-performance
-description: Measure and improve the performance of nodebuilder apps (fps, CPU, memory) and avoid slow patterns in large lists, frequent updates and animations. Use when the app is slow, stuttering or freezing, using too much CPU/memory, or when building lists with hundreds of items, live data or animations.
+description: Measure and improve the performance of nodebuilder apps (fps, CPU, memory) and avoid slow patterns in large lists, frequent updates and animations. Use when the app is slow, stuttering or freezing, using too much CPU/memory (also while idle), or when building lists with hundreds of items, live data or animations.
 ---
 
 # Performance
@@ -8,12 +8,31 @@ description: Measure and improve the performance of nodebuilder apps (fps, CPU, 
 ## Measure
 
 ```sh
-NB_STATS=1 bun src/main.tsx      # per second: fps, ms of state/layout/paint/native, nodes, memory
-NB_MAX_FPS=60 bun src/main.tsx   # fps cap (default 120); also run(app, { maxFps: 60 })
+NB_STATS=1 bun src/main.tsx         # per second: fps, ms of state/layout/paint/native, why, nodes, memory
+NB_TRACE=frames bun src/main.tsx    # per frame: what asked for it, with the top of its stack
+NB_MAX_FPS=60 bun src/main.tsx      # fps cap (default 120); also run(app, { maxFps: 60 })
 ```
 
-When idle, the app draws nothing (0% CPU). State changes schedule a frame; several changes
-before it go out together in the same frame.
+When idle, the app draws nothing (0% CPU) and `NB_STATS` prints nothing. State changes
+schedule a frame; several changes before it go out together in the same frame.
+
+## The app never goes idle
+
+`NB_STATS` shows why frames happen: `why: inv 3 ev 2 raf 0` counts frames requested by
+`invalidate()` (a signal changed something on screen), by native events (resize, hover,
+scroll) and by `requestAnimationFrame`/animations. While nothing moves on screen it should
+print nothing at all. If lines keep coming, run with `NB_TRACE=frames` to see who asks:
+
+```
+frame 41: inv [in frame]
+    at <anonymous> (src/components/clock.tsx:12:7)
+    at paintTree (node_modules/@nodebuilderjs/core/src/render/paint.ts:140:8) x3
+```
+
+`[in frame]` means the request came while that frame was being laid out or painted: usually
+code that runs there (an `onResize` handler, a custom `paint`) and writes a signal every
+time, even when the value did not change. Write only when the value really changes. In
+development, the app also warns once (`frame loop: ...`) after 30 such frames in a row.
 
 ## Patterns
 
