@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### New
+- **Linear gradients:** `background={{ linear: ["#1db954", "#121212"], angle: 180 }}` (CSS
+  angles; stops as colors or `[color, offset]`), with rounded corners, borders, `opacity`,
+  `hoverStyle` and reactive values (theme colors inside an accessor follow `setTheme`). In
+  `<Canvas>`, `g.linearGradient(x0, y0, x1, y1, stops)` fills `rect`, `polygon`, `circle`,
+  `arc`, `line` and `polyline`. Interpolated in premultiplied space like CSS. New draw op
+  `GRADIENT` (10); colors are now premultiplied in the vertex shader.
 - **`zIndex`:** paint and hit-test order among siblings (default 0; ties keep child order).
   Siblings only, no global stacking contexts; overlays stay above everything. The part of a
   child that sticks out of a parent that does not `clip` (an absolute badge) is now clickable.
@@ -63,6 +69,8 @@
 - **Idle redraw:** since the interactive scrollbars (0.2.5), an idle window redrew at the fps cap
   (~10% CPU for an empty window, ~25% for the dashboard) because the per-frame hover refresh
   invalidated even with no scrollbar to highlight. Idle is back to 0 frames and 0% CPU.
+- **`mixColor` toward a transparent color** passed through translucent gray: it now mixes in
+  premultiplied space like CSS, so `mixColor("#ff0000", "transparent", 0.5)` is red at 50% alpha.
 
 ## 0.2.5 (2026-10-12)
 

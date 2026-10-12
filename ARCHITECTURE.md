@@ -337,6 +337,7 @@ Painting does not call the C node by node: `render/paint.ts` writes everything i
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · start cap, end cap (0 butt, 1 round) |
 | TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
 | ARC | 9 | cx cy · outer radius, inner radius · start, sweep (radians; 0 = up, clockwise) · r g b a |
+| GRADIENT | 10 | x0 y0 x1 y1 · n · n × (offset r g b a): fills the next op (see below) |
 
 The format exists in three places that must stay in sync: `native/include/nb.h`,
 `src/render/paint.ts` and `native/core/render_gles2.c`.
@@ -349,7 +350,20 @@ shadows are computed in the fragment shader with distance functions.
 
 Colors are composited in **premultiplied alpha** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`), and the
 border is drawn over the background, as in CSS. Blending in "straight" alpha produces dark
-artifacts at the corners.
+artifacts at the corners. The vertex shader premultiplies each vertex color, so anything that
+varies across a shape (gradients, antialiasing coverage) is interpolated in premultiplied space.
+
+**Gradients.** A `GRADIENT` op is a prefix: it fills the op right after it (RECT, LINE,
+TRIANGLES, ARC; paint.ts sends that op in white, which multiplies the gradient). While it is
+active, `push_vertex` collects each triangle and cuts it along the stop lines
+(Sutherland-Hodgman on `t`, the position projected on the gradient line, interpolating all 19
+vertex floats); each piece's vertices are colored from the two stops around it. Between two
+stops a linear gradient is affine in position, so per-vertex colors are exact, at any angle and
+with any number of stops, and the shape keeps its own distance function: rounded corners,
+borders, line caps and arc edges work unchanged. Beyond the ends the end colors continue. The
+style form (`{ linear, angle }`) becomes a line in `render/gradient.ts` with the CSS length
+(`|w sin a| + |h cos a|`), so the far corners land on 0 and 1. Radial gradients are not
+affine and would need a shader mode; they are not implemented.
 
 Text: HarfBuzz does the shaping (accents, ligatures, kerning), FreeType rasterizes each glyph
 once and stores it in a texture atlas. The measurements the layout asks of the C are cached

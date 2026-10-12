@@ -2,8 +2,13 @@
 // in place by reactive bindings; any mutation schedules a new frame.
 
 import type { ImageSource } from "../image/source.js";
+import type { CanvasGradient, LinearGradient } from "./gradient.js";
 
 export type Color = string;
+/** What fills a shape: a solid color or a gradient along a line (Canvas's `g.linearGradient()`). */
+export type Paint = Color | CanvasGradient;
+/** A box background: a solid color or `{ linear: stops, angle }`. */
+export type Background = Color | LinearGradient;
 export type Axis = "x" | "y";
 export type Edges = number | [vertical: number, horizontal: number] | [top: number, right: number, bottom: number, left: number];
 
@@ -55,7 +60,8 @@ export interface Style {
    */
   zIndex?: number;
   // paint
-  background?: Color;
+  /** A color, or a linear gradient: `{ linear: ["#1db954", "#121212"], angle: 180 }` (stops are colors or `[color, offset]`). */
+  background?: Background;
   radius?: number;
   borderWidth?: number;
   borderColor?: Color;
@@ -130,17 +136,17 @@ export interface Size {
 export interface Painter {
   /** 0..1, multiplies the alpha of everything drawn (set by paintTree from `opacity`). */
   opacity: number;
-  rect(x: number, y: number, w: number, h: number, color: Color, radius?: number, borderWidth?: number, borderColor?: Color): void;
+  rect(x: number, y: number, w: number, h: number, color: Paint, radius?: number, borderWidth?: number, borderColor?: Color): void;
   shadow(x: number, y: number, w: number, h: number, color: Color, radius: number, blur: number): void;
   text(x: number, y: number, text: string, size: number, color: Color, bold?: boolean): void;
   /** Draws `uv` (a sub-rectangle of the image, 0..1) stretched over the box, multiplied by `tint` (default white). */
   image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius?: number, opacity?: number, tint?: Color): void;
   /** A thick segment with antialiased edges; each end is round or butt (flat at the point). */
-  line(x0: number, y0: number, x1: number, y1: number, width: number, color: Color, capStart?: LineCap, capEnd?: LineCap): void;
+  line(x0: number, y0: number, x1: number, y1: number, width: number, color: Paint, capStart?: LineCap, capEnd?: LineCap): void;
   /** Filled triangles (x, y pairs, 3 vertices each); `coverage` (0..1 per vertex, default 1) fades edges. */
-  triangles(points: ArrayLike<number>, coverage: ArrayLike<number> | null, color: Color): void;
+  triangles(points: ArrayLike<number>, coverage: ArrayLike<number> | null, color: Paint): void;
   /** Ring sector (pie slice with innerRadius 0). Angles in radians, 0 = up, positive = clockwise. */
-  arc(cx: number, cy: number, outerRadius: number, innerRadius: number, start: number, sweep: number, color: Color): void;
+  arc(cx: number, cy: number, outerRadius: number, innerRadius: number, start: number, sweep: number, color: Paint): void;
   /** Clips to a (optionally rounded) rect until the matching unclip(). */
   clip(x: number, y: number, w: number, h: number, radius?: number): void;
   unclip(): void;

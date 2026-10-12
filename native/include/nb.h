@@ -78,6 +78,9 @@ enum {
   NB_OP_LINE = 7 /* x0 y0 x1 y1  width  r g b a  capStart capEnd (0 butt, 1 round) */,
   NB_OP_TRIANGLES = 8 /* count  r g b a  then count x (x y coverage) */,
   NB_OP_ARC = 9 /* cx cy  outer inner  start sweep (radians, 0 = up, clockwise)  r g b a */,
+  /* x0 y0 x1 y1  n  then n x (offset r g b a): the next drawing op is filled with this linear
+     gradient (its own color multiplies it; paint.ts sends white). Interpolated premultiplied. */
+  NB_OP_GRADIENT = 10,
 };
 
 // Images: RGBA8 with straight alpha, copied on create. The GL texture is made at the

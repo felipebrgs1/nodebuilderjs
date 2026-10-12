@@ -94,24 +94,6 @@ offset; `align="stretch"` subtracts cross margins.
   `text.c` keeps an atlas per loaded face (lazy). Test: `measureText` with weight 900 is
   wider than 400 (addon test, `skipIf` fonts missing).
 
-### C3. Gradients (report item 4) - medium
-
-**API:** `background={{ linear: ["#1db954", "#121212"], angle: 180 }}` (stops as colors, or
-`[color, offset][]`); in Canvas, `g.linearGradient(...)` as a fill for `rect`/`polygon`.
-
-**Implementation:** the renderer interpolates `v_color` per vertex; a 2-stop linear
-gradient is affine in position, so setting each vertex's color to `mix(c0, c1, t(vertex))`
-is exact for any angle (CSS: gradient line length so corners hit 0 and 1). Multi-stop =
-split the quad into bands at the stop positions. New op `GRADIENT_RECT` (x y w h radius
-angle n stops...) so rounded corners and borders keep using the SDF path; the C side builds
-the vertices. Interpolate in premultiplied space (CSS) by premultiplying on the C side
-before the shader, or accept straight interpolation and document it. Keep `nb.h`,
-`paint.ts`, `render_gles2.c` and `decode()` in sync. `parseColor` keeps rejecting objects
-where a plain color is required.
-
-**Tests:** `test/draw.test.ts`: the op is emitted with the stops; theme switch re-emits;
-visual check with `nodebuilder screenshot` of an example.
-
 ---
 
 ## D. Window
@@ -150,14 +132,8 @@ Bubbling of `onPointerDown` ends at the first node with an `onClick`, even witho
 `stop()`. Decide whether it is intended (buttons own their press) and document it, or make
 it bubble until `stop()`. Test either way in `test/input.test.tsx`.
 
-### F6. `mixColor` interpolates straight alpha - small
-
-Mixing toward `"transparent"` (`#00000000`) passes through translucent gray. Interpolate in
-premultiplied space (as CSS does) and un-premultiply; test that
-`mixColor("#ff0000", "transparent", 0.5)` is `rgba(255,0,0,0.5)`. Same rule for C3 gradients.
-
 ## Suggested order
 
 1. B4 (wrap)
-2. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
+2. B5 (margin)
 3. C2 (weights, spacing), A4, E1, F4

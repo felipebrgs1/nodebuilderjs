@@ -42,6 +42,7 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | CSS `flex: 1 1 0` (equal or 1:1:2 columns in one row) | `width={0} grow={1}` (`grow={2}`...) on each child |
 | CSS `aspect-ratio: 16 / 9`, square thumbnails | `aspectRatio={16 / 9}`; `aspectRatio={1}` in `Grid` cells gives square cells |
 | CSS `align-self`, `position: absolute; inset: 0` / `right: 8px` | `alignSelf`, `position="absolute" left={0} top={0} right={0} bottom={0}` / `right={8}` (inside a `Scroll` it scrolls with the content) |
+| CSS `background: linear-gradient(180deg, #1db954, #121212 60%)` | `background={{ linear: ["#1db954", ["#121212", 0.6]], angle: 180 }}` (linear only; on `<canvas>`: `g.linearGradient(x0, y0, x1, y1, stops)`) |
 | CSS `opacity`, `transform: translate(...)` | props `opacity`, `translateX`, `translateY` (no `scale`/`rotate`) |
 | `transition`, framer-motion, react-spring, `AnimatePresence` | `createTween`, `createPresence` (+ `<Show when={p.mounted}>`), `animate` |
 | `prefers-color-scheme`, `ThemeProvider` with a dark theme | `setTheme("dark")`, `colorScheme()`, colors in functions: `() => theme.text.primary` |

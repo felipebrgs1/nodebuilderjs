@@ -2,7 +2,8 @@
 // native renderer executes in one go (format: native/include/nb.h, consumer: native/core/render_gles2.c).
 
 import { type ImageSource, imageHandle } from "../image/source.js";
-import { type Color, type LineCap, type Painter, type UINode, scrolls, stacked } from "./node.js";
+import { boxGradient, isGradient, isLinearGradient, resolveStops } from "./gradient.js";
+import { type Color, type LineCap, type Paint, type Painter, type UINode, scrolls, stacked } from "./node.js";
 import { scrollbar } from "./scrollbar.js";
 import { theme } from "../theme.js";
 
@@ -15,11 +16,15 @@ const OP_IMAGE = 6;
 const OP_LINE = 7;
 const OP_TRIANGLES = 8;
 const OP_ARC = 9;
+const OP_GRADIENT = 10;
+
+const WHITE: readonly number[] = [1, 1, 1, 1];
 
 const colorCache = new Map<string, [number, number, number, number]>();
 const named: Record<string, string> = { transparent: "#0000", white: "#fff", black: "#000" };
 
 export function parseColor(c: Color): [number, number, number, number] {
+  if (typeof c !== "string") throw new TypeError(`expected a color string, got ${JSON.stringify(c)} (gradients only fill backgrounds and Canvas shapes)`);
   let rgba = colorCache.get(c);
   if (rgba) return rgba;
   let hex = (named[c] ?? c).replace("#", "");
@@ -29,6 +34,17 @@ export function parseColor(c: Color): [number, number, number, number] {
   rgba = Number.isNaN(n) || hex.length !== 8 ? [1, 0, 1, 1] : [((n >>> 24) & 255) / 255, ((n >>> 16) & 255) / 255, ((n >>> 8) & 255) / 255, (n & 255) / 255];
   colorCache.set(c, rgba);
   return rgba;
+}
+
+/**
+ * `a` blended toward `b` by `t`, in premultiplied space like CSS (a fully transparent end
+ * contributes no color, so fading to "transparent" never passes through gray). Straight rgba out.
+ */
+export function mixRgba(a: readonly number[], b: readonly number[], t: number): [number, number, number, number] {
+  const alpha = a[3]! + (b[3]! - a[3]!) * t;
+  if (alpha <= 0) return [0, 0, 0, 0];
+  const ch = (i: number) => (a[i]! * a[3]! + (b[i]! * b[3]! - a[i]! * a[3]!) * t) / alpha;
+  return [ch(0), ch(1), ch(2), alpha];
 }
 
 export class CommandBuffer implements Painter {
@@ -58,13 +74,35 @@ export class CommandBuffer implements Painter {
     return this.opacity === 1 ? v : [v[0], v[1], v[2], v[3] * this.opacity];
   }
 
+  /**
+   * The color of the next shape: a plain color as is, or white after a GRADIENT op, which
+   * makes the renderer color that shape's vertices along the gradient line.
+   */
+  private fill(paint: Paint): readonly number[] {
+    if (!isGradient(paint)) return this.rgba(paint);
+    const stops = resolveStops(paint.stops);
+    this.reserve(6 + stops.length * 5);
+    const d = this.data;
+    let o = this.length;
+    d[o++] = OP_GRADIENT;
+    d[o++] = paint.x0; d[o++] = paint.y0; d[o++] = paint.x1; d[o++] = paint.y1;
+    d[o++] = stops.length;
+    for (const s of stops) {
+      const [r, g, b, a] = this.rgba(s.color);
+      d[o++] = s.offset; d[o++] = r!; d[o++] = g!; d[o++] = b!; d[o++] = a!;
+    }
+    this.length = o;
+    return WHITE;
+  }
+
   private push(...values: number[]) {
     this.reserve(values.length);
     for (const v of values) this.data[this.length++] = v;
   }
 
-  rect(x: number, y: number, w: number, h: number, color: Color, radius = 0, borderWidth = 0, borderColor: Color = "transparent") {
-    this.push(OP_RECT, x, y, w, h, ...this.rgba(color), radius, borderWidth, ...this.rgba(borderColor));
+  rect(x: number, y: number, w: number, h: number, color: Paint, radius = 0, borderWidth = 0, borderColor: Color = "transparent") {
+    const border = this.rgba(borderColor);
+    this.push(OP_RECT, x, y, w, h, ...this.fill(color), radius, borderWidth, ...border);
   }
 
   shadow(x: number, y: number, w: number, h: number, color: Color, radius: number, blur: number) {
@@ -84,19 +122,19 @@ export class CommandBuffer implements Painter {
     this.push(OP_IMAGE, x, y, w, h, ...uv, r, g, b, a * opacity * this.opacity, radius, id);
   }
 
-  line(x0: number, y0: number, x1: number, y1: number, width: number, color: Color, capStart: LineCap = "round", capEnd: LineCap = "round") {
-    this.push(OP_LINE, x0, y0, x1, y1, width, ...this.rgba(color), capStart === "round" ? 1 : 0, capEnd === "round" ? 1 : 0);
+  line(x0: number, y0: number, x1: number, y1: number, width: number, color: Paint, capStart: LineCap = "round", capEnd: LineCap = "round") {
+    this.push(OP_LINE, x0, y0, x1, y1, width, ...this.fill(color), capStart === "round" ? 1 : 0, capEnd === "round" ? 1 : 0);
   }
 
-  triangles(points: ArrayLike<number>, coverage: ArrayLike<number> | null, color: Color) {
+  triangles(points: ArrayLike<number>, coverage: ArrayLike<number> | null, color: Paint) {
     const count = (points.length >> 1) - ((points.length >> 1) % 3);
     if (!count) return;
+    const [r, g, b, a] = this.fill(color);
     this.reserve(6 + count * 3);
     const d = this.data;
     let o = this.length;
     d[o++] = OP_TRIANGLES;
     d[o++] = count;
-    const [r, g, b, a] = this.rgba(color);
     d[o++] = r!; d[o++] = g!; d[o++] = b!; d[o++] = a!;
     for (let v = 0; v < count; v++) {
       d[o++] = points[v * 2]!;
@@ -106,8 +144,8 @@ export class CommandBuffer implements Painter {
     this.length = o;
   }
 
-  arc(cx: number, cy: number, outerRadius: number, innerRadius: number, start: number, sweep: number, color: Color) {
-    this.push(OP_ARC, cx, cy, outerRadius, innerRadius, start, sweep, ...this.rgba(color));
+  arc(cx: number, cy: number, outerRadius: number, innerRadius: number, start: number, sweep: number, color: Paint) {
+    this.push(OP_ARC, cx, cy, outerRadius, innerRadius, start, sweep, ...this.fill(color));
   }
 
   clip(x: number, y: number, w: number, h: number, radius = 0) {
@@ -135,7 +173,9 @@ export function paintTree(node: UINode, p: Painter) {
     p.shadow(node.x, node.y + (s.shadow.y ?? 0), node.width, node.height, s.shadow.color, s.radius ?? 0, blur);
   }
   if (s.background || s.borderWidth) {
-    p.rect(node.x, node.y, node.width, node.height, s.background ?? "transparent", s.radius ?? 0, s.borderWidth ?? 0, s.borderColor);
+    const bg = s.background ?? "transparent";
+    const fill = isLinearGradient(bg) ? boxGradient(bg, node.x, node.y, node.width, node.height) : bg;
+    p.rect(node.x, node.y, node.width, node.height, fill, s.radius ?? 0, s.borderWidth ?? 0, s.borderColor);
   }
   node.paint?.(p, node);
 

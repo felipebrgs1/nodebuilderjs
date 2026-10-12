@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-drawing
-description: Freeform drawing in nodebuilder with the Canvas widget (lines, dashed lines, polygons, arcs, gauges, sparklines, annotations, labels cut to a width with an ellipsis, custom visualizations); the draw function is reactive. Use for non-rectangular shapes and charts that @nodebuilderjs/core/charts does not cover, instead of the browser <canvas> or D3. For regular line, area, bar and pie charts, use the nodebuilder-charts skill.
+description: Freeform drawing in nodebuilder with the Canvas widget (lines, dashed lines, gradient fills, polygons, arcs, gauges, sparklines, annotations, labels cut to a width with an ellipsis, custom visualizations); the draw function is reactive. Use for non-rectangular shapes and charts that @nodebuilderjs/core/charts does not cover, instead of the browser <canvas> or D3. For regular line, area, bar and pie charts, use the nodebuilder-charts skill.
 ---
 
 # Drawing with `<Canvas>`
@@ -36,6 +36,21 @@ const [data, setData] = createSignal([12, 40, 33, 70, 55, 90]);
 | `arc(cx, cy, outerRadius, innerRadius, start, sweep, color)` | slice (inner 0) or ring; radians, 0 = top, clockwise |
 | `text(text, x, y, color, size?, bold?, { maxWidth, ellipsis })` | one line of text; `y` is the top of the line. With `maxWidth`, text that does not fit is cut and ends in "…" (`ellipsis: false` just cuts; nothing is drawn if not even "…" fits). No wrapping |
 | `measureText(text, size?, bold?)` | `{ width, height }` of that text, to align it |
+| `linearGradient(x0, y0, x1, y1, stops)` | a gradient usable in place of `color` in `rect`, `line`, `polyline`, `polygon`, `circle`, `arc` (not `text`): offset 0 at `(x0, y0)`, 1 at `(x1, y1)`, end colors beyond; stops are colors or `[color, offset]` |
+
+Gradient area under a line (fades out toward the bottom):
+
+```tsx
+import { Canvas, createSignal, mixColor, theme } from "@nodebuilderjs/core";
+
+const [points] = createSignal([0, 120, 80, 40, 160, 90, 240, 20]);
+<Canvas height={160} draw={(g) => {
+  const pts = points();
+  const fade = g.linearGradient(0, 0, 0, g.height, [mixColor(theme.accent.base, "transparent", 0.6), "transparent"]);
+  g.polygon([pts[0]!, g.height, ...pts, pts[pts.length - 2]!, g.height], fade);
+  g.polyline(pts, theme.accent.base, 2);
+}} />;
+```
 
 Sizes default to the theme's font size (14). Text that must fit a width:
 

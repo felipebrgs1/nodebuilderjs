@@ -1,6 +1,6 @@
 // <Canvas>: lines, filled polygons and arcs drawn by the GPU with antialiasing.
 // LIVE=0 freezes the data (for screenshots and measurements).
-import { Card, Canvas, Row, Scroll, Text, Window, createSignal, requestAnimationFrame, run, theme } from "@nodebuilderjs/core";
+import { Card, Canvas, Row, Scroll, Text, Window, createSignal, mixColor, requestAnimationFrame, run, theme } from "@nodebuilderjs/core";
 
 const LIVE = process.env.LIVE !== "0";
 const POINTS = 60;
@@ -26,7 +26,10 @@ function LineChart() {
       const y = (v: number) => g.height - (v / 100) * g.height;
       for (let v = 0; v <= 100; v += 25) g.line(0, y(v), g.width, y(v), "#0000001a", 1, "butt"); // grid
       const line = data.flatMap((v, i) => [x(i), y(v)]);
-      g.polygon([0, g.height, ...line, g.width, g.height], "#3584e433");
+      // The area under the line fades out from its highest point down to the bottom.
+      const top = y(Math.max(...data));
+      const fade = g.linearGradient(0, top, 0, g.height, [mixColor(theme.accent.base, "transparent", 0.6), "transparent"]);
+      g.polygon([0, g.height, ...line, g.width, g.height], fade);
       g.polyline(line, theme.accent.base, 2);
       g.circle(x(data.length - 1), y(data[data.length - 1]!), 4, theme.accent.base);
     }} />
