@@ -8,6 +8,7 @@
 
 import { type Edges, type Size, type UINode, overlayLayers, revealRequests, scrolls } from "./node.js";
 import { scrollRange } from "./scrollbar.js";
+import { checkOverflow, resetOverflow } from "./overflow.js";
 import { batch } from "../reactive/signals.js";
 
 let cache = new Map<UINode, Natural>();
@@ -42,6 +43,7 @@ export function layout(root: UINode, width: number, height: number) {
 
 function placeAll(root: UINode, width: number, height: number) {
   const view = { x0: 0, y0: 0, x1: width, y1: height };
+  resetOverflow(root);
   place(root, 0, 0, width, height, view);
   // Overlays after the tree, so anchors are already placed; nested ones come after their
   // parent layer (they were created inside it).
@@ -529,6 +531,7 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   node.y = y + (node.style.translateY ?? 0);
   node.width = width;
   node.height = height;
+  node.overflow = 0;
   if (node.handlers.onResize && (node.reportedSize?.width !== width || node.reportedSize.height !== height)) {
     node.reportedSize = { width, height };
     resized.push(node);
@@ -600,6 +603,7 @@ function place(node: UINode, x: number, y: number, width: number, height: number
     else place(c, innerX + crossOffset - offsetX, innerY + cursor - offsetY, crossSize, main, view);
     cursor += main + spacing;
   });
+  if (kids.length) checkOverflow(node, kids, row, content, innerMain, widest, innerCross, view);
 
   placeAbsolute(node, innerX - offsetX, innerY - offsetY, innerW, innerH, view);
 }

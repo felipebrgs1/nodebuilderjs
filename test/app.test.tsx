@@ -1,7 +1,7 @@
 // App-level frame loop: run() against a fake native core. Counts what reaches the GPU
 // (render calls) for idle windows, signal changes, animations and pointer moves.
 import { afterEach, describe, expect, test } from "bun:test";
-import { Column, Scroll, Text, UINode, Window, animate, createSignal, setTextMeasurer } from "@nodebuilderjs/core";
+import { Box, Column, Row, Scroll, Text, UINode, Window, animate, createSignal, setTextMeasurer } from "@nodebuilderjs/core";
 import type { Child } from "@nodebuilderjs/core";
 import { setImageBackend } from "../src/image/source.js";
 import { invalidate, setDisplayScale } from "../src/render/node.js";
@@ -274,6 +274,42 @@ describe("NB_STATS and NB_TRACE", () => {
   test("the frame loop warning is off in production", async () => {
     const app = await start(() => <Column><LoopingNode /></Column>, { env: { NODE_ENV: "production" } });
     await app.frames(40);
+    expect(app.warnings).toEqual([]);
+  });
+});
+
+describe("overflow warnings", () => {
+  /** A 300px clipped panel with 342px of chips; `label` changes force new layouts. */
+  const Panel = (props: { label: () => string }) => (
+    <Column>
+      <Text>{props.label}</Text>
+      <Box width={300} clip ariaLabel="panel">
+        <Row gap={6}>
+          <Text width={110}>Home</Text>
+          <Text width={110}>Albums</Text>
+          <Text width={110}>Artists</Text>
+        </Row>
+      </Box>
+    </Column>
+  );
+
+  test("in development each overflow is printed once, however many frames show it", async () => {
+    const [label, setLabel] = createSignal("a");
+    const app = await start(() => <Panel label={label} />);
+    expect(app.warnings).toEqual([
+      'layout: Row > Text("Artists") overflows Box(panel) by 42px (children need 342px, 300px available)',
+    ]);
+    for (const next of ["b", "c", "d"]) {
+      setLabel(next);
+      await app.frames(1);
+    }
+    expect(app.calls.render).toBe(4);
+    expect(app.warnings).toHaveLength(1);
+  });
+
+  test("production is silent", async () => {
+    const app = await start(() => <Panel label={() => "a"} />, { env: { NODE_ENV: "production" } });
+    expect(app.calls.render).toBe(1);
     expect(app.warnings).toEqual([]);
   });
 });

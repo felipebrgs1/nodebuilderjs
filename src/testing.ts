@@ -6,6 +6,7 @@
 import { writeFileSync } from "node:fs";
 import { type Child, insert } from "./jsx-runtime.js";
 import { layout } from "./render/layout.js";
+import { overflowWarnings } from "./render/overflow.js";
 import { UINode, setTextMeasurer } from "./render/node.js";
 import { createRoot } from "./reactive/signals.js";
 import { runFrameCallbacks, setAnimating, setFrameClock } from "./runtime/frames.js";
@@ -32,7 +33,16 @@ export function mount(view: () => Child, size = { width: 800, height: 600 }) {
     return d;
   });
   layout(root, size.width, size.height);
-  return { root, dispose, relayout: () => layout(root, size.width, size.height) };
+  return { root, dispose, relayout: () => layout(root, size.width, size.height), layoutWarnings: () => layoutWarnings(root) };
+}
+
+/**
+ * Overflow warnings from the last layout of `root`: children that need more room than their
+ * container gives them, with the excess hidden by a clip or the window (what run() prints in
+ * development). `expect(layoutWarnings(root)).toEqual([])` catches a silently hidden child.
+ */
+export function layoutWarnings(root: UINode): string[] {
+  return overflowWarnings(root).map((w) => w.message);
 }
 
 /** Searches the subtree; from a root, also its overlay layers (as of the last layout). */

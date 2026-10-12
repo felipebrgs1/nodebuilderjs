@@ -29,24 +29,6 @@ effort inside each group. Delete an item from here when it ships (and add it to 
 
 ## A. Agents and debugging
 
-### A3. Overflow warnings (report item 2) - medium
-
-**Problem:** a Row of chips wider than its clipped 300 px panel hid the last chip silently.
-
-**API:** in development (`NODE_ENV !== "production"` and not in the packaged executable),
-print once per node: `layout: Row > Text("Artists") overflows its clipping ancestor
-Box(panel) by 42px (children need 342px, 300px available)`. `debugTree()` marks
-`[overflow +42]`. In tests, `mount()` exposes `warnings()` so a test can assert none.
-
-**Implementation:** `src/render/layout.ts`: where a flex line's sum of min-content sizes
-exceeds the inner size on the main axis and the container is not scrollable on that axis
-(`clip` or an ancestor with clip). Collect into a module-level list, not `console.warn`
-inside layout (tests stay quiet); `run()` drains and prints it, deduped by node.
-
-**Tests:** `test/core.test.tsx`: a 300px clipped Row with children of 342px reports one
-warning naming the overflowing child; a Scroll horizontal does not warn; fixing the width
-clears it.
-
 ### A4. Realistic text metrics in tests (report item 6) - small
 
 **Problem:** fake metrics (8 px/char) make overflow tests unrepresentative.
@@ -176,6 +158,6 @@ premultiplied space (as CSS does) and un-premultiply; test that
 
 ## Suggested order
 
-1. A3 (overflow warnings), B4 (wrap)
+1. B4 (wrap)
 2. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
 3. C2 (weights, spacing), A4, E1, F4
