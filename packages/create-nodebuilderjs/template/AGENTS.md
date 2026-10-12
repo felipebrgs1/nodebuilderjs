@@ -31,7 +31,7 @@ that support skills load them on their own; others should read the topic's skill
 | `nodebuilder-images` | images (PNG, JPEG, WebP, AVIF), files in the app |
 | `nodebuilder-icons` | icons (Lucide, Phosphor) and SVG with `Icon` |
 | `nodebuilder-charts` | ready-made charts (`@nodebuilderjs/core/charts`, Recharts API) |
-| `nodebuilder-drawing` | freehand drawing with `Canvas` (reactive `draw`, dashed lines, fitting text with `measureText`) |
+| `nodebuilder-drawing` | freehand drawing with `Canvas` (reactive `draw`, dashed lines, text cut to a width with "…") |
 | `nodebuilder-testing` | tests without a window (`mount`, `findByText`/`findAllByText`, `findByLabel` (`ariaLabel`), `click`, `interact`, hidden targets that throw, `frames`, clipboard) |
 | `nodebuilder-packaging` | AppImage/.deb/.rpm, embedded files, icon and app id |
 | `nodebuilder-performance` | slowness, long lists, live data, animation |

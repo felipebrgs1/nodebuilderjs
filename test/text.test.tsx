@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { Box, Column, Row, Scroll, Text, clipboard, createSignal } from "@nodebuilderjs/core";
+import { Box, Button, Column, Row, Scroll, Text, clipboard, createSignal } from "@nodebuilderjs/core";
 import { interact, mount } from "@nodebuilderjs/core/testing";
 import { minContentWidth, wrapText } from "../src/render/text-wrap.js";
 import { setClipboardBackend } from "../src/runtime/clipboard.js";
@@ -192,4 +192,63 @@ test("when a row overflows, children that grow give up their room first", () => 
   const [label, name, size] = root.children[0]!.children;
   expect([label!.width, size!.width, size!.height]).toEqual([40, 40, 20]);
   expect(name!.width).toBe(120);
+});
+
+test("underline draws a rect under each wrapped line, as wide as the line, in the text color", () => {
+  const { root } = mount(() => (
+    <Column width={60}>
+      <Text underline color="#ff0000">aaa bbb ccc</Text>
+    </Column>
+  ));
+  const text = root.children[0]!.children[0]!;
+  const rects = commandsOf(text, "rect");
+  expect(rects.map((r) => [r.x, r.w, r.h, r.color])).toEqual([[0, 56, 1, [1, 0, 0, 1]], [0, 24, 1, [1, 0, 0, 1]]]);
+  // Below the baseline (fake ascent 15) and inside the line's 20 px.
+  rects.forEach((r, i) => {
+    expect(r.y).toBeGreaterThan(i * 20 + 15);
+    expect(r.y + r.h).toBeLessThanOrEqual(i * 20 + 20);
+  });
+});
+
+test("underline follows textAlign, maxLines truncation and lineHeight", () => {
+  const { root } = mount(() => (
+    <Column width={100}>
+      <Text underline textAlign="center">aa bbbbbbbbbb</Text>
+      <Text underline textAlign="end" maxLines={1}>abcdefghijklmnop</Text>
+      <Text underline lineHeight={2}>abc</Text>
+    </Column>
+  ));
+  const [centered, cut, spaced] = root.children[0]!.children;
+  const underlines = (n: typeof centered) => commandsOf(n!, "rect").map((r) => [r.x, r.w]);
+  expect(underlines(centered)).toEqual([[42, 16], [10, 80]]);
+  expect(commandsOf(cut!, "text").map((t) => t.text)).toEqual(["abcdefghijk…"]);
+  expect(underlines(cut)).toEqual([[4, 96]]);
+  // The glyphs sit 10 px down the 40 px line; the underline goes with them.
+  const [glyphs] = commandsOf(spaced!, "text");
+  const [line] = commandsOf(spaced!, "rect");
+  expect(glyphs!.y - spaced!.y).toBe(10);
+  expect(line!.y).toBeGreaterThan(glyphs!.y + 15);
+  expect(line!.y + line!.h).toBeLessThanOrEqual(glyphs!.y + 20);
+});
+
+test("underline is inherited like bold, is reactive and gets thicker with the font size", () => {
+  const [on, setOn] = createSignal(true);
+  const { root, relayout } = mount(() => (
+    <Column underline={on} align="start">
+      <Text>abc</Text>
+      <Text fontSize={28}>big</Text>
+      <Text underline={false}>plain</Text>
+      <Button label="Docs" />
+    </Column>
+  ));
+  const [small, big, plain, button] = root.children[0]!.children;
+  const label = button!.children[0]!;
+  expect(commandsOf(small!, "rect").map((r) => r.h)).toEqual([1]);
+  expect(commandsOf(big!, "rect").map((r) => r.h)).toEqual([2]);
+  expect(commandsOf(plain!, "rect")).toEqual([]);
+  expect(commandsOf(label, "rect").map((r) => r.w)).toEqual([32]);
+  setOn(false);
+  relayout();
+  expect(commandsOf(small!, "rect")).toEqual([]);
+  expect(commandsOf(label, "rect")).toEqual([]);
 });

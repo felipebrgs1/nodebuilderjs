@@ -39,6 +39,8 @@ export interface Style {
   color?: Color;
   fontSize?: number;
   bold?: boolean;
+  /** A line under the text of <Text> (inherited, like `bold`). */
+  underline?: boolean;
   // interaction
   cursor?: string;
   /** 0..1, multiplies the alpha of everything the node and its children draw. */

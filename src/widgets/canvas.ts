@@ -8,6 +8,7 @@
 import { edges } from "../render/layout.js";
 import { type Color, type Handlers, type LineCap, type Painter, UINode, invalidate, measureText } from "../render/node.js";
 import { type PolylineOptions, fillPolygon, polyline } from "../render/shapes.js";
+import { truncate } from "../render/text-wrap.js";
 import { createEffect, createSignal } from "../reactive/signals.js";
 import { displayScale } from "../render/node.js";
 import { theme } from "../theme.js";
@@ -26,9 +27,16 @@ export interface DrawContext {
   circle(cx: number, cy: number, radius: number, color: Color): void;
   /** Ring sector; angles in radians, 0 = up, positive = clockwise. innerRadius 0 = pie slice. */
   arc(cx: number, cy: number, outerRadius: number, innerRadius: number, start: number, sweep: number, color: Color): void;
-  /** `y` is the top of the line box. */
-  text(text: string, x: number, y: number, color: Color, size?: number, bold?: boolean): void;
+  /** `y` is the top of the line box. With `maxWidth`, text that does not fit is cut and ends in "…". */
+  text(text: string, x: number, y: number, color: Color, size?: number, bold?: boolean, options?: CanvasTextOptions): void;
   measureText(text: string, size?: number, bold?: boolean): { width: number; height: number };
+}
+
+export interface CanvasTextOptions {
+  /** Cut the text to this width; nothing is drawn when not even the "…" fits. */
+  maxWidth?: number;
+  /** End cut text with "…" (default true); false just cuts it. */
+  ellipsis?: boolean;
 }
 
 type Op = (p: Painter, ox: number, oy: number) => void;
@@ -70,7 +78,10 @@ function record(width: number, height: number, scale: number, ops: Op[]): DrawCo
     polygon: (points, color) => ops.push(geometry((p) => fillPolygon(p, points, color, scale))),
     circle: (cx, cy, radius, color) => ops.push((p, ox, oy) => p.arc(cx + ox, cy + oy, radius, 0, 0, 2 * Math.PI, color)),
     arc: (cx, cy, outer, inner, start, sweep, color) => ops.push((p, ox, oy) => p.arc(cx + ox, cy + oy, outer, inner, start, sweep, color)),
-    text: (text, x, y, color, size = theme.font.size, bold = false) => ops.push((p, ox, oy) => p.text(x + ox, y + oy, text, size, color, bold)),
+    text: (text, x, y, color, size = theme.font.size, bold = false, options) => {
+      const shown = options?.maxWidth === undefined ? text : truncate(text, options.maxWidth, (s) => measureText(s, size, bold).width, options.ellipsis ?? true).text;
+      if (shown) ops.push((p, ox, oy) => p.text(x + ox, y + oy, shown, size, color, bold));
+    },
     measureText: (text, size = theme.font.size, bold = false) => {
       const m = measureText(text, size, bold);
       return { width: m.width, height: m.ascent + m.descent };

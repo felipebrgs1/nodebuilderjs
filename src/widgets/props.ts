@@ -16,7 +16,7 @@ export type BoxProps = StyleProps & Handlers & { children?: Child };
 const STYLE_KEYS: (keyof Style)[] = [
   "direction", "gap", "padding", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow",
   "align", "justify", "position", "left", "top", "clip", "background", "radius", "borderWidth", "borderColor",
-  "shadow", "color", "fontSize", "bold", "cursor", "opacity", "translateX", "translateY",
+  "shadow", "color", "fontSize", "bold", "underline", "cursor", "opacity", "translateX", "translateY",
 ];
 const HANDLER_KEYS: (keyof Handlers)[] = [
   "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur", "onResize",
@@ -37,7 +37,7 @@ export function applyProps(node: UINode, props: Record<string, any>) {
   props.ref?.(node);
 }
 
-export function inherited<K extends "color" | "fontSize" | "bold">(node: UINode, key: K): Style[K] | undefined {
+export function inherited<K extends "color" | "fontSize" | "bold" | "underline">(node: UINode, key: K): Style[K] | undefined {
   for (let n: UINode | null = node; n; n = n.parent) if (n.style[key] !== undefined) return n.style[key];
   return undefined;
 }

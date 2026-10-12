@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-drawing
-description: Freeform drawing in nodebuilder with the Canvas widget (lines, dashed lines, polygons, arcs, gauges, sparklines, annotations, labels fitted with measureText, custom visualizations); the draw function is reactive. Use for non-rectangular shapes and charts that @nodebuilderjs/core/charts does not cover, instead of the browser <canvas> or D3. For regular line, area, bar and pie charts, use the nodebuilder-charts skill.
+description: Freeform drawing in nodebuilder with the Canvas widget (lines, dashed lines, polygons, arcs, gauges, sparklines, annotations, labels cut to a width with an ellipsis, custom visualizations); the draw function is reactive. Use for non-rectangular shapes and charts that @nodebuilderjs/core/charts does not cover, instead of the browser <canvas> or D3. For regular line, area, bar and pie charts, use the nodebuilder-charts skill.
 ---
 
 # Drawing with `<Canvas>`
@@ -34,28 +34,18 @@ const [data, setData] = createSignal([12, 40, 33, 70, 55, 90]);
 | `polygon(points, color)` | filled polygon (concave is fine; self-intersecting is not drawn) |
 | `circle(cx, cy, radius, color)` | disc |
 | `arc(cx, cy, outerRadius, innerRadius, start, sweep, color)` | slice (inner 0) or ring; radians, 0 = top, clockwise |
-| `text(text, x, y, color, size?, bold?)` | one line of text; `y` is the top of the line. No max width, wrapping or "…" |
-| `measureText(text, size?, bold?)` | `{ width, height }` of that text, to align it or make it fit (below) |
+| `text(text, x, y, color, size?, bold?, { maxWidth, ellipsis })` | one line of text; `y` is the top of the line. With `maxWidth`, text that does not fit is cut and ends in "…" (`ellipsis: false` just cuts; nothing is drawn if not even "…" fits). No wrapping |
+| `measureText(text, size?, bold?)` | `{ width, height }` of that text, to align it |
 
 Sizes default to the theme's font size (14). Text that must fit a width:
 
 ```tsx
 import { Canvas, createSignal, theme } from "@nodebuilderjs/core";
-import type { DrawContext } from "@nodebuilderjs/core";
-
-/** `text` cut with "…" to fit `max` px. */
-function fit(g: DrawContext, text: string, max: number, size?: number): string {
-  if (g.measureText(text, size).width <= max) return text;
-  let end = text.length;
-  while (end > 0 && g.measureText(text.slice(0, end) + "…", size).width > max) end--;
-  return text.slice(0, end) + "…";
-}
 
 const [title] = createSignal("A very long track title that does not fit");
 <Canvas width={180} height={40} draw={(g) => {
-  const label = fit(g, title(), g.width - 8, 13);
-  const { height } = g.measureText(label, 13);
-  g.text(label, 4, (g.height - height) / 2, theme.text.primary, 13);           // centered vertically
+  const { height } = g.measureText(title(), 13);
+  g.text(title(), 4, (g.height - height) / 2, theme.text.primary, 13, false, { maxWidth: g.width - 8 }); // "A very long track…", centered vertically
   g.line(0, g.height - 1, g.width, g.height - 1, theme.divider, 1, "butt", [4, 3]); // dashed
 }} />;
 ```
