@@ -2,7 +2,7 @@
 // OPEN=select|dialogo starts with the list or the dialog open; THEME=dark starts dark (for screenshots).
 
 import {
-  Button, Card, Checkbox, Column, Dialog, Match, ProgressBar, RadioGroup, Row, Select, Slider, Spinner, Switch, Tabs, Text,
+  Box, Button, Card, Checkbox, Column, Dialog, Match, ProgressBar, RadioGroup, Row, Select, Slider, Spinner, Switch, Tabs, Text,
   TextField, Toggle, Tooltip, Window, colorScheme, createSignal, run, setTheme, theme,
 } from "@nodebuilderjs/core";
 
@@ -14,6 +14,7 @@ const CITIES = [
   { value: "rio", label: "Rio de Janeiro", disabled: true },
   { value: "rec", label: "Recife" },
 ];
+const TAGS = ["typescript", "linux", "wayland", "x11", "signals", "gles2", "harfbuzz", "bun"];
 
 function Controls() {
   const [wifi, setWifi] = createSignal(true);
@@ -25,7 +26,7 @@ function Controls() {
   const [city, setCity] = createSignal<string | undefined>(initial === "select" ? "sp" : undefined);
   const [confirm, setConfirm] = createSignal(initial === "dialogo");
   return (
-    <Window title="Widgets" width={680} height={600}>
+    <Window title="Widgets" width={680} height={640}>
       <Column grow={1} padding={20} gap={16}>
       <Tabs
         value={tab}
@@ -75,6 +76,16 @@ function Controls() {
           <Row gap={10} align="center">
             <Spinner />
             <Text color={() => theme.text.secondary}>Carregando…</Text>
+          </Row>
+          {/* A negative margin cancels the card's 16px padding: the rule runs edge to edge. */}
+          <Box height={1} margin={[4, -16]} background={() => theme.divider} />
+          <Text color={() => theme.text.secondary}>Tags</Text>
+          <Row wrap gap={6}>
+            {TAGS.map((tag) => (
+              <Box padding={[4, 10]} radius={12} background={() => theme.control.base}>
+                <Text fontSize={12}>{tag}</Text>
+              </Box>
+            ))}
           </Row>
         </Card>
       </Row>

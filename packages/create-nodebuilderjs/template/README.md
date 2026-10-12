@@ -8,6 +8,7 @@ bun run dev        # opens the window and restarts on save
 bun start          # runs once
 bun test           # tests without a window (test/)
 bun run typecheck  # TypeScript 7
+bun run screenshot # screenshot.png of the app, without opening a window
 bun run package    # AppImage, .deb, .rpm and .tar.gz in dist/
 ```
 

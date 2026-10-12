@@ -48,24 +48,32 @@ void nb_push_event(const nb_event *e);
 
 // ---- core/text.c ------------------------------------------------------------
 
-enum { NB_FONT_REGULAR = 0, NB_FONT_BOLD = 1, NB_FONT_COUNT };
+// Font id: weight (1..1000, CSS: 400 regular, 700 bold) * 2 + italic (0/1). Out of range: regular.
+#define NB_FONT_ID(weight, italic) ((weight) * 2 + ((italic) ? 1 : 0))
+enum { NB_FONT_REGULAR = NB_FONT_ID(400, 0), NB_FONT_BOLD = NB_FONT_ID(700, 0) };
 
+// `color`: the quad samples the color atlas (emoji: premultiplied RGBA, not tinted) instead of
+// the alpha atlas (tinted by the text color).
 typedef void (*nb_glyph_emit)(void *ud, float x0, float y0, float x1, float y1,
-                              float u0, float v0, float u1, float v1);
+                              float u0, float v0, float u1, float v1, bool color);
 
 bool nb_text_init(void);
-// All values in physical pixels.
-float nb_text_measure(int font, const char *utf8, int px, float *ascent, float *descent);
-void nb_text_draw(int font, const char *utf8, int px, float x, float top, nb_glyph_emit emit, void *ud);
+// All values in physical pixels. `font`: a font id. `spacing`: letter spacing, added after every
+// grapheme cluster (the last one too); nonzero turns ligatures off.
+float nb_text_measure(int font, const char *utf8, int px, float spacing, float *ascent, float *descent);
+void nb_text_draw(int font, const char *utf8, int px, float spacing, float x, float top, nb_glyph_emit emit, void *ud);
 const uint8_t *nb_text_atlas(int *size, bool *dirty);
 void nb_text_atlas_uploaded(void);
+/** Premultiplied RGBA color-glyph atlas; NULL (and not dirty) until a color glyph is drawn. */
+const uint8_t *nb_text_color_atlas(int *size, bool *dirty);
+void nb_text_color_atlas_uploaded(void);
 
 // ---- core/render_gles2.c ----------------------------------------------------
 
 // Command buffer opcodes (producer: src/render/paint.ts; keep both in sync).
 enum {
   NB_OP_RECT = 1,
-  NB_OP_TEXT = 2,
+  NB_OP_TEXT = 2 /* x y(line top) size font(id)  r g b a  text_index  letter_spacing */,
   NB_OP_CLIP = 3 /* x y w h radius */,
   NB_OP_UNCLIP = 4,
   NB_OP_SHADOW = 5,
@@ -73,6 +81,9 @@ enum {
   NB_OP_LINE = 7 /* x0 y0 x1 y1  width  r g b a  capStart capEnd (0 butt, 1 round) */,
   NB_OP_TRIANGLES = 8 /* count  r g b a  then count x (x y coverage) */,
   NB_OP_ARC = 9 /* cx cy  outer inner  start sweep (radians, 0 = up, clockwise)  r g b a */,
+  /* x0 y0 x1 y1  n  then n x (offset r g b a): the next drawing op is filled with this linear
+     gradient (its own color multiplies it; paint.ts sends white). Interpolated premultiplied. */
+  NB_OP_GRADIENT = 10,
 };
 
 // Images: RGBA8 with straight alpha, copied on create. The GL texture is made at the
@@ -82,5 +93,7 @@ int nb_image_create(int width, int height, const uint8_t *rgba);
 void nb_image_destroy(int id);
 
 bool nb_render_init(void);
+/** Reads the bound framebuffer (w x h) into `out` as RGBA8, rows top to bottom, straight alpha. */
+void nb_render_read_pixels(int w, int h, uint8_t *out);
 void nb_render_frame(int buffer_w, int buffer_h, float scale, const float *cmds, size_t count,
                      const char **texts, size_t text_count);

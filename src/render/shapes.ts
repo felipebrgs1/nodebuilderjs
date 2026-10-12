@@ -2,7 +2,7 @@
 // their round caps) and filled polygons (triangulated, with a fringe for antialiasing).
 
 import { triangulate } from "../geometry/triangulate.js";
-import type { Color, LineCap, Painter } from "./node.js";
+import type { LineCap, Paint, Painter } from "./node.js";
 
 export interface PolylineOptions {
   /** Ends of an open polyline. Default "round". */
@@ -28,7 +28,7 @@ function distinct(points: ArrayLike<number>): number[] {
  * A stroked polyline. Segments meet with round joins (each segment's round caps overlap),
  * which is exact for opaque colors; with a translucent color the joints look darker.
  */
-export function polyline(p: Pick<Painter, "line">, points: ArrayLike<number>, width: number, color: Color, options: PolylineOptions = {}) {
+export function polyline(p: Pick<Painter, "line">, points: ArrayLike<number>, width: number, color: Paint, options: PolylineOptions = {}) {
   const pattern = options.dash && options.dash.length && options.dash.every((v) => v >= 0) && options.dash.some((v) => v > 0)
     ? options.dash.length % 2 ? [...options.dash, ...options.dash] : options.dash
     : null;
@@ -97,7 +97,7 @@ function dashes(pts: number[], closed: boolean, pattern: readonly number[]): num
  * pixel wide whose coverage goes from 1 inside to 0 outside, so the GPU blends it into an
  * antialiased edge. Self-intersecting polygons draw nothing.
  */
-export function fillPolygon(p: Pick<Painter, "triangles">, points: ArrayLike<number>, color: Color, scale = 1) {
+export function fillPolygon(p: Pick<Painter, "triangles">, points: ArrayLike<number>, color: Paint, scale = 1) {
   const pts = distinct(points);
   const n = pts.length / 2;
   if (n < 3 || !triangulate(pts)?.length) return;

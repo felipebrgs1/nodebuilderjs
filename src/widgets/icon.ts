@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { type Bitmap, type ImageSource, acquireImage, releaseImage } from "../image/source.js";
 import { edges } from "../render/layout.js";
-import { type Handlers, UINode, displayScale, invalidate } from "../render/node.js";
+import { type Color, type Handlers, UINode, displayScale, invalidate } from "../render/node.js";
 import { parseColor } from "../render/paint.js";
 import { type MaybeAccessor, createEffect, onCleanup, read } from "../reactive/signals.js";
 import { type IconNode, type Rgba, type Svg, parseSvg, renderSvg } from "../svg/index.js";
@@ -12,6 +12,9 @@ import { type StyleProps, applyProps, inherited } from "./props.js";
 
 /** SVG markup, a path to an .svg file, or Lucide's icon data. */
 export type IconInput = string | IconNode;
+
+/** `true` fills with the icon's color (currentColor); a color fills with that color. */
+export type IconFill = boolean | Color;
 
 const parsedSvgs = new Map<string, Svg>();
 const parsedIconNodes = new WeakMap<IconNode, Svg>();
@@ -31,7 +34,7 @@ function loadSvg(input: IconInput): Svg {
   return svg;
 }
 
-// Rasterized icons by (svg, pixel size, stroke width[, color]); a few hundred are tiny.
+// Rasterized icons by (svg, pixel size, stroke width, fill[, color]); a few hundred are tiny.
 const iconBitmaps = new Map<string, Bitmap>();
 function iconBitmap(key: string, render: () => Bitmap): Bitmap {
   let bitmap = iconBitmaps.get(key);
@@ -47,13 +50,15 @@ function iconBitmap(key: string, render: () => Bitmap): Bitmap {
  * `color` is inherited, so it follows its Button or Text parent. Icons drawn only with
  * currentColor are rasterized once in white and tinted on the GPU, so changing the color
  * is free. Works with Lucide (`lucide-static` files or `lucide` data) and Phosphor.
+ * `fill` replaces the root <svg>'s fill, as Lucide's prop does: outline icons become solid.
  */
-export function Icon(props: StyleProps & Handlers & { svg: MaybeAccessor<IconInput>; size?: MaybeAccessor<number>; strokeWidth?: MaybeAccessor<number> }) {
+export function Icon(props: StyleProps & Handlers & { svg: MaybeAccessor<IconInput>; size?: MaybeAccessor<number>; strokeWidth?: MaybeAccessor<number>; fill?: MaybeAccessor<IconFill> }) {
   const node = new UINode("Icon");
   applyProps(node, props);
   let svg: Svg | null = null;
   let size = theme.icon.size;
   let strokeWidth: number | undefined;
+  let fill: IconFill = false;
   let source: ImageSource | null = null;
   let sourceKey = "";
   createEffect(() => {
@@ -69,6 +74,7 @@ export function Icon(props: StyleProps & Handlers & { svg: MaybeAccessor<IconInp
   createEffect(() => {
     size = read(props.size ?? theme.icon.size);
     strokeWidth = props.strokeWidth === undefined ? undefined : read(props.strokeWidth);
+    fill = read(props.fill) ?? false;
     invalidate();
   });
   onCleanup(() => source && releaseImage(source));
@@ -90,17 +96,20 @@ export function Icon(props: StyleProps & Handlers & { svg: MaybeAccessor<IconInp
     const current = svg;
     let id = svgIds.get(current);
     if (!id) svgIds.set(current, (id = nextSvgId++));
-    const key = `${id}|${pw}x${ph}|${strokeWidth ?? ""}${current.monochrome ? "" : `|${color}`}`;
+    // A fill color is painted in, so the icon is no longer drawn in white and tinted.
+    const monochrome = current.monochrome && typeof fill !== "string";
+    const key = `${id}|${pw}x${ph}|${strokeWidth ?? ""}|${fill}${monochrome ? "" : `|${color}`}`;
     if (key !== sourceKey) {
+      const fillPaint = fill === true ? "current" : fill ? (parseColor(fill) as Rgba) : undefined;
       const bitmap = iconBitmap(key, () =>
-        renderSvg(current, pw, ph, { color: current.monochrome ? undefined : (parseColor(color) as Rgba), strokeWidth }),
+        renderSvg(current, pw, ph, { color: monochrome ? undefined : (parseColor(color) as Rgba), strokeWidth, fill: fillPaint }),
       );
       const next = acquireImage(bitmap);
       if (source) releaseImage(source);
       source = next;
       sourceKey = key;
     }
-    p.image(x, y, pw / scale, ph / scale, source!, FULL_UV, 0, 1, current.monochrome ? color : "#ffffff");
+    p.image(x, y, pw / scale, ph / scale, source!, FULL_UV, 0, 1, monochrome ? color : "#ffffff");
   };
   return node;
 }

@@ -1,8 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { Box, Column, Row, Scroll, Text, clipboard, createSignal } from "@nodebuilderjs/core";
+import { Box, Button, Column, Row, Scroll, Text, TextField, clipboard, createSignal, setTextMeasurer } from "@nodebuilderjs/core";
 import { interact, mount } from "@nodebuilderjs/core/testing";
 import { minContentWidth, wrapText } from "../src/render/text-wrap.js";
 import { setClipboardBackend } from "../src/runtime/clipboard.js";
+import { type Native, fontId, nativeTextMeasurer } from "../src/runtime/native.js";
 import { commandsOf } from "./helpers.js";
 
 afterEach(() => setClipboardBackend(null));
@@ -192,4 +193,196 @@ test("when a row overflows, children that grow give up their room first", () => 
   const [label, name, size] = root.children[0]!.children;
   expect([label!.width, size!.width, size!.height]).toEqual([40, 40, 20]);
   expect(name!.width).toBe(120);
+});
+
+test("underline draws a rect under each wrapped line, as wide as the line, in the text color", () => {
+  const { root } = mount(() => (
+    <Column width={60}>
+      <Text underline color="#ff0000">aaa bbb ccc</Text>
+    </Column>
+  ));
+  const text = root.children[0]!.children[0]!;
+  const rects = commandsOf(text, "rect");
+  expect(rects.map((r) => [r.x, r.w, r.h, r.color])).toEqual([[0, 56, 1, [1, 0, 0, 1]], [0, 24, 1, [1, 0, 0, 1]]]);
+  // Below the baseline (fake ascent 15) and inside the line's 20 px.
+  rects.forEach((r, i) => {
+    expect(r.y).toBeGreaterThan(i * 20 + 15);
+    expect(r.y + r.h).toBeLessThanOrEqual(i * 20 + 20);
+  });
+});
+
+test("underline follows textAlign, maxLines truncation and lineHeight", () => {
+  const { root } = mount(() => (
+    <Column width={100}>
+      <Text underline textAlign="center">aa bbbbbbbbbb</Text>
+      <Text underline textAlign="end" maxLines={1}>abcdefghijklmnop</Text>
+      <Text underline lineHeight={2}>abc</Text>
+    </Column>
+  ));
+  const [centered, cut, spaced] = root.children[0]!.children;
+  const underlines = (n: typeof centered) => commandsOf(n!, "rect").map((r) => [r.x, r.w]);
+  expect(underlines(centered)).toEqual([[42, 16], [10, 80]]);
+  expect(commandsOf(cut!, "text").map((t) => t.text)).toEqual(["abcdefghijk…"]);
+  expect(underlines(cut)).toEqual([[4, 96]]);
+  // The glyphs sit 10 px down the 40 px line; the underline goes with them.
+  const [glyphs] = commandsOf(spaced!, "text");
+  const [line] = commandsOf(spaced!, "rect");
+  expect(glyphs!.y - spaced!.y).toBe(10);
+  expect(line!.y).toBeGreaterThan(glyphs!.y + 15);
+  expect(line!.y + line!.h).toBeLessThanOrEqual(glyphs!.y + 20);
+});
+
+test("underline is inherited like bold, is reactive and gets thicker with the font size", () => {
+  const [on, setOn] = createSignal(true);
+  const { root, relayout } = mount(() => (
+    <Column underline={on} align="start">
+      <Text>abc</Text>
+      <Text fontSize={28}>big</Text>
+      <Text underline={false}>plain</Text>
+      <Button label="Docs" />
+    </Column>
+  ));
+  const [small, big, plain, button] = root.children[0]!.children;
+  const label = button!.children[0]!;
+  expect(commandsOf(small!, "rect").map((r) => r.h)).toEqual([1]);
+  expect(commandsOf(big!, "rect").map((r) => r.h)).toEqual([2]);
+  expect(commandsOf(plain!, "rect")).toEqual([]);
+  expect(commandsOf(label, "rect").map((r) => r.w)).toEqual([32]);
+  setOn(false);
+  relayout();
+  expect(commandsOf(small!, "rect")).toEqual([]);
+  expect(commandsOf(label, "rect")).toEqual([]);
+});
+
+// ---- font weight, italic, letter spacing (fake metrics add letterSpacing per character) ----
+
+test("fontWeight and italic reach the text command; bold is weight 700; both are inherited", () => {
+  const { root } = mount(() => (
+    <Column fontWeight={300} italic>
+      <Text>light</Text>
+      <Text bold>bold</Text>
+      <Text fontWeight={900} italic={false}>black</Text>
+      <Column bold>
+        <Text>inherits bold</Text>
+        <Text fontWeight={500}>medium</Text>
+      </Column>
+      <Column fontWeight={800}>
+        <Text bold={false}>regular</Text>
+      </Column>
+      <Box fontWeight={200} bold>
+        <Text>fontWeight wins over bold on the same node</Text>
+      </Box>
+    </Column>
+  ));
+  expect(commandsOf(root, "text").map((t) => [t.text, t.weight, t.italic])).toEqual([
+    ["light", 300, true],
+    ["bold", 700, true],
+    ["black", 900, false],
+    ["inherits bold", 700, true],
+    ["medium", 500, true],
+    ["regular", 400, true],
+    ["fontWeight wins over bold on the same node", 200, true],
+  ]);
+  expect(commandsOf(root, "text").map((t) => t.bold)).toEqual([false, true, true, true, false, false, false]);
+});
+
+test("fontWeight, italic and letterSpacing are reactive", () => {
+  const [weight, setWeight] = createSignal(400);
+  const [italic, setItalic] = createSignal(false);
+  const [spacing, setSpacing] = createSignal(0);
+  const { root, relayout } = mount(() => (
+    <Column align="start">
+      <Text fontWeight={weight} italic={italic} letterSpacing={spacing}>abc</Text>
+    </Column>
+  ));
+  const text = root.children[0]!.children[0]!;
+  expect(text.width).toBe(24);
+  expect(commandsOf(text, "text")[0]).toMatchObject({ weight: 400, italic: false, letterSpacing: 0 });
+  setWeight(800);
+  setItalic(true);
+  setSpacing(2);
+  relayout();
+  expect(commandsOf(text, "text")[0]).toMatchObject({ weight: 800, italic: true, letterSpacing: 2 });
+  expect(text.width).toBe(30);
+});
+
+test("the measurer gets the resolved font: weight, italic and letter spacing", () => {
+  const { relayout } = mount(() => (
+    <Column fontWeight={600} letterSpacing={1.5}>
+      <Text italic fontSize={14}>x</Text>
+    </Column>
+  ));
+  const seen = new Set<string>();
+  setTextMeasurer((text, size, font) => {
+    seen.add(`${text}|${size}|${font.weight}|${font.italic}|${font.letterSpacing}`);
+    return { width: text.length * 8, ascent: 15, descent: 5 };
+  });
+  relayout();
+  expect([...seen]).toContain("x|14|600|true|1.5");
+});
+
+test("letterSpacing (inherited, may be negative) widens the text, its wrapping and its underline", () => {
+  const { root } = mount(() => (
+    <Column align="start" letterSpacing={2}>
+      <Text underline>abc</Text>
+      <Text letterSpacing={-1}>abc</Text>
+      <Column width={70}>
+        <Text>aaa bbb ccc</Text>
+      </Column>
+    </Column>
+  ));
+  const [spaced, tight, column] = root.children[0]!.children;
+  // After every character, the last one too (as browsers do): 3 * (8 + 2).
+  expect(spaced!.width).toBe(30);
+  expect(commandsOf(spaced!, "rect").map((r) => r.w)).toEqual([30]);
+  expect(commandsOf(spaced!, "text")[0]).toMatchObject({ letterSpacing: 2 });
+  expect(tight!.width).toBe(21);
+  // "aaa bbb" is 7 * 10 = 70 and fits; "ccc" goes below.
+  expect(commandsOf(column!, "text").map((t) => t.text)).toEqual(["aaa bbb", "ccc"]);
+});
+
+test("the addon measurer caches by text, size, weight, italic and spacing, and passes them as a font id", () => {
+  const calls: unknown[][] = [];
+  const nat = { measureText: (...args: unknown[]) => (calls.push(args), [10, 15, 5]) } as unknown as Native;
+  const measure = nativeTextMeasurer(nat, 2);
+  const regular = { weight: 400, italic: false, letterSpacing: 0 };
+  measure("a", 14, regular);
+  measure("a", 14, { ...regular });
+  measure("a", 14, { ...regular, weight: 700 });
+  measure("a", 14, { ...regular, italic: true });
+  measure("a", 14, { ...regular, letterSpacing: 1 });
+  measure("a", 14, { ...regular, letterSpacing: 1 });
+  // font id = weight * 2 + italic
+  expect(calls).toEqual([["a", 14, 800, 2, 0], ["a", 14, 1400, 2, 0], ["a", 14, 801, 2, 0], ["a", 14, 800, 2, 1]]);
+  expect(fontId(700, true)).toBe(1401);
+});
+
+test("TextField draws its value and placeholder with the inherited weight, italic and spacing", () => {
+  const { root } = mount(() => (
+    <Column fontWeight={600} italic letterSpacing={1}>
+      <TextField value={() => "abc"} onInput={() => {}} />
+      <TextField value={() => ""} placeholder="Search" onInput={() => {}} />
+    </Column>
+  ));
+  expect(commandsOf(root, "text").map((t) => [t.text, t.weight, t.italic, t.letterSpacing])).toEqual([
+    ["abc", 600, true, 1],
+    ["Search", 600, true, 1],
+  ]);
+});
+
+test("letterSpacing moves the selection edges of selectable Text", () => {
+  const { root } = mount(() => (
+    <Column align="start">
+      <Text selectable letterSpacing={4}>abcd</Text>
+    </Column>
+  ));
+  const text = root.children[0]!.children[0]!;
+  const ui = interact(root);
+  // Each character is 12 px: x 25 is past the middle of the second one, so two get selected.
+  ui.move(text.x + 1, text.y + 5);
+  ui.down(text.x + 1, text.y + 5);
+  ui.move(text.x + 25, text.y + 5);
+  ui.up(text.x + 25, text.y + 5);
+  const [highlight] = commandsOf(text, "rect");
+  expect([highlight!.x - text.x, highlight!.w]).toEqual([0, 24]);
 });

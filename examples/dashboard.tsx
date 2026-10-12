@@ -5,7 +5,7 @@
 //      CYCLE=n (switch tab every n frames: measures mount/unmount), ROWS=n (table size).
 import {
   Box, Button, Card, Checkbox, Column, Divider, For, Row, Scroll, Show, Spacer, Text, TextField, Window,
-  createMemo, createSignal, requestAnimationFrame, run, theme,
+  createMemo, createSignal, mixColor, requestAnimationFrame, run, theme,
 } from "@nodebuilderjs/core";
 import type { Accessor } from "@nodebuilderjs/core";
 
@@ -163,7 +163,11 @@ function Overview() {
                   grow={1}
                   radius={3}
                   height={() => 20 + (Math.sin(tick() / 15 + i / 3) + 1) * 60 + (i % 5) * 8}
-                  background={i % 8 === 7 ? "#e5a50a" : theme.accent.base}
+                  background={() => {
+                    // Bars fade toward their base: a gradient to the same color, translucent.
+                    const color = i % 8 === 7 ? "#e5a50a" : theme.accent.base;
+                    return { linear: [color, mixColor(color, "transparent", 0.65)] };
+                  }}
                 />
               )}
             </For>

@@ -6,12 +6,17 @@ description: Show images (PNG, JPEG, WebP, AVIF, HEIC) with nodebuilder's Image 
 # Images
 
 ```tsx
-import { Image } from "@nodebuilderjs/core";
+import { Column, Image, createSignal } from "@nodebuilderjs/core";
 import logo from "./assets/logo.png" with { type: "file" };
+import photo from "./assets/photo.jpg" with { type: "file" };
 
-<Image src={logo} width={64} />                       // height follows the aspect ratio
-<Image src={photo} width={200} height={120} fit="cover" radius={12} />
-<Image src={() => avatarOf(user())} width={32} height={32} radius={16} opacity={0.9} />
+const [user] = createSignal({ name: "Ana", avatar: logo });
+
+<Column gap={8}>
+  <Image src={logo} width={64} />                     {/* height follows the aspect ratio */}
+  <Image src={photo} width={200} height={120} fit="cover" radius={12} />
+  <Image src={() => user().avatar} width={32} height={32} radius={16} opacity={0.9} />
+</Column>
 ```
 
 ## Rules
@@ -24,7 +29,8 @@ import logo from "./assets/logo.png" with { type: "file" };
   It can be a function: changing `src` releases the old image.
 - Size: without `width`/`height`, it uses the file's pixels (1 pixel = 1 logical px). With only one
   of the two, the other follows the aspect ratio. For HiDPI screens, use a 2x larger file and fix the
-  size (`width={64}` for a 128 px PNG).
+  size (`width={64}` for a 128 px PNG). A shape of your own that follows the space:
+  `aspectRatio={1} fit="cover"` (square covers; in a `<Grid columns={4}>` they fill each cell).
 - `fit`: `contain` (default, whole image centered), `cover` (fills and crops), `fill`
   (stretches). `radius` rounds the corners; `opacity` goes from 0 to 1.
 - The same file used in several places is decoded once; the memory is released when the

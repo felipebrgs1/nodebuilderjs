@@ -235,9 +235,10 @@ function parseTransform(value: string): Matrix {
   return m;
 }
 
-export function walk(node: SvgNode, parent: Style, ctm: Matrix, visit: (node: SvgNode, style: Style, ctm: Matrix) => void) {
+/** `override` replaces properties of `node`'s own style (attributes and style="" alike); its children inherit it. */
+export function walk(node: SvgNode, parent: Style, ctm: Matrix, visit: (node: SvgNode, style: Style, ctm: Matrix) => void, override?: Partial<Style>) {
   if (SKIP.has(node.tag) || node.attrs.display === "none" || /display\s*:\s*none/.test(node.attrs.style ?? "")) return;
-  const style = styleOf(node, parent);
+  const style = override ? { ...styleOf(node, parent), ...override } : styleOf(node, parent);
   const m = node.attrs.transform ? multiply(ctm, parseTransform(node.attrs.transform)) : ctm;
   if (node.tag === "svg" || node.tag === "g" || node.tag === "a" || node.tag === "switch") {
     for (const c of node.children) walk(c, style, m, visit);

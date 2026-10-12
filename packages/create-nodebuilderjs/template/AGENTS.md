@@ -4,7 +4,11 @@ nodebuilder app: native Linux UI in TSX, **no DOM and no React**. Read this befo
 
 ## Commands
 - `bun run dev` opens the app; `bun test` runs the tests without a window; `bun run typecheck` checks types.
-- Before finishing: `bun run typecheck && bun test`.
+- `bun run icons:add play pause` adds icon imports to `src/icons.ts` (after `bun add lucide-static`).
+- `bun run screenshot` renders the app to `screenshot.png` without a window (also with no
+  display server); add `-- --theme dark` or `-- --scale 2`.
+- Before finishing: `bun run typecheck && bun test`. **After a visual change, take a screenshot
+  and look at it** (open the PNG): tests check boxes, not colors, alignment or clipping.
 
 ## Model (like SolidJS, not React)
 - **Components run once.** There is no re-render and there are no hooks. State is `createSignal`;
@@ -26,12 +30,12 @@ that support skills load them on their own; others should read the topic's skill
 
 | Skill | When |
 |---|---|
-| `nodebuilder-ui` | screens, widgets (incl. `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`, `Tooltip`, `Dialog`, `ProgressBar`, `disabled`), style props, layout, `For`/`Index`/`Show`/`Switch`, `ErrorBoundary`, scrolling (horizontal, scrollbars, keyboard, `scrollIntoView`), context, `ref` (focus, scroll), `onResize`, `Overlay` (dialog, menu, tooltip), `opacity`/`translate`, theme (light/dark, `setTheme`), animations, selectable text, copy/paste |
+| `nodebuilder-ui` | screens, widgets (incl. custom title bar with `dragRegion`/`WindowControls`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`, `Tooltip`, `Dialog`, `ProgressBar`, `disabled`), style props (incl. gradient `background={{ linear, angle }}`), hover/press (`hoverStyle`, `pressStyle`, `createInteraction`), layout (`Grid` of equal columns, `wrap` rows of chips, `margin`, `aspectRatio`, equal columns in a row with `width={0} grow={1}`, `position="absolute"`, `zIndex`, `clip`, `shadow`, overflow warnings), events, own components, `For`/`Index`/`Show`/`Switch`, `ErrorBoundary`, scrolling (horizontal, scrollbars, keyboard, `scrollIntoView`), context, `ref` (focus, scroll), `onResize`, `Overlay` (dialog, menu, tooltip), `opacity`/`translate`, theme (light/dark, `setTheme`), animations (`createTween`, `animate`, `easing`, `mixColor`), selectable text, copy/paste |
 | `nodebuilder-from-react` | before installing libraries or porting React/web code |
 | `nodebuilder-images` | images (PNG, JPEG, WebP, AVIF), files in the app |
-| `nodebuilder-icons` | icons (Lucide, Phosphor) and SVG with `Icon` |
+| `nodebuilder-icons` | icons (Lucide, Phosphor) and SVG with `Icon`; `bun run icons:add <names...>` writes their imports into `src/icons.ts` |
 | `nodebuilder-charts` | ready-made charts (`@nodebuilderjs/core/charts`, Recharts API) |
-| `nodebuilder-drawing` | freehand drawing with `Canvas` |
-| `nodebuilder-testing` | tests without a window (`mount`, `findByText`, `click`, `interact`, `frames`, clipboard) |
+| `nodebuilder-drawing` | freehand drawing with `Canvas` (reactive `draw`, dashed lines, gradient fills with `g.linearGradient`, text cut to a width with "…") |
+| `nodebuilder-testing` | tests without a window (`mount`, `findByText`/`findAllByText`, `findByLabel` (`ariaLabel`), `click`, `interact`, hidden targets that throw, `layoutWarnings()`, real text metrics (`useRealTextMetrics`), `frames`, clipboard), screenshots (`nodebuilder screenshot`, `screenshot()`) |
 | `nodebuilder-packaging` | AppImage/.deb/.rpm, embedded files, icon and app id |
-| `nodebuilder-performance` | slowness, long lists, live data, animation |
+| `nodebuilder-performance` | slowness, long lists, live data, animation, CPU use while idle (`NB_STATS`, `NB_TRACE=frames`) |

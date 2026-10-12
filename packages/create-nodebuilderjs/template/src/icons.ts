@@ -1,6 +1,5 @@
-// SVG icons (drawn for this template). For more icons, `bun add lucide-static` and
-// `import x from "lucide-static/icons/x.svg" with { type: "text" }`: see the
-// nodebuilder-icons skill.
+// SVG icons (drawn for this template). For more: `bun add lucide-static`, then
+// `bun run icons:add play pause` adds their imports below (see the nodebuilder-icons skill).
 const svg = (body: string) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
 

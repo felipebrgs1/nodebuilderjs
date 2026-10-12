@@ -1,16 +1,20 @@
 // App runtime: owns the window, turns native events into UI events
 // (hover, click, focus, keys, scroll) and renders a frame whenever the tree changes.
 
+import { writeFileSync } from "node:fs";
 import { type Child, insert } from "../jsx-runtime.js";
 import { setImageBackend } from "../image/source.js";
 import { layout } from "../render/layout.js";
+import { overflowWarnings } from "../render/overflow.js";
 import { nativeClipboard, setClipboardBackend } from "./clipboard.js";
 import { createInput } from "./input.js";
-import { hasFrameCallbacks, runFrameCallbacks, setAnimating } from "./frames.js";
-import { type Native, type NativeEvent, loadNative } from "./native.js";
-import { UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer, textMetricsChanged } from "../render/node.js";
+import { frameNow, hasFrameCallbacks, runFrameCallbacks, setAnimating, setFrameClock } from "./frames.js";
+import { type Native, type NativeEvent, loadNative, nativeImageBackend, nativeTextMeasurer } from "./native.js";
+import { UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer } from "../render/node.js";
 import { CommandBuffer, paintTree } from "../render/paint.js";
 import { batch, createRoot, createSignal } from "../reactive/signals.js";
+import { setTheme } from "../theme.js";
+import { type Screenshot, captureTree } from "./screenshot.js";
 
 export interface WindowOptions {
   title: string;
@@ -50,25 +54,147 @@ export const windowControls = {
 
 export { requestAnimationFrame } from "./frames.js";
 
+/** What asked for a frame: invalidate() (state changed), a native event, or requestAnimationFrame. */
+interface FrameReason {
+  kind: "inv" | "ev" | "raf";
+  /** The event type for "ev". */
+  detail: string;
+  /** Top of the requesting stack; only taken when it will be shown. */
+  stack: string;
+  /** Requested while a frame was being laid out or painted. */
+  inFrame: boolean;
+}
+
+/** Inside an executable from `nodebuilder package` (Bun's embedded file system): no dev warnings. */
+const packaged = import.meta.url.includes("/$bunfs/");
+
+/** Frames in a row that request themselves, with nothing else changing, before the dev warning. */
+const LOOP_FRAMES = 30;
+const STACK_FRAMES = 6;
+const reactiveDir = new URL("../reactive/", import.meta.url).pathname;
+
+/** The caller's stack (top frames, without `skip` and above), minus the reactive plumbing in between. */
+function callerStack(skip: Function) {
+  const holder: { stack?: string } = {};
+  Error.captureStackTrace(holder, skip);
+  const cwd = `${process.cwd()}/`;
+  const frames: { name: string; line: string; times: number }[] = [];
+  for (const line of (holder.stack ?? "").split("\n")) {
+    if (!/^\s+at /.test(line) || line.includes(reactiveDir)) continue;
+    const name = line.trim().split(" ")[1]!;
+    const last = frames[frames.length - 1];
+    if (last?.name === name) last.times++; // recursion (paintTree, layout) shows once
+    else frames.push({ name, line: line.replace("file://", "").replaceAll(cwd, ""), times: 1 });
+    if (frames.length > STACK_FRAMES) break;
+  }
+  return frames
+    .slice(0, STACK_FRAMES)
+    .map((f) => (f.times > 1 ? `${f.line} x${f.times}` : f.line))
+    .join("\n");
+}
+
+/** Where run() reads its environment and writes its diagnostics; tests pass their own. */
+export interface RunHooks {
+  env?: Record<string, string | undefined>;
+  now?: () => number;
+  log?: (line: string) => void;
+  warn?: (message: string) => void;
+}
+
 export function run(app: () => Child, runOptions: RunOptions = {}) {
-  native = loadNative();
-  const nat = native;
+  if (process.env.NB_SCREENSHOT) {
+    // `nodebuilder screenshot`: one PNG instead of a window, then exit.
+    screenshotApp(loadNative(), app, process.env).then(
+      (shot) => {
+        console.log(`nodebuilder: wrote ${process.env.NB_SCREENSHOT} (${shot.width}x${shot.height})`);
+        process.exit(0);
+      },
+      (err) => {
+        console.error(`nodebuilder screenshot: ${(err as Error).message}`);
+        process.exit(1);
+      },
+    );
+    return;
+  }
+  runWith(loadNative(), app, runOptions);
+}
+
+/** Frames simulated (16 ms each) waiting for animations to finish, unless NB_SCREENSHOT_FRAMES says how many. */
+const SETTLE_FRAMES = 120;
+
+/**
+ * run() without a window: mounts `app` like run() does, at the window's size (or
+ * NB_SCREENSHOT_WIDTH/HEIGHT), runs frames on a simulated clock until animations finish
+ * (or NB_SCREENSHOT_FRAMES frames), renders offscreen at NB_SCREENSHOT_SCALE and writes the
+ * PNG to NB_SCREENSHOT. NB_SCREENSHOT_THEME=light|dark switches the theme first. Internal.
+ */
+export async function screenshotApp(nat: Native, app: () => Child, env: Record<string, string | undefined>): Promise<Screenshot> {
+  const option = (name: string, valid: (n: number) => boolean) => {
+    const raw = env[`NB_SCREENSHOT_${name}`];
+    if (raw === undefined || raw === "") return undefined;
+    const n = Number(raw);
+    if (!valid(n)) throw new Error(`bad ${name.toLowerCase()} "${raw}"`);
+    return n;
+  };
+  const scale = option("SCALE", (n) => n > 0 && n <= 8) ?? 1;
+  const fixedFrames = option("FRAMES", (n) => Number.isInteger(n) && n >= 0);
+  const forcedWidth = option("WIDTH", (n) => n >= 1);
+  const forcedHeight = option("HEIGHT", (n) => n >= 1);
+  const scheme = env.NB_SCREENSHOT_THEME;
+  if (scheme === "light" || scheme === "dark") setTheme(scheme);
+  else if (scheme) throw new Error(`bad theme "${scheme}" (use light or dark)`);
+
+  native = nat;
+  let time = 0;
+  setAnimating(true);
+  setFrameClock(() => time);
+  setTextMeasurer(nativeTextMeasurer(nat, scale));
+  setDisplayScale(scale);
+  setImageBackend(nativeImageBackend(nat));
+
+  const root = new UINode("root");
+  root.isRoot = true;
+  let dispose = () => {};
+  try {
+    createRoot((d) => {
+      dispose = d;
+      insert(root, app);
+    });
+    const windowNode = root.children[0];
+    const options: WindowOptions = (windowNode as any)?.[windowOptionsKey] ?? { title: "nodebuilder" };
+    if (windowNode) windowNode.style.grow = 1;
+    const w = forcedWidth ?? options.width ?? 800, h = forcedHeight ?? options.height ?? 600;
+    setWidth(w);
+    setHeight(h);
+    const buffer = new CommandBuffer();
+    for (let frame = 0; frame < (fixedFrames ?? SETTLE_FRAMES); frame++) {
+      await new Promise((resolve) => setImmediate(resolve)); // the app's promises and immediates
+      if (fixedFrames === undefined && frame > 0 && !hasFrameCallbacks()) break;
+      time += 16;
+      runFrameCallbacks(time);
+      layout(root, w, h); // painting can start work too (Canvas sizes, icons)
+      buffer.reset();
+      paintTree(root, buffer);
+    }
+    const shot = captureTree(nat, root, w, h, scale);
+    writeFileSync(env.NB_SCREENSHOT!, shot.toPNG());
+    return shot;
+  } finally {
+    dispose();
+    setAnimating(false);
+    setFrameClock(null);
+    native = null;
+  }
+}
+
+/** run() with an explicit native core (tests pass a fake one). Internal: not exported from the package. */
+export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = {}, hooks: RunHooks = {}) {
+  native = nat;
   setAnimating(true);
 
-  const metrics = new Map<string, { width: number; ascent: number; descent: number }>();
-  setTextMeasurer((text, size, bold) => {
-    const key = `${bold ? 1 : 0}|${size}|${text}`;
-    let m = metrics.get(key);
-    if (!m) {
-      if (metrics.size > 20_000) metrics.clear();
-      const [w, ascent, descent] = nat.measureText(text, size, bold ? 1 : 0);
-      m = { width: w, ascent, descent };
-      metrics.set(key, m);
-    }
-    return m;
-  });
+  setTextMeasurer(nativeTextMeasurer(nat, 1));
 
-  setImageBackend({ create: (w, h, rgba) => nat.createImage(w, h, rgba), destroy: (id) => nat.destroyImage(id) });
+  setImageBackend(nativeImageBackend(nat));
 
   const root = new UINode("root");
   root.isRoot = true;
@@ -82,23 +208,28 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
   if (windowNode) windowNode.style.grow = 1;
 
   // ---- frame scheduling ----------------------------------------------------
+  const env = hooks.env ?? process.env;
+  const now = hooks.now ?? (() => performance.now());
+  const log = hooks.log ?? ((line: string) => console.log(line));
+  const warn = hooks.warn ?? ((message: string) => console.warn(message));
   const buffer = new CommandBuffer();
   let dirty = true;
   let framePending = false;
   let scheduled = false;
   let configured = false;
   let open = true;
-  let rendering = false;
+  // Where renderFrame is: running requestAnimationFrame callbacks, or laying out and painting.
+  let phase: "idle" | "callbacks" | "building" = "idle";
 
-  const maxFps = Number(process.env.NB_MAX_FPS) || runOptions.maxFps || 120;
+  const maxFps = Number(env.NB_MAX_FPS) || runOptions.maxFps || 120;
   // Tolerance keeps e.g. 144 Hz at full rate instead of halving it to 72.
   const minInterval = 1000 / maxFps - 1.5;
   let lastRender = -Infinity;
 
   const schedule = () => {
     dirty = true;
-    if (!open || !configured || framePending || scheduled || rendering) return;
-    if (performance.now() - lastRender < minInterval) {
+    if (!open || !configured || framePending || scheduled || phase !== "idle") return;
+    if (now() - lastRender < minInterval) {
       // Too soon for the cap: skip this vblank and decide again on the next one.
       framePending = true;
       nat.requestFrame();
@@ -107,34 +238,101 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
     scheduled = true;
     setImmediate(renderFrame);
   };
-  setFrameScheduler(schedule);
+
+  // Why frames happen (NB_STATS, NB_TRACE=frames, the frame loop warning). Stacks cost
+  // microseconds, so they are taken only when tracing, or for the rare request made while
+  // a frame is being built (dev only).
+  const trace = (env.NB_TRACE ?? "").split(",").includes("frames");
+  const dev = env.NODE_ENV !== "production" && !packaged;
+  let why: FrameReason | null = null; // the first request since the last frame
+  let selfRequest: string | null = null; // stack of a request made while building the last frame
+  let outsideRequest = false; // anything else asked since then (state changed)
+  let loopFrames = 0;
+  let loopReported = false;
+  let currentEvent: string | null = null; // the native event being handled, for "ev" requests
+
+  const request = (kind: FrameReason["kind"], detail: string, caller: Function | null) => {
+    if (phase !== "callbacks") {
+      // During requestAnimationFrame callbacks the change lands in the frame being built.
+      const inFrame = phase === "building";
+      const wanted = (trace && !why) || (dev && inFrame && selfRequest === null && !loopReported);
+      const stack = wanted && caller ? callerStack(caller) : "";
+      if (inFrame) selfRequest ??= stack;
+      else outsideRequest = true;
+      why ??= { kind, detail, stack, inFrame };
+    }
+    schedule();
+  };
+  setFrameScheduler(() => request("inv", "", invalidate));
 
   // NB_STATS=1 prints one line per second with where frame time goes.
-  const stats = process.env.NB_STATS
-    ? { frames: 0, state: 0, layout: 0, paint: 0, native: 0, since: performance.now() }
+  const stats = env.NB_STATS
+    ? { frames: 0, state: 0, layout: 0, paint: 0, native: 0, since: now(), why: { inv: 0, ev: 0, raf: 0 } }
     : null;
   const countNodes = (n: UINode): number => n.children.reduce((a, c) => a + countNodes(c), 1);
+  let frameNumber = 0;
+
+  function recordReason() {
+    const reason = why ?? { kind: "inv", detail: "", stack: "", inFrame: false };
+    why = null;
+    frameNumber++;
+    if (stats) stats.why[reason.kind]++;
+    if (trace) {
+      const head = `frame ${frameNumber}: ${reason.kind}${reason.detail ? ` ${reason.detail}` : ""}${reason.inFrame ? " [in frame]" : ""}`;
+      log(reason.stack ? `${head}\n${reason.stack}` : head);
+    }
+    loopFrames = selfRequest !== null && !outsideRequest ? loopFrames + 1 : 0;
+    if (dev && loopFrames >= LOOP_FRAMES && !loopReported) {
+      loopReported = true;
+      const top = selfRequest?.split("\n")[0]?.trim().replace(/^at /, "") || "unknown caller";
+      warn(
+        `nodebuilder: frame loop: something requests a new frame while each frame is built, with no state change ` +
+          `(${LOOP_FRAMES} frames in a row), so the app never goes idle. Invalidated by ${top}. ` +
+          `Run with NB_TRACE=frames to see the stacks.`,
+      );
+    }
+    selfRequest = null;
+    outsideRequest = false;
+  }
+
+  // Overflow warnings (dev): each container/child pair once per session, however many frames show it.
+  const overflowReported = new Set<string>();
+  function reportOverflow() {
+    for (const w of overflowWarnings(root)) {
+      if (overflowReported.has(w.key)) continue;
+      overflowReported.add(w.key);
+      warn(w.message);
+    }
+  }
 
   function renderFrame() {
     scheduled = false;
     if (!dirty || !open) return;
-    const t0 = performance.now();
+    recordReason();
+    const t0 = now();
     lastRender = t0;
-    rendering = true;
-    runFrameCallbacks(t0);
+    phase = "callbacks";
+    runFrameCallbacks(frameNow());
+    phase = "building";
     dirty = false; // everything changed so far is in this frame
-    const tState = performance.now();
+    const tState = now();
     layout(root, width(), height());
+    if (dev) reportOverflow();
     input.refreshHover();
-    const t1 = performance.now();
+    const t1 = now();
     buffer.reset();
     paintTree(root, buffer);
-    const t2 = performance.now();
+    const t2 = now();
     nat.render(buffer.commands, buffer.texts);
-    const t3 = performance.now();
+    const t3 = now();
+    phase = "idle";
     framePending = true;
-    rendering = false;
-    if (hasFrameCallbacks()) dirty = true; // next frame is wanted; sent when the compositor is ready
+    if (hasFrameCallbacks()) {
+      // Next frame is wanted; sent when the compositor is ready.
+      dirty = true;
+      outsideRequest = true;
+      why ??= { kind: "raf", detail: "", stack: "", inFrame: false };
+    }
 
     if (stats) {
       stats.frames++;
@@ -147,12 +345,14 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
         const f = stats.frames;
         const ms = (v: number) => (v / f).toFixed(2).padStart(6);
         const mem = process.memoryUsage();
-        console.log(
+        const r = stats.why;
+        log(
           `fps ${String(Math.round((f * 1000) / elapsed)).padStart(3)} | ms/frame: state ${ms(stats.state)}  layout ${ms(stats.layout)}  paint ${ms(stats.paint)}  native ${ms(stats.native)}` +
+            ` | why: inv ${r.inv} ev ${r.ev} raf ${r.raf}` +
             ` | nodes ${countNodes(root)} cmds ${(buffer.length * 4 / 1024).toFixed(0)}KB texts ${buffer.texts.length}` +
             ` | heap ${(mem.heapUsed / 2 ** 20).toFixed(1)}MB rss ${(mem.rss / 2 ** 20).toFixed(0)}MB`,
         );
-        Object.assign(stats, { frames: 0, state: 0, layout: 0, paint: 0, native: 0, since: t3 });
+        Object.assign(stats, { frames: 0, state: 0, layout: 0, paint: 0, native: 0, since: t3, why: { inv: 0, ev: 0, raf: 0 } });
       }
     }
   }
@@ -163,13 +363,24 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
     resizable: () => !maximized() && !!windowNode,
     setCursor: (name) => nat.setCursor(name),
     move: () => nat.move(),
+    toggleMaximize: windowControls.toggleMaximize,
     resize: (edges) => nat.resize(edges),
-    invalidate: () => schedule(),
+    invalidate: function inputChanged() {
+      request("ev", currentEvent ?? "input", inputChanged);
+    },
     now: () => Date.now(),
   });
 
   // ---- native events -------------------------------------------------------
   function handle(ev: NativeEvent) {
+    currentEvent = ev.type;
+    try {
+      dispatch(ev);
+    } finally {
+      currentEvent = null;
+    }
+  }
+  function dispatch(ev: NativeEvent) {
     switch (ev.type) {
       case "configure":
         setWidth(ev.width);
@@ -179,12 +390,11 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
         setTransparent(ev.transparent);
         if (ev.scale !== currentScale) {
           currentScale = ev.scale;
-          metrics.clear();
-          textMetricsChanged();
+          setTextMeasurer(nativeTextMeasurer(nat, ev.scale)); // metrics are hinted per scale
           setDisplayScale(ev.scale);
         }
         configured = true;
-        schedule();
+        request("ev", "configure", null); // its stack is just the event loop
         break;
       case "frame":
         framePending = false;
@@ -223,6 +433,8 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
     if (!open || options.onClose?.() === false) return;
     open = false;
     nat.close();
+    setFrameScheduler(() => {});
+    setAnimating(false); // drops pending frame callbacks: nothing runs them any more
     setClipboardBackend(null);
     clip.close();
     dispose();

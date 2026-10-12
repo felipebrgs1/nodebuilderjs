@@ -2,16 +2,37 @@
 // in place by reactive bindings; any mutation schedules a new frame.
 
 import type { ImageSource } from "../image/source.js";
+import type { CanvasGradient, LinearGradient } from "./gradient.js";
 
 export type Color = string;
+/** What fills a shape: a solid color or a gradient along a line (Canvas's `g.linearGradient()`). */
+export type Paint = Color | CanvasGradient;
+/** A box background: a solid color or `{ linear: stops, angle }`. */
+export type Background = Color | LinearGradient;
 export type Axis = "x" | "y";
 export type Edges = number | [vertical: number, horizontal: number] | [top: number, right: number, bottom: number, left: number];
 
 export interface Style {
   // layout
-  direction?: "row" | "column";
+  /** "grid" places children in rows of `columns` equal cells (the `Grid` widget). */
+  direction?: "row" | "column" | "grid";
   gap?: number;
+  /** Number of equal-width columns of a grid (`direction: "grid"`). */
+  columns?: number;
+  /**
+   * Row/Column: children that do not fit start a new line (a Row breaks at its width, a
+   * Column at its height), each line laid out on its own (grow, justify, alignSelf).
+   */
+  wrap?: boolean;
+  /** Space between the rows of a grid, or between the lines of a wrapping Row/Column. Default: `gap`. */
+  rowGap?: number;
   padding?: Edges;
+  /**
+   * Space outside the border that the parent's layout keeps free (CSS order; negative values
+   * pull neighbors closer). Not painted and not hit: the node's box is its border box.
+   * On an absolute child, an extra offset from the edges it is placed by.
+   */
+  margin?: Edges;
   width?: number;
   height?: number;
   minWidth?: number;
@@ -19,18 +40,39 @@ export interface Style {
   maxWidth?: number;
   maxHeight?: number;
   grow?: number;
+  /**
+   * Width / height. With one side free, it follows the other (a width from the parent, a
+   * height from a fixed `height` or a stretching row); min/max still clamp, and content
+   * taller than the ratio allows makes the box taller (like CSS `aspect-ratio`).
+   */
+  aspectRatio?: number;
   /** Cross-axis alignment of children. Default: "stretch". */
   align?: "start" | "center" | "end" | "stretch";
+  /** This node's cross-axis alignment, overriding its parent's `align`. */
+  alignSelf?: "start" | "center" | "end" | "stretch";
   /** Main-axis distribution of children. Default: "start". */
   justify?: "start" | "center" | "end" | "space-between";
-  /** Taken out of the flow and placed at left/top inside the parent's padding box. */
+  /**
+   * Taken out of the flow and placed by left/top/right/bottom, measured from the parent's
+   * content box (inside its padding). It scrolls with the parent's content.
+   */
   position?: "flow" | "absolute";
   left?: number;
   top?: number;
+  /** With `left` (and no `width`), stretches to this distance from the right edge; alone, places from it. */
+  right?: number;
+  /** With `top` (and no `height`), stretches to this distance from the bottom edge; alone, places from it. */
+  bottom?: number;
   /** Clip children to this node's box. */
   clip?: boolean;
+  /**
+   * Paint and hit-test order among siblings (default 0): higher is above, ties keep child
+   * order. It only orders siblings (no global stacking); overlays stay above everything.
+   */
+  zIndex?: number;
   // paint
-  background?: Color;
+  /** A color, or a linear gradient: `{ linear: ["#1db954", "#121212"], angle: 180 }` (stops are colors or `[color, offset]`). */
+  background?: Background;
   radius?: number;
   borderWidth?: number;
   borderColor?: Color;
@@ -38,7 +80,16 @@ export interface Style {
   // text
   color?: Color;
   fontSize?: number;
+  /** Shorthand for `fontWeight` 700 (true) or 400 (false); a `fontWeight` on the same node wins. Inherited. */
   bold?: boolean;
+  /** 1..1000, like CSS (400 regular, 700 bold); the closest the system has, any value with a variable font. Inherited. */
+  fontWeight?: number;
+  /** The italic face (or, without one, the upright glyphs slanted). Inherited. */
+  italic?: boolean;
+  /** Extra px after every character (grapheme cluster), the last one too, as in browsers; may be negative. Inherited. */
+  letterSpacing?: number;
+  /** A line under the text of <Text> (inherited, like `bold`). */
+  underline?: boolean;
   // interaction
   cursor?: string;
   /** 0..1, multiplies the alpha of everything the node and its children draw. */
@@ -103,17 +154,18 @@ export interface Size {
 export interface Painter {
   /** 0..1, multiplies the alpha of everything drawn (set by paintTree from `opacity`). */
   opacity: number;
-  rect(x: number, y: number, w: number, h: number, color: Color, radius?: number, borderWidth?: number, borderColor?: Color): void;
+  rect(x: number, y: number, w: number, h: number, color: Paint, radius?: number, borderWidth?: number, borderColor?: Color): void;
   shadow(x: number, y: number, w: number, h: number, color: Color, radius: number, blur: number): void;
-  text(x: number, y: number, text: string, size: number, color: Color, bold?: boolean): void;
+  /** `font`: true for bold (the old flag), or the weight, italic and letter spacing. */
+  text(x: number, y: number, text: string, size: number, color: Color, font?: FontInput): void;
   /** Draws `uv` (a sub-rectangle of the image, 0..1) stretched over the box, multiplied by `tint` (default white). */
   image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius?: number, opacity?: number, tint?: Color): void;
   /** A thick segment with antialiased edges; each end is round or butt (flat at the point). */
-  line(x0: number, y0: number, x1: number, y1: number, width: number, color: Color, capStart?: LineCap, capEnd?: LineCap): void;
+  line(x0: number, y0: number, x1: number, y1: number, width: number, color: Paint, capStart?: LineCap, capEnd?: LineCap): void;
   /** Filled triangles (x, y pairs, 3 vertices each); `coverage` (0..1 per vertex, default 1) fades edges. */
-  triangles(points: ArrayLike<number>, coverage: ArrayLike<number> | null, color: Color): void;
+  triangles(points: ArrayLike<number>, coverage: ArrayLike<number> | null, color: Paint): void;
   /** Ring sector (pie slice with innerRadius 0). Angles in radians, 0 = up, positive = clockwise. */
-  arc(cx: number, cy: number, outerRadius: number, innerRadius: number, start: number, sweep: number, color: Color): void;
+  arc(cx: number, cy: number, outerRadius: number, innerRadius: number, start: number, sweep: number, color: Paint): void;
   /** Clips to a (optionally rounded) rect until the matching unclip(). */
   clip(x: number, y: number, w: number, h: number, radius?: number): void;
   unclip(): void;
@@ -127,10 +179,43 @@ export interface TextMetrics {
   descent: number;
 }
 
-export type TextMeasurer = (text: string, size: number, bold: boolean) => TextMetrics;
+/** The face text is drawn with, resolved: weight 1..1000, italic, and letterSpacing in px. */
+export interface FontStyle {
+  weight: number;
+  italic: boolean;
+  letterSpacing: number;
+}
+/** `true`/`false` = bold or regular (the old flag); an object fills in the rest from regular. */
+export type FontInput = boolean | Partial<FontStyle>;
+
+export const REGULAR: FontStyle = Object.freeze({ weight: 400, italic: false, letterSpacing: 0 });
+const BOLD: FontStyle = Object.freeze({ weight: 700, italic: false, letterSpacing: 0 });
+
+export function fontStyle(font: FontInput | undefined): FontStyle {
+  if (font === undefined || font === false) return REGULAR;
+  if (font === true) return BOLD;
+  if (font.weight !== undefined && font.italic !== undefined && font.letterSpacing !== undefined) return font as FontStyle;
+  return { weight: font.weight ?? 400, italic: font.italic ?? false, letterSpacing: font.letterSpacing ?? 0 };
+}
+
+/** The addon's font id (TEXT command, measureText): the weight, rounded into 1..1000, times 2, plus 1 if italic. */
+export function fontId(weight: number, italic: boolean): number {
+  const w = Math.min(1000, Math.max(1, Math.round(weight) || 400));
+  return w * 2 + (italic ? 1 : 0);
+}
+
+/**
+ * Text metrics in logical px. The width must include `font.letterSpacing` after every
+ * character, as the addon does, so wrapping and selection match what gets drawn.
+ */
+export type TextMeasurer = (text: string, size: number, font: FontStyle) => TextMetrics;
 
 let scheduleFrame: () => void = () => {};
-let measurer: TextMeasurer = (text, size) => ({ width: text.length * size * 0.55, ascent: size * 0.9, descent: size * 0.25 });
+let measurer: TextMeasurer = (text, size, font) => ({
+  width: text.length * size * 0.55 + Array.from(text).length * font.letterSpacing,
+  ascent: size * 0.9,
+  descent: size * 0.25,
+});
 let generation = 0;
 
 /** Wired by the app runtime; tests can install a fake measurer. */
@@ -140,6 +225,10 @@ export function setFrameScheduler(fn: () => void) {
 export function setTextMeasurer(fn: TextMeasurer) {
   measurer = fn;
   generation++;
+}
+/** The measurer in use (a screenshot swaps in the real one and puts this back). */
+export function textMeasurer(): TextMeasurer {
+  return measurer;
 }
 /** Bumped whenever earlier measurements may be wrong (new measurer, new scale); per-node caches compare it. */
 export function metricsGeneration() {
@@ -157,8 +246,8 @@ export function displayScale() {
 export function setDisplayScale(value: number) {
   scale = value;
 }
-export function measureText(text: string, size: number, bold = false): TextMetrics {
-  return measurer(text, size, bold);
+export function measureText(text: string, size: number, font?: FontInput): TextMetrics {
+  return measurer(text, size, fontStyle(font));
 }
 export function invalidate() {
   scheduleFrame();
@@ -232,6 +321,8 @@ export class UINode implements ElementRef {
   paint?: (p: Painter, node: UINode) => void;
   /** Debug label shown by `debugTree`. */
   label: string;
+  /** Accessible name for nodes without text of their own (icon-only buttons); what `findByLabel` matches. */
+  ariaLabel?: string;
 
   // Layout results (absolute, logical pixels).
   x = 0;
@@ -245,6 +336,8 @@ export class UINode implements ElementRef {
   scrollY = 0;
   /** Outside the visible area in the last layout: its box is set, its subtree is stale and skipped. */
   culled = false;
+  /** Px its children overflow by where the excess is hidden, in the last layout (dev warnings, debugTree). */
+  overflow = 0;
   /** Scrollbar under the pointer or being dragged (set by input, drawn wider by paint). */
   activeScrollbar: { axis: Axis; pressed: boolean } | null = null;
 
@@ -253,6 +346,33 @@ export class UINode implements ElementRef {
   }
 
   set<K extends keyof Style>(key: K, value: Style[K]) {
+    if (this.covered && key in this.covered) {
+      this.covered[key] = value; // shown again when the override ends
+      return;
+    }
+    if (this.style[key] === value) return;
+    this.style[key] = value;
+    invalidate();
+  }
+
+  /** Base values under an override (hoverStyle/pressStyle), kept up to date by set(). */
+  private covered: Partial<Style> | null = null;
+
+  /**
+   * Shows `value` for `key` over whatever set() gives it (widget defaults, the app's props);
+   * `undefined` ends the override and brings the latest base value back.
+   */
+  override<K extends keyof Style>(key: K, value: Style[K] | undefined) {
+    const covered = (this.covered ??= {});
+    const active = key in covered;
+    if (value === undefined) {
+      if (!active) return;
+      const base = covered[key];
+      delete covered[key];
+      this.set(key, base);
+      return;
+    }
+    if (!active) covered[key] = this.style[key];
     if (this.style[key] === value) return;
     this.style[key] = value;
     invalidate();
@@ -332,6 +452,15 @@ export class UINode implements ElementRef {
   }
 }
 
+/** Children in paint order, bottom to top: by zIndex, then child order. Allocates only when a child has a zIndex. */
+export function stacked(node: UINode): readonly UINode[] {
+  const kids = node.children;
+  for (const c of kids) {
+    if (c.style.zIndex) return [...kids].sort((a, b) => (a.style.zIndex ?? 0) - (b.style.zIndex ?? 0)); // stable
+  }
+  return kids;
+}
+
 /** Scrolls on some axis (and so clips its children). */
 export function scrolls(n: UINode): boolean {
   return n.scrollable || n.scrollableX;
@@ -339,7 +468,9 @@ export function scrolls(n: UINode): boolean {
 
 export function debugTree(node: UINode, indent = ""): string {
   const box = `${Math.round(node.x)},${Math.round(node.y)} ${Math.round(node.width)}x${Math.round(node.height)}`;
-  let out = `${indent}${node.label} [${box}]\n`;
+  const aria = node.ariaLabel === undefined ? "" : ` ariaLabel=${JSON.stringify(node.ariaLabel)}`;
+  const overflow = node.overflow ? ` [overflow +${node.overflow}]` : "";
+  let out = `${indent}${node.label}${aria} [${box}]${overflow}\n`;
   for (const c of node.children) out += debugTree(c, indent + "  ");
   return out;
 }

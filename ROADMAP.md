@@ -3,14 +3,14 @@
 Para onde o nodebuilder vai. A ordem dentro de cada seção é a prioridade atual; não há
 datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebuilderjs/issues).
 
-## Já existe (0.2)
+## Already shipped (0.3)
 
 - Reatividade estilo SolidJS (signals, memos, effects, ownership), JSX próprio, `<For>` e `<Show>`
 - Controle de fluxo completo (2026-10-12): `<Switch>`/`<Match>`, `<Index>` (lista por
   posição) e `<ErrorBoundary>` (erros na criação e em effects, com `reset`); filho-função
   `{(valor) => ...}` no `<Show>` e no `<Match>`; mudanças internas não recriam mais os
   componentes em volta (ex.: `<For>` logo abaixo de um `Provider`)
-- Layout flexbox, rolagem, recorte com cantos arredondados, sombras
+- Flexbox layout (with `wrap` for chips and tags, `margin`), Grid, `aspectRatio`, scrolling, clipping with rounded corners, shadows
 - Widgets: `Window` com decoração própria, `Column`/`Row`/`Box`, `Scroll`, `Text`, `Image`
   (PNG, JPEG, WebP; AVIF/HEIC via libheif), `Icon` (SVG: Lucide, Phosphor), `Canvas`
   (desenho livre na GPU), `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`
@@ -28,6 +28,14 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - Roda no Bun e no Node
 - `bun create nodebuilderjs`, helpers de teste sem janela, `AGENTS.md` no template
 - `nodebuilder package`: AppImage, `.deb`, `.rpm` e `.tar.gz` (glibc 2.34+)
+- Screenshots without a window or display server (2026-10-12): `nodebuilder screenshot` and
+  `screenshot()` in testing (EGL surfaceless + FBO), so agents can look at the UI they build
+- 0.3 (2026-10-12): linear gradients (backgrounds and Canvas), `hoverStyle`/`pressStyle`/
+  `createInteraction`, `zIndex`, `alignSelf`, `right`/`bottom`, custom title bars
+  (`decorations={false}`, `dragRegion`, `WindowControls`), font weights, italics, letter
+  spacing, `underline`, font fallback and color emoji, `<Icon fill>`, `nodebuilder icons add`,
+  overflow warnings, frame tracing (`NB_TRACE=frames`) and testing helpers (`findByLabel`,
+  `layoutWarnings`, `useRealTextMetrics`, `screenshot`)
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 
 ## Onde estamos (benchmarks de 2026-10-11)
@@ -106,7 +114,15 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
 - ~~Quebra de linha e texto com várias linhas~~ **feito** (2026-10-12): quebra por padrão,
   `wrap`, `maxLines` com "…", `textAlign`, `lineHeight`, seleção em várias linhas. Falta
   hifenização e quebrar palavra longa no meio (opcional, como `overflow-wrap: anywhere`).
-- Fallback de fontes (emojis, CJK) e escolha de família de fonte
+- ~~Underline~~ **done** (2026-10-12): `underline` on `Text` (inherited like `bold`), and
+  `<Canvas>` text cut to a `maxWidth` with "…".
+- ~~Font weights, italics, letter spacing~~ **done** (2026-10-12): `fontWeight` (closest
+  face via fontconfig, the `wght` axis of variable fonts), `italic` (slanted upright face when
+  there is no italic), `letterSpacing` per cluster in `text.c`. Still missing: synthetic bold
+  and choosing the font family.
+- ~~Font fallback (emoji, CJK)~~ **done** (2026-10-12): fontconfig's fallback order per
+  codepoint, clusters kept whole, color emoji in an RGBA atlas. Still missing: choosing the
+  font family, COLRv1 and bidi.
 - Seleção no `TextField` (com Ctrl+C/Ctrl+X); seleção primária (colar com o botão do meio);
   Shift+clique e setas para estender a seleção do `<Text selectable>`
 - `TextField`: desfazer/refazer, campo de várias linhas

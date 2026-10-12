@@ -17,6 +17,7 @@ function TodoApp() {
     makeTodo("Renderizar com GLES + FreeType/HarfBuzz", true),
     makeTodo("Layout flexbox em TypeScript", true),
     makeTodo("Escrever acentuação: ç, ã, é, ü"),
+    makeTodo("Font fallback and color emoji: ▲ ↑ ✓ 🎉 👍🏽 👨‍👩‍👧 🇧🇷"),
   ]);
   const [draft, setDraft] = createSignal("");
   const remaining = createMemo(() => todos().filter((t) => !t.done()).length);
@@ -39,7 +40,7 @@ function TodoApp() {
         </Row>
 
         <Scroll grow={1} gap={8} padding={[0, 10, 0, 0]}>
-          <For each={todos} fallback={<Text color="#9a9aa4">Nada por aqui 🎉</Text>}>
+          <For each={todos} fallback={<Text color="#9a9aa4">Nothing here 🎉</Text>}>
             {(todo) => (
               <Card direction="row" align="center" padding={[10, 12]}>
                 <Checkbox checked={todo.done} onChange={todo.setDone} />

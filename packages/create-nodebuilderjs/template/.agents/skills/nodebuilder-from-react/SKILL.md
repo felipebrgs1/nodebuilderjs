@@ -36,13 +36,24 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | `el.scrollIntoView()`, `el.scrollTo({ left, top })`, `scrollLeft`/`scrollTop` | `el.scrollIntoView()` (scrolls the minimum, on the next frame), `el.scrollTo({ x, y })`, `el.scrollX`/`el.scrollY` |
 | `min-height: 0` / `min-width: 0` around what scrolls | unnecessary: the content of a `Scroll` does not hold up the size of its container |
 | `ResizeObserver`, media queries | `onResize={(s) => setWidth(s.width)}` + signal |
-| `createPortal`, `position: fixed`, `z-index`, library modal/dropdown/tooltip | `<Overlay>` (`modal`, `anchor={() => el}`, `onDismiss`); skill `nodebuilder-ui` |
+| `z-index` among siblings (badge over a card's content) | `zIndex={1}` (siblings only: no global stacking context; ties keep child order) |
+| `createPortal`, `position: fixed`, `z-index` above everything, library modal/dropdown/tooltip | `<Overlay>` (`modal`, `anchor={() => el}`, `onDismiss`); skill `nodebuilder-ui` |
+| CSS `display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; row-gap: 12px` | `<Grid columns={4} gap={8} rowGap={12}>` (equal columns only; no spans or named areas) |
+| CSS `margin: 8px 16px`, `margin-top`, negative margins | `margin={[8, 16]}`, `margin={[12, 0, 0, 0]}`, `margin={[0, -16]}` (no collapsing, no `auto`; adds to `gap`) |
+| CSS `flex-wrap: wrap` (chips, tags), `row-gap` | `<Row wrap gap={6} rowGap={8}>` (lines start at the top: no `align-content`) |
+| CSS `flex: 1 1 0` (equal or 1:1:2 columns in one row) | `width={0} grow={1}` (`grow={2}`...) on each child |
+| CSS `aspect-ratio: 16 / 9`, square thumbnails | `aspectRatio={16 / 9}`; `aspectRatio={1}` in `Grid` cells gives square cells |
+| CSS `align-self`, `position: absolute; inset: 0` / `right: 8px` | `alignSelf`, `position="absolute" left={0} top={0} right={0} bottom={0}` / `right={8}` (inside a `Scroll` it scrolls with the content) |
+| CSS `background: linear-gradient(180deg, #1db954, #121212 60%)` | `background={{ linear: ["#1db954", ["#121212", 0.6]], angle: 180 }}` (linear only; on `<canvas>`: `g.linearGradient(x0, y0, x1, y1, stops)`) |
 | CSS `opacity`, `transform: translate(...)` | props `opacity`, `translateX`, `translateY` (no `scale`/`rotate`) |
 | `transition`, framer-motion, react-spring, `AnimatePresence` | `createTween`, `createPresence` (+ `<Show when={p.mounted}>`), `animate` |
 | `prefers-color-scheme`, `ThemeProvider` with a dark theme | `setTheme("dark")`, `colorScheme()`, colors in functions: `() => theme.text.primary` |
 | `white-space: nowrap` / `text-overflow: ellipsis` / `-webkit-line-clamp` | `wrap={false}` / `maxLines={1}` / `maxLines={n}` |
-| CSS `text-align`, `line-height` | `textAlign` (`start`/`center`/`end`), `lineHeight` (multiplier) |
-| CSS `:hover` | `onPointerEnter`/`onPointerLeave` + signal |
+| CSS `text-align`, `line-height`, `text-decoration: underline` | `textAlign` (`start`/`center`/`end`), `lineHeight` (multiplier), `underline` (inherited) |
+| CSS `font-weight: 600`, `font-weight: bold` | `fontWeight={600}`, `bold` (= 700); inherited |
+| CSS `font-style: italic` | `italic` (inherited) |
+| CSS `letter-spacing: 0.08em` / `2px` | `letterSpacing={2}` (px only: multiply `em` by the `fontSize`); inherited |
+| CSS `:hover` / `:active`, `.card:hover .play` | `hoverStyle={{ background: "#..." }}` / `pressStyle={{...}}` on any widget; state read elsewhere: `const card = createInteraction()`, `<Box {...card.props}>`, `<Show when={card.hovered}>` |
 | selectable text (the default on the web) | only with `<Text selectable>`; without the prop it does not select (like `user-select: none`) |
 | `navigator.clipboard.writeText/readText` | `clipboard.writeText(t)` / `await clipboard.readText()` |
 | `fetch`, `fs`, timers | they work (Bun/Node APIs); update signals with the result |

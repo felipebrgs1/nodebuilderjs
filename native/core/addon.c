@@ -5,6 +5,7 @@
 #define NAPI_VERSION 8
 #include <node_api.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "nb.h"
@@ -19,6 +20,9 @@
 
 static napi_threadsafe_function g_tsfn;
 static bool g_open;
+// The offscreen renderer was used: the renderer's GL objects live in its context, so no
+// window may open in this process (and no offscreen render while a window is open).
+static bool g_offscreen;
 
 // Payloads for the threadsafe function: a pump wake-up, or a plain "deliver
 // queued events" request made from the JS thread itself.
@@ -158,10 +162,34 @@ static char *get_string(napi_env env, napi_value v) {
   return s;
 }
 
+/** A JS string array as malloc'd C strings (free with free_strings); NULL with an exception pending. */
+static char **get_strings(napi_env env, napi_value array, uint32_t *count) {
+  if (napi_get_array_length(env, array, count) != napi_ok) {
+    napi_throw_type_error(env, NULL, "texts must be an array of strings");
+    return NULL;
+  }
+  char **out = calloc(*count ? *count : 1, sizeof(char *));
+  for (uint32_t i = 0; i < *count; i++) {
+    napi_value s;
+    napi_get_element(env, array, i, &s);
+    out[i] = get_string(env, s);
+  }
+  return out;
+}
+
+static void free_strings(char **strings, uint32_t count) {
+  for (uint32_t i = 0; i < count; i++) free(strings[i]);
+  free(strings);
+}
+
 // open({ title, appId, width, height }, onEvents)
 static napi_value js_open(napi_env env, napi_callback_info info) {
   if (g_open) {
     napi_throw_error(env, NULL, "window already open");
+    return NULL;
+  }
+  if (g_offscreen) {
+    napi_throw_error(env, NULL, "a window cannot be opened after renderOffscreen() in the same process");
     return NULL;
   }
   size_t argc = 2;
@@ -236,13 +264,8 @@ static napi_value js_render(napi_env env, napi_callback_info info) {
   }
 
   uint32_t text_count;
-  CHECK(napi_get_array_length(env, argv[1], &text_count));
-  char **texts = calloc(text_count ? text_count : 1, sizeof(char *));
-  for (uint32_t i = 0; i < text_count; i++) {
-    napi_value s;
-    napi_get_element(env, argv[1], i, &s);
-    texts[i] = get_string(env, s);
-  }
+  char **texts = get_strings(env, argv[1], &text_count);
+  if (!texts) return NULL;
 
   int bw, bh, scale;
   nb_platform_begin_frame(&bw, &bh, &scale);
@@ -251,15 +274,69 @@ static napi_value js_render(napi_env env, napi_callback_info info) {
   nb_platform_flush();  // presenting may have received events (e.g. EGL reading the socket)
   request_delivery();
 
-  for (uint32_t i = 0; i < text_count; i++) free(texts[i]);
-  free(texts);
+  free_strings(texts, text_count);
   return NULL;
 }
 
-// measureText(text, size, font) -> [width, ascent, descent] in logical px
+// renderOffscreen(width, height, scale, commands: Float32Array, texts: string[]) -> Uint8Array
+// (width*scale x height*scale, RGBA8, straight alpha, rows top to bottom). No window needed.
+static napi_value js_render_offscreen(napi_env env, napi_callback_info info) {
+  size_t argc = 5;
+  napi_value argv[5];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  double w, h, scale;
+  CHECK(napi_get_value_double(env, argv[0], &w));
+  CHECK(napi_get_value_double(env, argv[1], &h));
+  CHECK(napi_get_value_double(env, argv[2], &scale));
+  napi_typedarray_type type;
+  size_t length;
+  void *data;
+  CHECK(napi_get_typedarray_info(env, argv[3], &type, &length, &data, NULL, NULL));
+  if (type != napi_float32_array) {
+    napi_throw_type_error(env, NULL, "commands must be a Float32Array");
+    return NULL;
+  }
+  int bw = (int)(w * scale + 0.5), bh = (int)(h * scale + 0.5);
+  if (!(scale > 0) || bw < 1 || bh < 1 || (double)bw * bh > (double)(1 << 28)) {
+    napi_throw_range_error(env, NULL, "renderOffscreen: bad size or scale");
+    return NULL;
+  }
+  if (g_open) {
+    napi_throw_error(env, NULL, "offscreen rendering is unavailable: a window is open in this process");
+    return NULL;
+  }
+  if (!nb_text_init()) {
+    napi_throw_error(env, NULL, "offscreen rendering is unavailable: text engine initialisation failed");
+    return NULL;
+  }
+  char error[256] = "", message[300];
+  if (!nb_platform_offscreen_begin(bw, bh, error, sizeof error) || !nb_render_init()) {
+    snprintf(message, sizeof message, "offscreen rendering is unavailable: %s", *error ? error : "shader setup failed");
+    napi_throw_error(env, NULL, message);
+    return NULL;
+  }
+  g_offscreen = true;
+
+  uint32_t text_count;
+  char **texts = get_strings(env, argv[4], &text_count);
+  if (!texts) return NULL;
+  nb_render_frame(bw, bh, (float)scale, data, length, (const char **)texts, text_count);
+  free_strings(texts, text_count);
+
+  size_t size = (size_t)bw * bh * 4;
+  void *dst;
+  napi_value buffer, out;
+  CHECK(napi_create_arraybuffer(env, size, &dst, &buffer));
+  nb_render_read_pixels(bw, bh, dst);
+  CHECK(napi_create_typedarray(env, napi_uint8_array, size, buffer, 0, &out));
+  return out;
+}
+
+// measureText(text, size, font, scale?, letterSpacing?) -> [width, ascent, descent] in logical px.
+// `font`: a font id (weight * 2 + italic).
 static napi_value js_measure_text(napi_env env, napi_callback_info info) {
-  size_t argc = 3;
-  napi_value argv[3];
+  size_t argc = 5;
+  napi_value argv[5];
   CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
   if (!nb_text_init()) {
     napi_throw_error(env, NULL, "text engine initialisation failed");
@@ -272,8 +349,19 @@ static napi_value js_measure_text(napi_env env, napi_callback_info info) {
   CHECK(napi_get_value_int32(env, argv[2], &font));
 
   float scale = (float)nb_platform_scale(), ascent, descent;
+  napi_valuetype scale_type = napi_undefined;
+  if (argc > 3) napi_typeof(env, argv[3], &scale_type);
+  if (scale_type == napi_number) {
+    double s;
+    CHECK(napi_get_value_double(env, argv[3], &s));
+    if (s >= 1) scale = (float)s;
+  }
+  double spacing = 0;
+  napi_valuetype spacing_type = napi_undefined;
+  if (argc > 4) napi_typeof(env, argv[4], &spacing_type);
+  if (spacing_type == napi_number) CHECK(napi_get_value_double(env, argv[4], &spacing));
   int px = (int)(size * scale + 0.5);
-  float w = nb_text_measure(font, text ? text : "", px, &ascent, &descent);
+  float w = nb_text_measure(font, text ? text : "", px, (float)spacing * scale, &ascent, &descent);
   free(text);
 
   napi_value out, n;
@@ -437,6 +525,7 @@ NAPI_MODULE_INIT() {
       {"open", NULL, js_open, NULL, NULL, NULL, napi_default, NULL},
       {"close", NULL, js_close, NULL, NULL, NULL, napi_default, NULL},
       {"render", NULL, js_render, NULL, NULL, NULL, napi_default, NULL},
+      {"renderOffscreen", NULL, js_render_offscreen, NULL, NULL, NULL, napi_default, NULL},
       {"measureText", NULL, js_measure_text, NULL, NULL, NULL, napi_default, NULL},
       {"createImage", NULL, js_create_image, NULL, NULL, NULL, napi_default, NULL},
       {"destroyImage", NULL, js_destroy_image, NULL, NULL, NULL, napi_default, NULL},

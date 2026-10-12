@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { Box, Button, Column, Row, Scroll, Text, UINode, Window, createRoot, layout, setTextMeasurer } from "@nodebuilderjs/core";
+import {
+  Box, Button, Column, Row, Scroll, Text, TextField, UINode, Window, WindowControls, createRoot, createSignal, debugTree, layout, setTextMeasurer,
+} from "@nodebuilderjs/core";
 import type { PointerEvent } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
+import { interact, mount } from "@nodebuilderjs/core/testing";
 import { createInput } from "../src/runtime/input.js";
 
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
@@ -25,6 +28,7 @@ function setup(view: () => any, options: { resizable?: boolean } = {}) {
     resizable: () => options.resizable ?? false,
     setCursor(name: string) { host.cursor = name; },
     move() { host.calls.push("move"); },
+    toggleMaximize() { host.calls.push("toggleMaximize"); },
     resize(edges: number) { host.calls.push(`resize ${edges}`); },
     invalidate() { host.calls.push("invalidate"); },
     now: () => now,
@@ -36,6 +40,8 @@ const track = (name: string) => ({
   onPointerEnter: () => log.push(`enter ${name}`),
   onPointerLeave: () => log.push(`leave ${name}`),
 });
+
+const center = (n: UINode): [number, number] => [n.x + n.width / 2, n.y + n.height / 2];
 
 // A at (0,0) 100x50 with B inside it at (0,0) 50x20; C at (0,50) 100x50.
 const tree = () => (
@@ -58,6 +64,17 @@ describe("hover and cursor", () => {
     log = [];
     input.pointerLeave();
     expect(log).toEqual(["leave A"]);
+  });
+
+  test("refreshing hover with nothing changed does not ask for a frame", () => {
+    // run() calls refreshHover() inside every frame: an invalidate here redraws forever.
+    const { input, host } = setup(tree);
+    input.refreshHover();
+    input.pointerMove(10, 10);
+    input.refreshHover();
+    input.pointerLeave();
+    input.refreshHover();
+    expect(host.calls).toEqual([]);
   });
 
   test("the cursor comes from the nearest node that sets one", () => {
@@ -141,6 +158,46 @@ describe("pointer buttons", () => {
     expect(log).toEqual(["inner", "outer"]);
   });
 
+  test("pointerdown bubbles past a clickable node (a row's context menu), but only it clicks", () => {
+    const { root, input } = setup(() => (
+      <Box width={100} height={100} onPointerDown={(e: PointerEvent) => log.push(`list ${e.button}`)} onClick={() => log.push("click list")}>
+        <Button label="row" onClick={() => log.push("click row")} />
+      </Box>
+    ));
+    const row = root.children[0]!.children[0]!;
+    input.pointerDown(...center(row), 2); // right button: the list opens its menu
+    input.pointerUp(...center(row), 2);
+    now += 1000;
+    input.pointerDown(...center(row), 0);
+    input.pointerUp(...center(row), 0);
+    expect(log).toEqual(["list 2", "list 0", "click row"]);
+  });
+
+  test("stop() in a clickable node's onPointerDown keeps the press from its parents", () => {
+    const { root, input } = setup(() => (
+      <Box width={100} height={100} onPointerDown={() => log.push("outer")}>
+        <Box width={50} height={50} onPointerDown={(e: PointerEvent) => e.stop()} onClick={() => log.push("click row")} />
+      </Box>
+    ));
+    const row = root.children[0]!.children[0]!;
+    input.pointerDown(...center(row), 0);
+    input.pointerUp(...center(row), 0);
+    expect(log).toEqual(["click row"]);
+  });
+
+  test("pressStyle on a parent shows while a child button is pressed (like CSS :active)", () => {
+    const { root, input } = setup(() => (
+      <Box width={100} height={100} pressStyle={{ background: "#222222" }}>
+        <Button label="row" onClick={() => {}} />
+      </Box>
+    ));
+    const card = root.children[0]!;
+    input.pointerDown(...center(card.children[0]!), 0);
+    expect(card.style.background).toBe("#222222");
+    input.pointerUp(...center(card.children[0]!), 0);
+    expect(card.style.background).not.toBe("#222222");
+  });
+
   test("pressing focuses the nearest focusable; pressing elsewhere blurs it", () => {
     const { input } = setup(() => (
       <Column align="start">
@@ -154,13 +211,17 @@ describe("pointer buttons", () => {
     expect(input.focused).toBeNull();
   });
 
-  test("title bars move the window; window borders resize it", () => {
+  test("title bars move the window, a double click toggles maximize; window borders resize it", () => {
     const { input, host } = setup(() => <Window title="t"><Text>x</Text></Window>, { resizable: true });
     input.pointerDown(100, 20, 0);
     input.pointerDown(150, 100, 0); // content: no move
     input.pointerDown(1, 100, 0); // left border
     input.pointerDown(299, 199, 0); // bottom right corner
-    expect(host.calls).toEqual(["move", "resize 4", "resize 10"]);
+    now += 1000;
+    input.pointerDown(100, 20, 0);
+    now += 100;
+    input.pointerDown(100, 20, 0);
+    expect(host.calls).toEqual(["move", "resize 4", "resize 10", "move", "toggleMaximize"]);
   });
 
   test("clickable nodes inside a drag region never move the window", () => {
@@ -169,6 +230,135 @@ describe("pointer buttons", () => {
     expect(close?.label).toBe("WindowButton(close)");
     input.pointerDown(285, 23, 0);
     expect(host.calls).toEqual([]);
+  });
+});
+
+describe("custom title bar", () => {
+  const [query, setQuery] = createSignal("");
+  // A header row merged with the title bar: search field, a button, window controls.
+  const header = () => (
+    <Window title="t" decorations={false}>
+      <Row dragRegion height={40} align="center" gap={8} padding={[0, 8]}>
+        <Text>App</Text>
+        <TextField width={100} value={query} onInput={setQuery} />
+        <Button label="Go" onClick={() => log.push("go")} />
+        <Box grow={1} height={40} />
+        <WindowControls gap={4} />
+      </Row>
+      <Text>body</Text>
+    </Window>
+  );
+  const find = (root: UINode, label: string): UINode => {
+    if (root.label === label || root.label.startsWith(`${label} `)) return root;
+    for (const c of root.children) {
+      try { return find(c, label); } catch {}
+    }
+    throw new Error(`no ${label}`);
+  };
+
+  test("decorations={false} has no built-in title bar or divider", () => {
+    const { root } = setup(() => <Window title="t" decorations={false}><Text>body</Text></Window>);
+    const tree = debugTree(root);
+    expect(tree).not.toContain("Titlebar");
+    expect(tree).not.toContain("Divider");
+    expect(tree).toContain('Text "body"');
+    // The content starts right below the border.
+    expect(find(root, "Text").y).toBe(1);
+    expect(setup(() => <Window title="t"><Text>body</Text></Window>).root.children[0]!.children[0]!.label).toBe("Titlebar");
+  });
+
+  test("borders still resize a window without decorations", () => {
+    const { input, host } = setup(() => <Window title="t" decorations={false}><Text>body</Text></Window>, { resizable: true });
+    input.pointerDown(1, 100, 0);
+    expect(host.calls).toEqual(["resize 4"]);
+  });
+
+  test("a dragRegion moves the window from its empty space and from plain text", () => {
+    const { root, input, host } = setup(header);
+    input.pointerDown(...center(find(root, "Text")), 0);
+    now += 1000;
+    input.pointerDown(...center(find(root, "Box")), 0); // the spacer
+    expect(host.calls).toEqual(["move", "move"]);
+  });
+
+  test("a double click on a dragRegion toggles maximize instead of moving", () => {
+    const { root, input, host } = setup(header);
+    const spacer = center(find(root, "Box"));
+    input.pointerDown(...spacer, 0);
+    now += 100;
+    input.pointerDown(...spacer, 0);
+    expect(host.calls).toEqual(["move", "toggleMaximize"]);
+  });
+
+  test("a press on a control inside a dragRegion never moves the window", () => {
+    const { root, input, host } = setup(header);
+    for (const label of ["TextField", "Button", "WindowButton(minimize)", "WindowButton(maximize)", "WindowButton(close)"]) {
+      now += 1000;
+      const node = find(root, label);
+      let hit = input.hitTest(...center(node));
+      while (hit && hit !== node) hit = hit.parent;
+      expect(hit).toBe(node);
+      input.pointerDown(...center(node), 0);
+      input.pointerUp(...center(node), 0);
+    }
+    expect(host.calls).toEqual([]);
+    expect(log).toEqual(["go"]);
+  });
+
+  test("only the left button drags", () => {
+    const { root, input, host } = setup(header);
+    input.pointerDown(...center(find(root, "Box")), 2);
+    expect(host.calls).toEqual([]);
+  });
+
+  test("a node with its own press handler or focus inside a dragRegion keeps the press", () => {
+    const { root, input, host } = setup(() => (
+      <Row dragRegion height={40}>
+        <Box width={40} onPointerDown={() => log.push("down")} />
+        <Box width={40} ref={(el) => ((el as UINode).focusable = true)} />
+        <Box width={40} />
+      </Row>
+    ));
+    const [a, b, c] = root.children[0]!.children;
+    for (const n of [a!, b!, c!]) {
+      now += 1000;
+      input.pointerDown(...center(n), 0);
+    }
+    expect(log).toEqual(["down"]);
+    expect(host.calls).toEqual(["move"]);
+  });
+
+  test("a hoverStyle child keeps dragging the window; a pressStyle child keeps the press", () => {
+    const { root, input, host } = setup(() => (
+      <Row dragRegion height={40}>
+        <Box width={40} hoverStyle={{ background: "#111111" }} />
+        <Box width={40} pressStyle={{ background: "#222222" }} />
+      </Row>
+    ));
+    const [hover, press] = root.children[0]!.children;
+    input.pointerDown(...center(hover!), 0);
+    now += 1000;
+    input.pointerDown(...center(press!), 0);
+    expect(host.calls.filter((c) => c === "move")).toEqual(["move"]);
+    expect(press!.style.background).toBe("#222222");
+  });
+
+  test("the press still bubbles past a control to the dragRegion's own handler, without moving", () => {
+    const { root, input, host } = setup(() => (
+      <Row dragRegion height={40} onPointerDown={() => log.push("row")}>
+        <Box width={40} onPointerDown={() => log.push("inner")} />
+      </Row>
+    ));
+    input.pointerDown(...center(root.children[0]!.children[0]!), 0);
+    expect(log).toEqual(["inner", "row"]);
+    expect(host.calls).toEqual([]);
+  });
+
+  test("WindowControls labels its buttons and takes style props", () => {
+    const { root } = setup(() => <WindowControls gap={20} />);
+    const controls = root.children[0]!;
+    expect(controls.children.map((n) => n.ariaLabel)).toEqual(["Minimize", "Maximize", "Close"]);
+    expect(controls.children[1]!.x - controls.children[0]!.x).toBe(26 + 20);
   });
 });
 
@@ -309,5 +499,79 @@ describe("pointer move", () => {
     input.pointerDown(55, 70, 0);
     input.pointerUp(58, 71, 0);
     expect(seen).toEqual(["down 5,10", "up 8,11", "click 8,11"]);
+  });
+});
+
+describe("stacking (zIndex) and overflow", () => {
+  // An absolute box declared first, (0,0) 60x60, overlapping an in-flow sibling (0,0) 100x40.
+  const stacked = (z?: number) => () => (
+    <Box width={100} height={100} align="start">
+      <Box position="absolute" left={0} top={0} width={60} height={60} zIndex={z} {...track("abs")} onPointerDown={() => log.push("down abs")} />
+      <Box width={100} height={40} {...track("flow")} onPointerDown={() => log.push("down flow")} />
+    </Box>
+  );
+
+  test("with equal zIndex, the later sibling is on top", () => {
+    const { input } = setup(stacked());
+    input.pointerDown(10, 10, 0);
+    expect(log).toEqual(["down flow"]);
+  });
+
+  test("a higher zIndex is hit first, where it is painted above its siblings", () => {
+    const { input } = setup(stacked(1));
+    input.pointerDown(10, 10, 0);
+    input.pointerDown(80, 10, 0); // only the in-flow box is there
+    expect(log).toEqual(["down abs", "down flow"]);
+  });
+
+  test("hover enters and leaves the topmost sibling", () => {
+    const { input } = setup(stacked(1));
+    input.pointerMove(10, 10);
+    input.pointerMove(80, 10);
+    input.pointerMove(10, 50); // below the in-flow box, on the raised one
+    expect(log).toEqual(["enter abs", "leave abs", "enter flow", "leave flow", "enter abs"]);
+  });
+
+  // A card at (20,20) 100x50 with a badge at (110,10) 20x20: its top right part sticks out.
+  const card = (clip: boolean) => () => (
+    <Column padding={20} align="start">
+      <Box width={100} height={50} clip={clip} {...track("card")} onPointerDown={() => log.push("down card")}>
+        <Box position="absolute" left={90} top={-10} width={20} height={20} {...track("badge")} onPointerDown={() => log.push("down badge")} />
+      </Box>
+    </Column>
+  );
+
+  test("the part of an absolute child outside a parent that does not clip is clickable", () => {
+    const { input } = setup(card(false));
+    input.pointerMove(125, 15); // outside the card, on the badge
+    expect(log).toEqual(["enter card", "enter badge"]); // the card contains the badge, as in CSS
+    log = [];
+    input.pointerDown(125, 15, 0);
+    expect(log).toEqual(["down badge", "down card"]); // bubbling still follows the tree
+    log = [];
+    input.pointerMove(30, 30);
+    expect(log).toEqual(["leave badge"]);
+  });
+
+  test("with clip, the part outside the parent is not clickable", () => {
+    const { input } = setup(card(true));
+    input.pointerDown(125, 15, 0);
+    expect(log).toEqual([]);
+    input.pointerDown(115, 25, 0); // inside the card, on the badge
+    expect(log).toEqual(["down badge", "down card"]);
+  });
+
+  test("the testing helpers reach a node shown outside a parent that does not clip", () => {
+    let badge!: UINode;
+    const { root } = mount(() => (
+      <Column padding={20} align="start">
+        <Box width={100} height={50}>
+          <Box ref={(n) => (badge = n as UINode)} position="absolute" left={95} top={-20} width={10} height={10}
+            onPointerDown={() => log.push("down badge")} />
+        </Box>
+      </Column>
+    ));
+    interact(root).press(badge); // its center (120,5) is outside the card
+    expect(log).toEqual(["down badge"]);
   });
 });

@@ -19,6 +19,8 @@ export interface ImageSource {
   readonly error?: string;
   /** GPU handle; 0 until first painted. */
   handle: number;
+  /** The backend that made `handle`. */
+  owner: ImageBackend | null;
   pixels: Uint8Array | null;
   refs: number;
   key: unknown;
@@ -28,13 +30,23 @@ export interface ImageSource {
 export interface ImageBackend {
   create(width: number, height: number, rgba: Uint8Array): number;
   destroy(handle: number): void;
+  /** Keep the decoded pixels after `create`, so another backend can upload them later. */
+  keepsPixels?: boolean;
 }
 
 let nextHandle = 1;
-let backend: ImageBackend = { create: () => nextHandle++, destroy: () => {} };
+// Headless default: keeps the pixels, so a screenshot taken after a test painted the tree
+// can still upload them to the native core.
+const headless: ImageBackend = { create: () => nextHandle++, destroy: () => {}, keepsPixels: true };
+let backend = headless;
 
-export function setImageBackend(b: ImageBackend) {
-  backend = b;
+/** null goes back to the headless default. */
+export function setImageBackend(b: ImageBackend | null) {
+  backend = b ?? headless;
+}
+
+export function imageBackend(): ImageBackend {
+  return backend;
 }
 
 const cache = new Map<unknown, ImageSource>();
@@ -46,7 +58,7 @@ function cacheKey(input: ImageInput): unknown {
 }
 
 function load(input: ImageInput, key: unknown): ImageSource {
-  const source: ImageSource = { width: 0, height: 0, handle: 0, pixels: null, refs: 0, key };
+  const source: ImageSource = { width: 0, height: 0, handle: 0, owner: null, pixels: null, refs: 0, key };
   try {
     let bitmap: Bitmap;
     if (input instanceof Uint8Array) bitmap = decodeImage(input);
@@ -74,16 +86,24 @@ export function acquireImage(input: ImageInput): ImageSource {
 
 export function releaseImage(source: ImageSource) {
   if (--source.refs > 0) return;
-  if (source.handle) backend.destroy(source.handle);
+  if (source.handle) source.owner?.destroy(source.handle);
   source.handle = 0;
   cache.delete(source.key);
 }
 
-/** GPU handle for painting, uploading on first use. The decoded pixels are dropped after upload. */
+/**
+ * GPU handle for painting, uploading on first use. The decoded pixels are dropped after
+ * upload, unless the backend keeps them; then a later backend (a screenshot's) uploads them again.
+ */
 export function imageHandle(source: ImageSource): number {
+  if (source.handle && source.owner !== backend && source.pixels) {
+    source.owner?.destroy(source.handle);
+    source.handle = 0;
+  }
   if (!source.handle && source.pixels) {
     source.handle = backend.create(source.width, source.height, source.pixels);
-    source.pixels = null;
+    source.owner = backend;
+    if (!backend.keepsPixels) source.pixels = null;
   }
   return source.handle;
 }

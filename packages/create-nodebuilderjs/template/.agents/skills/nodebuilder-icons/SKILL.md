@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-icons
-description: Icons and SVG in nodebuilder with the Icon widget, using Lucide (lucide-static or lucide) and Phosphor (@phosphor-icons/core). Use when adding icons to buttons, menus, sidebars or lists, when choosing an icon library, or when showing any .svg file.
+description: Icons and SVG in nodebuilder with the Icon widget, using Lucide (lucide-static or lucide) and Phosphor (@phosphor-icons/core). Use when adding icons to buttons, menus, sidebars or lists (generate the imports with `nodebuilder icons add`), when choosing an icon library, or when showing any .svg file.
 ---
 
 # Icons
@@ -12,21 +12,58 @@ bun add @phosphor-icons/core       # Phosphor: assets/<weight>/<name>.svg
 ```
 
 ```tsx
-import { Button, Icon, Row, Text, createSignal, theme } from "@nodebuilderjs/core";
+import { Button, Column, Icon, Row, Text, createSignal, theme } from "@nodebuilderjs/core";
 import camera from "lucide-static/icons/camera.svg" with { type: "text" };
 import heart from "@phosphor-icons/core/assets/duotone/heart-duotone.svg" with { type: "text" };
-import { Star } from "lucide";
+import { Heart, Play, Star } from "lucide";
+import starFill from "@phosphor-icons/core/assets/fill/star-fill.svg" with { type: "text" };
 
 const [active] = createSignal(false);
+const [liked, setLiked] = createSignal(false);
 
-<Icon svg={camera} />                                  // 20 px, color of the surrounding text
-<Icon svg={heart} size={32} color="#e01b24" />
-<Icon svg={Star} size={16} strokeWidth={1.5} />        // stroke width (outline icons)
-<Button variant="primary"><Icon svg={Star} size={16} /><Text>Favorite</Text></Button>
-<Row color={() => (active() ? theme.accent.base : theme.text.secondary)}>
-  <Icon svg={camera} /><Text>Camera</Text>              {/* icon and text change color together */}
-</Row>
+<Column gap={8}>
+  <Icon svg={camera} />                                {/* 20 px, color of the surrounding text */}
+  <Icon svg={heart} size={32} color="#e01b24" />
+  <Icon svg={Star} size={16} strokeWidth={1.5} />      {/* stroke width (outline icons) */}
+  <Button variant="primary"><Icon svg={Star} size={16} /><Text>Favorite</Text></Button>
+  <Icon svg={Play} fill />                             {/* solid Lucide icon (icon color) */}
+  <Icon svg={Heart} fill={() => liked() && "#e01b24"} onClick={() => setLiked(!liked())} />
+  <Icon svg={starFill} />                              {/* Phosphor ships solid icons as "fill" */}
+  <Row color={() => (active() ? theme.accent.base : theme.text.secondary)}>
+    <Icon svg={camera} /><Text>Camera</Text>            {/* icon and text change color together */}
+  </Row>
+</Column>
 ```
+
+## Adding icons: `nodebuilder icons add`
+
+For more than one or two icons, **generate the imports** instead of writing them:
+
+```sh
+bun run icons:add play pause heart arrow-left                  # lucide-static -> src/icons.ts
+bun run icons:add heart-fill house --from @phosphor-icons/core # Phosphor: weight by suffix
+nodebuilder icons list arrow                                   # names that contain "arrow"
+```
+
+<!-- no-check -->
+```tsx
+import { Icon } from "@nodebuilderjs/core";
+import { arrowLeft, heartFill } from "./icons.js"; // camelCase of the file name
+
+<Icon svg={arrowLeft} />;
+<Icon svg={heartFill} color="#e01b24" />;
+```
+
+- Install the package first (`bun add lucide-static`). `--out <file>` picks another module.
+- One sorted, deduplicated line per icon; the rest of `src/icons.ts` (hand-drawn icons) stays.
+  A name already used in the file is an error (rename yours, or pick another icon).
+- An unknown name fails with close matches (`did you mean heart-crack?`) and writes nothing:
+  run `nodebuilder icons list <part>` to find the right one.
+- Writing them by hand: `import x from "lucide-static/icons/x.svg" with { type: "text" };`.
+  **Never** `export { default as x } from "....svg" with { type: "text" }`: Bun drops the
+  attribute on re-exports, so `x` becomes the file's path, not its text (`Icon` happens to
+  read paths too, anything expecting SVG text breaks); `icons add` rewrites those lines into
+  `import x from "....svg" with { type: "text" }; export { x };`.
 
 ## Rules
 
@@ -38,6 +75,11 @@ const [active] = createSignal(false);
   a function (`svg={() => (open() ? chevronUp : chevronDown)}`).
 - `size` is the height in logical px (default 20, `theme.icon.size`); the width follows the
   `viewBox`. The color comes from `color` on the `Icon` itself or is inherited from a parent, as with `Text`.
+- Solid icons: Lucide is outline only; `fill` (`true` = the icon's color, or a color) makes
+  it solid, like Lucide's own `fill` prop: it replaces the root `<svg>`'s `fill="none"`, so the
+  shapes get filled and keep their stroke. A fill a shape or group sets itself (`none`
+  included) still wins. It can be a function. **Never** patch the SVG text
+  (`svg.replace('fill="none"', ...)`). Phosphor has ready-made solid icons in the `fill` weight.
 - Changing the color is free (single-color icons are tinted on the GPU); changing the size
   rasterizes again (~0.5 ms). They stay sharp on HiDPI screens.
 - Phosphor weights: `thin`, `light`, `regular`, `bold`, `fill`, `duotone` (folders in

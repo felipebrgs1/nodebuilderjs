@@ -50,7 +50,7 @@ agents such as Claude Code.
   `background={() => (active() ? "#3584e4" : "#ffffff")}`.
 - **Styles are props, not CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
   `radius`, `color`, `fontSize`... The layout is flexbox.
-- **Built-in widgets:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
+- **Built-in widgets:** `Window` (with `WindowControls` for a custom title bar), `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
   `Button`, `TextField`, `Checkbox`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`,
   `Tooltip`, `Dialog`, `ProgressBar`, `Spinner`, `Card`, `Divider`, `Spacer`, plus `<For>`/`<Index>`,
   `<Show>`/`<Switch>` and `<ErrorBoundary>` for lists, conditions and errors, and
@@ -61,13 +61,158 @@ freehand drawing, charts, overlays (menu, dialog and tooltip), text (paragraphs,
 ellipsis), scrolling (horizontal, both axes, `scrollIntoView`) and a dashboard
 with tabs, a table and a chart.
 
+### Layout
+
+A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch by default;
+`alignSelf` overrides it for one child), `justify`, `min/max` sizes, `wrap`, `margin`, plus
+`Grid` and `aspectRatio`. There are no percentages:
+
+- **`margin`** (`8`, `[v, h]` or `[top, right, bottom, left]`, like `padding`): space outside the
+  border that the parent keeps free. It adds to the child's size in everything around it
+  (natural sizes, `grow`, shrinking, `Grid` cells, `wrap` lines); a stretched child gets the
+  room minus its margins. Negative values pull a neighbor over or let a child bleed into its
+  parent's padding (`margin={[0, -16]}` in a `Card` runs edge to edge). It is not painted and
+  not clickable. On an absolute child it adds to `left`/`top`/`right`/`bottom`. Margins do not
+  collapse (unlike CSS block margins) and add to `gap`.
+
+- **`<Row wrap gap={6} rowGap={8}>`** (CSS `flex-wrap: wrap`): children that do not fit start
+  a new line (chips, tags). Each line is laid out on its own (`grow`, `justify`, `alignSelf`
+  inside the line), is as tall as its tallest child and lines stack from the top, `rowGap`
+  (default `gap`) apart. Its natural width is a single line and its minimum the widest child,
+  so a stretched or shrunk Row wraps at whatever width it gets and its height follows. A
+  `<Column wrap>` breaks into columns at its height (give it one). On `<Text>`, `wrap` is
+  word wrapping instead.
+
+  ```tsx
+  import { Box, Row, Text } from "@nodebuilderjs/core";
+
+  const Tags = (props: { tags: string[] }) => (
+    <Row wrap gap={6}>
+      {props.tags.map((t) => <Box padding={[4, 10]} radius={12} background="#00000010"><Text>{t}</Text></Box>)}
+    </Row>
+  );
+  ```
+
+- **`<Grid columns={4} gap={8} rowGap={12}>`:** children flow into rows of equal-width cells
+  (CSS `grid-template-columns: repeat(4, 1fr)`); the last row keeps empty cells, so widths stay
+  equal. Each row is as tall as its tallest cell and cells stretch to it (`align`/`alignSelf`
+  change that). `rowGap` defaults to `gap`. Works with `<For>` (items stay keyed; adding one
+  reflows the cells).
+- **`aspectRatio`** (width / height) on any widget: the free side follows the other, like CSS
+  `aspect-ratio`. In a column (or a `Grid` cell) the height follows the width; with a fixed
+  `height`, or stretched in a `Row` of known height, the width follows the height. `min/max`
+  still clamp; children taller than the ratio make a box taller (an `Image` takes the ratio as
+  is). In a `Grid`, an `aspectRatio` cell keeps its shape instead of stretching to the row.
+
+  ```tsx
+  import { Grid, Image } from "@nodebuilderjs/core";
+
+  const covers = ["a.jpg", "b.jpg", "c.jpg", "d.jpg"];
+  const Covers = () => (
+    <Grid columns={3} gap={8}>
+      {covers.map((src) => <Image src={src} aspectRatio={1} fit="cover" radius={8} />)}
+    </Grid>
+  );
+  ```
+- **Equal or proportional columns in a row:** `width={0} grow={1}` on each child (CSS
+  `flex: 1 1 0`); the widths follow the `grow` values (1:1:2), not the content. In a column
+  with a height, `height={0} grow={1}` does the same for rows.
+- **`position="absolute"`** with `left`/`top`/`right`/`bottom` (from the parent's content box,
+  inside its `padding`): out of the flow and at its natural size, unless both `left` and `right`
+  (or `top` and `bottom`) are set without a `width` (`height`): then it stretches between them,
+  so `left={0} right={0} top={0} bottom={0}` fills the parent. `right` alone places it from the
+  right edge. Inside a `Scroll` it scrolls with the content, like CSS. What sticks out of a parent
+  that does not `clip` is drawn and clickable there too.
+- **`zIndex`** (default 0) orders siblings: higher is drawn and hit above, ties keep child order
+  (so without it, a later child covers an earlier one). It only orders siblings, with no global
+  stacking context: a raised node stays inside its parent's place in the order. Overlays stay
+  above everything.
+- `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
+  drawn even without a `background` (the blurred box shows through).
+- **Gradients:** `background={{ linear: ["#1db954", "#121212"], angle: 180 }}` is a CSS
+  `linear-gradient`: `angle` in degrees (0 = to top, 90 = to right, default 180 = to bottom),
+  stops as colors or `[color, offset]` (offset 0 to 1; missing offsets are spread evenly).
+  Corners, `radius`, borders and `opacity` work as with a color, and it can be reactive
+  (`background={() => ({ linear: [theme.accent.base, "transparent"] })}` follows the theme).
+  Colors are interpolated in premultiplied space like CSS, so fading to `"transparent"` never
+  turns gray. Borders, text and shadows stay solid colors.
+- **Overflow warnings (development):** when children need more room than their container
+  gives them (after wrapping text and `grow` children have shrunk) and the excess is hidden by
+  a `clip` ancestor or the window, `run()` prints it once per node, e.g.
+  `layout: Row > Text("Artists") overflows Box(panel) by 42px (children need 342px, 300px
+  available)`, and `debugTree()` marks the container `[overflow +42]`. Content past a `Scroll`
+  on its scrolling axis is not reported (scrolling shows it). Silent with
+  `NODE_ENV=production` and in packaged executables. Fix it with a `Scroll horizontal`,
+  wrapping, `minWidth={0}` plus `clip` on the child that may be cut, or more room.
+
+### Hover and press
+
+`hoverStyle` and `pressStyle` work on every widget (CSS `:hover` and `:active`). They take
+any style props, static or as accessors, shown over the base style while the pointer is over
+the widget or pressing it:
+
+```tsx
+<Box padding={12} radius={8} background="#ffffff"
+  hoverStyle={{ background: "#f2f2f4" }} pressStyle={{ background: "#e6e6ea", opacity: 0.9 }}>
+  <Text>Row</Text>
+</Box>
+```
+
+- `pressStyle` wins over `hoverStyle`; leaving brings back the base values, which stay
+  reactive underneath (a signal that changed meanwhile shows its latest value).
+- They win over a widget's own hover colors (a `Button`'s theme background); a `disabled`
+  widget ignores them.
+- `hoverStyle` alone leaves presses alone; `pressStyle` (and `createInteraction().props`)
+  make the widget handle the press, so inside a window's drag region it no longer moves the
+  window.
+- Like `:active`, a parent's `pressStyle` also shows while a child (a button in the card) is
+  pressed; `onPointerDown={(e) => e.stop()}` on the child (or on a `Box` around a `Button`)
+  keeps the press to the child.
+
+When something else depends on the state, such as a play button that only shows while its card
+is hovered, `createInteraction()` gives `hovered`, `pressed` and `focused` accessors and
+`props` to spread on the widget:
+
+```tsx
+const card = createInteraction();
+<Box {...card.props} padding={12} background={() => (card.hovered() ? "#f2f2f4" : "#ffffff")}>
+  <Text>Song</Text>
+  <Show when={card.hovered}>
+    <Button label="Play" onClick={() => {}} />
+  </Show>
+</Box>;
+```
+
+The pointer is still over the card while it is over the play button. `props` adds to the
+widget's own handlers and to `onPointerEnter`/`onPointerLeave`/... written next to it,
+before or after the spread; nothing is replaced, and several interactions can share a widget.
+`focused` only changes on focusable widgets (`Button`, `TextField`...).
+
+### Events
+
+Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onScroll`,
+`onKeyDown`, `onFocus` and `onBlur`. Pointer events carry `x`/`y` (window), `localX`/`localY`
+(node), `button` (0 left, 1 middle, 2 right) and `clicks` (2 = double click).
+
+- `onClick` is the left button only and runs on the innermost node that has one (pressed and
+  released on it): a button inside a clickable card clicks the button, not the card.
+- `onPointerDown`, `onPointerUp`, `onPointerMove`, `onScroll` and `onKeyDown` bubble from the
+  innermost node to the root until a handler calls `e.stop()`, also past nodes with `onClick`:
+  a list's `onPointerDown` with `e.button === 2` (context menu) sees a right press on any of
+  its clickable rows. On keys and the wheel, `stop()` also keeps the surrounding `Scroll` still.
+- While a button is held, `onPointerMove` keeps reaching the node where the press started.
+
 ### Images
 
 ```tsx
+import { Column, Image } from "@nodebuilderjs/core";
 import logo from "./logo.png" with { type: "file" };
+import photo from "./photo.jpg" with { type: "file" };
 
-<Image src={logo} width={64} />                                   // height follows the aspect ratio
-<Image src={photo} width={200} height={120} fit="cover" radius={12} opacity={0.8} />
+<Column gap={8}>
+  <Image src={logo} width={64} />                                 {/* height follows the aspect ratio */}
+  <Image src={photo} width={200} height={120} fit="cover" radius={12} opacity={0.8} />
+</Column>
 ```
 
 `fit` can be `contain` (default: the whole image, centered), `cover` (fills and crops)
@@ -88,10 +233,14 @@ drawn by `<Icon>` (below).
 import camera from "lucide-static/icons/camera.svg" with { type: "text" };  // bun add lucide-static
 import heart from "@phosphor-icons/core/assets/duotone/heart-duotone.svg" with { type: "text" };
 import { Star } from "lucide";                                              // or the lucide data
+import { Button, Icon, Row, Text } from "@nodebuilderjs/core";
 
-<Icon svg={camera} />                          // 20 px, color inherited like text
-<Icon svg={heart} size={32} color="#e01b24" />
-<Button variant="primary"><Icon svg={Star} size={16} /><Text>Favorite</Text></Button>
+<Row gap={8}>
+  <Icon svg={camera} />                        {/* 20 px, color inherited like text */}
+  <Icon svg={heart} size={32} color="#e01b24" />
+  <Button variant="primary"><Icon svg={Star} size={16} /><Text>Favorite</Text></Button>
+  <Icon svg={Star} fill />                     {/* solid: outline icons filled with their color */}
+</Row>
 ```
 
 `<Icon>` draws SVG with its own renderer, written in TypeScript and built for icons: paths
@@ -100,9 +249,29 @@ import { Star } from "lucide";                                              // o
 of 0.8 out of 255 on stroke edges). A single-color icon is rasterized once, at the exact
 screen size (sharp on HiDPI too), and the color is applied on the GPU: changing the color, on
 hover for example, costs nothing. `strokeWidth` changes the thickness of outline icons, as in
-Lucide. Gradients, text, filters, masks and `<use>` are not supported yet, so complex
+Lucide. `fill` makes them solid, also as in Lucide: it replaces the fill of the root `<svg>`
+(Lucide's is `none`), so the shapes are filled with the icon's color (`fill`) or another one
+(`fill="#e01b24"`) and keep their stroke; a fill that a group or shape sets itself, `none`
+included, still wins. It can be reactive (`fill={liked}`). Gradients, text, filters, masks and `<use>` are not supported yet, so complex
 illustrations should be turned into PNG. React packages (`lucide-react`,
 `@phosphor-icons/react`) don't work: use `lucide-static`, `lucide` or `@phosphor-icons/core`.
+
+Many icons: let the CLI write the imports into one module instead of by hand.
+
+```sh
+bun add lucide-static
+nodebuilder icons add play pause heart arrow-left       # -> src/icons.ts (--out to change)
+nodebuilder icons add heart-fill house --from @phosphor-icons/core   # weights by suffix
+nodebuilder icons list arrow                            # names containing "arrow"
+```
+
+Each icon becomes one sorted, deduplicated line, `import arrowLeft from
+"lucide-static/icons/arrow-left.svg" with { type: "text" }; export { arrowLeft };` (camelCase
+name; the rest of the file is kept), so `import { arrowLeft } from "./icons.js"` gives the SVG
+text and `nodebuilder package` embeds it. Each file is checked in `node_modules`; an unknown
+name fails with close matches (`did you mean heart-crack?`) and writes nothing. Not
+`export { default as x } from "x.svg" with { type: "text" }`: Bun drops the attribute on a
+re-export and gives the file's path; the command rewrites such lines it finds.
 
 ### Freehand drawing
 
@@ -117,16 +286,28 @@ illustrations should be turned into PNG. React packages (`lucide-react`,
 
 `<Canvas>` draws with antialiased GPU primitives: thick lines with round, butt or square
 caps, filled polygons (concave ones included), circles and arcs (pie, donut, gauges) and
-text. Coordinates are local to the canvas; `g.width` and `g.height` give its size. Signals read
-in `draw` are tracked: changing one of them redraws. Geometry is computed when the data
-changes, not every frame. Limits: a self-intersecting polygon is not drawn, and lines with a
-translucent color get darker at the joins.
+text. Coordinates are local to the canvas; `g.width` and `g.height` give its size. `draw` is
+reactive: it runs inside an effect, so the signals it reads (data, `theme` colors) are tracked
+and changing one of them redraws. Geometry is computed when the data changes, not every frame.
+`g.text(text, x, y, color, size?, bold?, { maxWidth, ellipsis, weight, italic, letterSpacing })`
+draws one line; with `maxWidth` text that does not fit is cut and ends in "…" (`ellipsis:
+false` just cuts it; nothing is drawn when not even the "…" fits); `weight` wins over `bold`.
+`g.measureText(text, size?, bold?, { weight, italic, letterSpacing })` (`{ width, height }`)
+measures it, to align it.
+Lines take a dash pattern (`g.line(..., cap, [4, 3])`, `g.polyline(..., { dash })`).
+`g.linearGradient(x0, y0, x1, y1, stops)` returns a gradient (from offset 0 at the first point
+to 1 at the second, in canvas coordinates) that every shape takes in place of a color:
+`g.polygon(area, g.linearGradient(0, 0, 0, g.height, ["#3584e480", "transparent"]))`.
+Limits: a self-intersecting polygon is not drawn, and lines with a translucent color get darker
+at the joins.
 
 ### Charts
 
 ```tsx
 import { LineChart, Line, Area, AreaChart, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Legend } from "@nodebuilderjs/core/charts";
+
+const sales = [{ month: "Jan", revenue: 120, target: 100 }, { month: "Feb", revenue: 150, target: 110 }];
 
 <LineChart data={sales} height={240}>         {/* data can be a signal: the chart follows it */}
   <CartesianGrid vertical={false} />
@@ -236,6 +417,11 @@ const [width, setWidth] = createSignal(0);
   `scrollTo({ x, y })`, `scrollX` and `scrollY`. `ref` is called when the widget is created,
   before layout; a `focus()` or `scrollIntoView()` at that point takes effect as soon as the
   widget enters the tree.
+- `ariaLabel` (any widget, fixed or a function) names an element that has no text, such as an
+  icon-only button: `<Button ariaLabel="Play">`. Tests find it with `findByLabel` (see
+  [Testing](#testing)). The window's title-bar buttons are labelled `"Minimize"`,
+  `"Maximize"`/`"Restore"` and `"Close"`, and a `Tooltip` gives its text to a trigger without
+  a label. There is no screen reader support yet (see the limitations).
 
 ### Scrolling
 
@@ -354,9 +540,12 @@ const panel = createPresence(open, { enter: 180, exit: 120 });
   `color={theme.text.secondary}` keeps the color from that moment. The built-in widgets
   already follow it.
 - `animate(from, to, onUpdate, { duration, easing, onDone })` returns a function that stops it;
-  `createTween(source)` follows a value; `createPresence(when)` gives `mounted` (stays `true`
-  until the exit finishes, for use in `<Show>`) and `progress` (0 to 1). Curves in `easing`
-  (`linear`, `easeIn`, `easeOut`, `easeInOut`); `mixColor(a, b, t)` blends colors.
+  `createTween(source, { duration, easing })` follows a value; `createPresence(when, { enter,
+  exit, easing })` gives `mounted` (stays `true` until the exit finishes, for use in `<Show>`)
+  and `progress` (0 to 1). Durations in ms (default 200; presence 180 in, 120 out), default
+  curve `easing.easeOut` (also `linear`, `easeIn`, `easeInOut`, or any `(t) => number`).
+- `mixColor(a, b, t)` blends two colors into `"#rrggbbaa"`, alpha included, in premultiplied
+  space like CSS: `mixColor("#ff0000", "transparent", 0.5)` is red at half alpha, not gray.
 - `Dialog`, `Select`, `Tooltip` and `Toggle` already animate. Without a window (in tests) every
   animation finishes immediately; `frames()` from `@nodebuilderjs/core/testing` controls time.
 
@@ -379,6 +568,27 @@ import { Row, Text, theme } from "@nodebuilderjs/core";
 - `maxLines`: truncates and ends the last line with "…"; `maxLines={1}` shortens a single line.
 - `textAlign` (`"start"`, `"center"`, `"end"`) and `lineHeight` (a multiple of the font's line
   spacing, default 1).
+- `fontWeight` (1..1000, as in CSS: 300 light, 400 regular, 600 semibold, 700 bold, 900
+  black) picks the closest face the system font has (a variable font gets exactly that
+  weight); `bold` is shorthand for 700 (`bold={false}`: 400), and on the same widget
+  `fontWeight` wins. `italic` uses the italic face, or slants the upright one when the family
+  has none. `letterSpacing` (px, may be negative) goes after every character, the last one
+  too, as in browsers; it turns ligatures off. All three are inherited, like `fontSize`:
+  `<Column fontWeight={500}>`. Wrapping, selection and `underline` follow them.
+
+```tsx
+import { Text } from "@nodebuilderjs/core";
+
+<Text fontWeight={300} fontSize={28}>Light headline</Text>;
+<Text fontSize={12} bold letterSpacing={1.5}>SECTION</Text>;
+<Text italic>An aside</Text>;
+```
+
+- `underline`: a line under each line of text, in the text color (it follows wrapping,
+  `textAlign` and the "…" of `maxLines`). Like `color`, `fontSize` and `bold` it is inherited,
+  so `<Button underline>` or a `Row underline` underlines the text inside; `underline={false}`
+  turns it off again below. `TextField` ignores it. A link that underlines on hover:
+  `<Text underline={hovered} onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}>`.
 - In a `Row` without room, children with `grow` shrink first (like Flutter's `Expanded`); text
   that wraps can shrink down to its longest word, and with `maxLines` down to the "…".
 
@@ -427,11 +637,13 @@ pushing its siblings, like CSS `transform`.
 ### Clipboard
 
 ```tsx
-import { Button, clipboard, createSignal } from "@nodebuilderjs/core";
+import { Button, Row, clipboard, createSignal } from "@nodebuilderjs/core";
 
 const [text, setText] = createSignal("");
-<Button label="Copy" onClick={() => clipboard.writeText(text())} />
-<Button label="Paste" onClick={async () => setText(await clipboard.readText())} /> // "" if there is no text
+<Row gap={8}>
+  <Button label="Copy" onClick={() => clipboard.writeText(text())} />
+  <Button label="Paste" onClick={async () => setText(await clipboard.readText())} /> {/* "" if there is no text */}
+</Row>
 ```
 
 Static text can be selected and copied with `<Text selectable>`: dragging selects,
@@ -442,6 +654,143 @@ It is the system clipboard (Wayland and X11), text only. `TextField` pastes with
 Shift+Insert (line breaks become spaces). Without a window, as in tests, it is an in-memory
 clipboard. On Wayland, the compositor only accepts a copy right after a key press or click
 (the usual case: Ctrl+C, a "Copy" button).
+
+### Window and title bar
+
+`<Window>` draws its own title bar (title and the minimize, maximize and close buttons), border,
+rounded corners and resize edges. For a header merged with the title bar (a search field next
+to the window buttons, as in music players and browsers), turn it off with
+`decorations={false}` and build your own:
+
+```tsx
+import { Row, Spacer, Text, TextField, Window, WindowControls, createSignal } from "@nodebuilderjs/core";
+
+const [query, setQuery] = createSignal("");
+<Window title="Player" decorations={false}>
+  <Row dragRegion height={56} align="center" gap={12} padding={[0, 12]}>
+    <Text bold>Player</Text>
+    <TextField width={280} value={query} onInput={setQuery} placeholder="Search" />
+    <Spacer />
+    <WindowControls />
+  </Row>
+  {/* content */}
+</Window>
+```
+
+- **`dragRegion`** works on any widget: pressing on it moves the window and a double click
+  maximizes or restores it. A press on something inside it that handles the press (a button,
+  a text field, anything clickable, focusable or with `onPointerDown`) stays with that
+  child, so plain text and empty space drag, controls don't.
+- **`<WindowControls />`** is the built-in bar's three buttons, labelled "Minimize",
+  "Maximize"/"Restore" and "Close"; it takes style props (`gap`, `padding`...).
+- Without decorations the border, corners and resizing from the edges stay. For your own
+  buttons, `windowControls.minimize()`, `.toggleMaximize()`, `.close()` and `.setTitle(t)`;
+  `windowState.maximized()`, `.activated()` (the window has focus), `.width()` and
+  `.height()` are reactive.
+
+### Testing
+
+`@nodebuilderjs/core/testing` runs the app in `bun test` without a window, with fake text
+metrics (8 px per character, 20 px lines) so layout is deterministic:
+
+```tsx
+import { expect, test } from "bun:test";
+import { Button, Row, Text, createSignal } from "@nodebuilderjs/core";
+import { click, findAllByText, findByLabel, interact, mount } from "@nodebuilderjs/core/testing";
+
+test("play and pause", () => {
+  const [playing, setPlaying] = createSignal(false);
+  const { root } = mount(() => (
+    <Row>
+      <Text>Blue in Green</Text>
+      <Button ariaLabel={() => (playing() ? "Pause" : "Play")} label="▶" onClick={() => setPlaying((p) => !p)} />
+      <Text>Blue in Green</Text>
+    </Row>
+  ));
+  click(findByLabel(root, "Play")!);
+  expect(playing()).toBe(true);
+  const ui = interact(root); // real event delivery: hit testing, hover, focus, capture
+  ui.press(findByLabel(root, "Pause")!);
+  ui.release(findByLabel(root, "Pause")!);
+  expect(playing()).toBe(false);
+  expect(findAllByText(root, "Blue in Green")).toHaveLength(2);
+});
+```
+
+- `findByText`/`findAllByText` match `Text` content (a string or a RegExp);
+  `findByLabel`/`findAllByLabel` match `ariaLabel`; `findAll(root, predicate)` is free-form.
+  All of them also search open overlays.
+- `click(node)` calls the nearest `onClick` directly; `interact(root)` delivers pointer and
+  keyboard input like a window does (`hover`, `press`, `release`, `drag`, `scroll`, `key`,
+  `type`, plus `down`/`up`/`move` at window positions). `frames()` controls time for
+  animations.
+- `click` and the node helpers of `interact` throw when a user could not reach the node: it
+  is culled (outside the visible area in the last layout, e.g. overflowing a `clip` panel or
+  a `Scroll`) or its center is clipped by an ancestor or the window. The error names the node
+  and the ancestor; bring it into view with `scrollIntoView()` and `relayout()`, or give it
+  room. Window positions (`down(x, y)`...) are not checked.
+- `layoutWarnings()` (returned by `mount`, or `layoutWarnings(root)`) lists the overflow
+  warnings of the last layout (see Layout); `expect(layoutWarnings()).toEqual([])` catches a
+  child hidden by a too-narrow panel before a click finds it. `mount` does not fail on them by
+  itself: a deliberate overflow (a clipped marquee) is allowed.
+- **Text metrics:** fake by default. `useFakeTextMetrics({ charWidth, lineHeight })` changes
+  them; `useRealTextMetrics()` makes this and every later `mount` measure with the installed
+  fonts (the native core's FreeType + HarfBuzz, still no window) and returns a function that
+  puts the previous metrics back. Real metrics catch overflow that 8 px per character hides,
+  but they depend on the machine's fonts: assert relations ("fits", "narrower than"), not
+  exact pixels, and guard with `test.skipIf(!canUseRealTextMetrics())`.
+
+```tsx
+import { afterEach, expect, test } from "bun:test";
+import { Row, Text } from "@nodebuilderjs/core";
+import { canUseRealTextMetrics, layoutWarnings, mount, useFakeTextMetrics, useRealTextMetrics } from "@nodebuilderjs/core/testing";
+
+afterEach(() => useFakeTextMetrics());
+
+test.skipIf(!canUseRealTextMetrics())("the header fits with real fonts", () => {
+  useRealTextMetrics();
+  const { root } = mount(() => (
+    <Row width={240} clip>
+      <Text>Recently played</Text>
+    </Row>
+  ));
+  expect(layoutWarnings(root)).toEqual([]);
+});
+```
+
+#### Seeing the UI: screenshots without a window
+
+Tests check boxes and draw commands, not how the result looks. A screenshot renders the real
+pixels (fonts, colors, shadows, icons, images) with the GPU but **no window and no display
+server** (EGL surfaceless: works in CI, containers and agent sandboxes):
+
+```sh
+nodebuilder screenshot src/main.tsx shot.png                    # the app at its <Window> size
+nodebuilder screenshot src/main.tsx shot@2x.png --scale 2 --theme dark --width 1024 --height 700
+```
+
+The command runs the app with `NB_SCREENSHOT=<out.png>` set, so `run()` lays out, lets
+animations finish on a simulated clock (`--wait-frames <n>` to stop earlier), renders one
+frame offscreen, writes the PNG and exits. In tests:
+
+```tsx
+import { expect, test } from "bun:test";
+import { Box } from "@nodebuilderjs/core";
+import { canScreenshot, mount, savePNG, screenshot } from "@nodebuilderjs/core/testing";
+
+test.skipIf(!canScreenshot())("the banner is red", () => {
+  const { root } = mount(() => <Box height={40} background="#e01b24" />, { width: 200, height: 40 });
+  const shot = screenshot(root, { scale: 2 }); // 400x80 device pixels, real text metrics
+  expect(shot.pixel(10, 10)).toEqual([0xe0, 0x1b, 0x24, 255]);
+  savePNG(shot, "banner.png"); // or shot.toPNG()
+});
+```
+
+`screenshot(root | view, { width, height, scale, background })` returns `{ width, height,
+scale, rgba, pixel(x, y), toPNG() }`; `rgba` has straight (not premultiplied) alpha, rows top
+to bottom, and what nothing covers stays transparent (the window's rounded corners too). The
+tree is laid out with real fonts for the shot and gets its own metrics (fake, by default) back afterwards.
+Pixels depend on the installed fonts and GPU driver: compare colors at points, not whole images.
 
 ## Distributing
 
@@ -553,7 +902,13 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
 ## Current limitations
 
 - Linux x64 only (arm64, Windows and macOS are on the roadmap).
-- Text with a single font (emojis don't show up); a word longer than the line overflows.
+- Screenshots (`nodebuilder screenshot`, `screenshot()`) need a GPU driver with EGL
+  (Mesa or NVIDIA); a process that took one can't open a window afterwards.
+- Text weights come from the system font's files (or its `wght` axis); a family without a
+  weight uses the closest one (no synthetic bold). A word longer than the line overflows. Characters the UI font lacks (symbols, CJK, emoji) come from the
+  system's fallback fonts and color emoji are drawn in color (Noto Color Emoji and other
+  CBDT, sbix or COLRv0 fonts; COLRv1-only fonts are not rendered in color). No bidi: a
+  right-to-left run is shaped, but lines are not reordered.
 - Text field without selection, copy or undo (paste works).
 - SVG only in the icon subset (no gradients, text, filters); AVIF/HEIC depend on the system
   `libheif`.
@@ -566,6 +921,8 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
   accessibility or IME (keyboards for Asian languages).
 - `opacity` is applied to each thing drawn, not to the group: overlapping children
   show through each other.
+- Linear gradients only (no radial or conic ones), as backgrounds and Canvas fills; borders,
+  text and shadows are solid colors.
 - Scrolling without inertia or animation (the wheel and keys jump straight there), without
   auto-scroll when dragging a selection to the edge and without repeat when holding the click
   on the scrollbar track.

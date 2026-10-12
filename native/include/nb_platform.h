@@ -40,6 +40,19 @@ void nb_platform_resize(uint32_t edges);        // interactive resize (NB_EDGE_*
 void nb_platform_set_maximized(bool maximized);
 void nb_platform_minimize(void);
 
+// ---- offscreen rendering (screenshots) ---------------------------------------
+
+/**
+ * JS thread. Makes a GLES2 context current with no window, no display server and no event
+ * pump, with a `buffer_w` x `buffer_h` RGBA8 framebuffer bound: what the renderer draws then
+ * lands there, to be read back with glReadPixels. The context is created on the first call and
+ * kept (the next call only resizes the target). The core never calls it while a window is open
+ * (both would share the renderer's GL objects). On failure: false and the reason in `error`.
+ */
+bool nb_platform_offscreen_begin(int buffer_w, int buffer_h, char *error, size_t error_size);
+/** JS thread: releases the offscreen context, if any. */
+void nb_platform_offscreen_close(void);
+
 // ---- clipboard (plain text) ------------------------------------------------
 
 /** Offers `utf8` (copied) as the clipboard's content until another client takes it over. */
@@ -65,8 +78,23 @@ void nb_platform_flush(void);
 
 // ---- fonts ------------------------------------------------------------------
 
-/** Path of the system UI font file for NB_FONT_REGULAR / NB_FONT_BOLD (malloc'd), or NULL. */
-char *nb_platform_font_path(int font);
+/**
+ * JS thread. The system UI font file closest to `weight` (1..1000, CSS scale: 400 regular, 700
+ * bold) and `italic`: the path (malloc'd) or NULL, the face index inside it (collections, named
+ * instances of variable fonts) in *face_index, and *oblique = true when italic was asked but
+ * the match is upright (the core slants it). A variable match gets its `wght` axis set by the
+ * core, so it need not be the exact weight. Called once per (weight, italic).
+ */
+char *nb_platform_font_path(int weight, bool italic, int *face_index, bool *oblique);
+/**
+ * JS thread. A font file with a glyph for `codepoint`, to draw what the UI font lacks: the
+ * system's fallback order for that `weight` and `italic`, or, when `emoji`, only color fonts
+ * (emoji presentation; weight and italic ignored). Returns the path (malloc'd) and the face
+ * index inside it (font collections) in *face_index, or NULL when no font has it. May be slow
+ * (the core caches the answer per codepoint and font); the first call per font may build the
+ * fallback list.
+ */
+char *nb_platform_font_fallback(uint32_t codepoint, int weight, bool italic, bool emoji, int *face_index);
 
 // ---- image codecs -----------------------------------------------------------
 

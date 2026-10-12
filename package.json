@@ -1,6 +1,6 @@
 {
   "name": "@nodebuilderjs/core",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "Native Linux UI in TypeScript: TSX components with SolidJS-style reactivity, drawn by its own native core (Wayland/X11 + GLES2 + FreeType/HarfBuzz). No DOM, no Electron, no GTK/Qt.",
   "keywords": [
     "gui",
@@ -67,6 +67,7 @@
   "scripts": {
     "build:native": "sh scripts/build-native.sh",
     "typecheck": "tsc --noEmit -p .",
+    "check:snippets": "bun scripts/check-snippets.ts",
     "test": "bun test",
     "counter": "bun examples/counter.tsx",
     "todo": "bun examples/todo.tsx",

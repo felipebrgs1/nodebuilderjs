@@ -21,7 +21,7 @@ for the rules and conventions for anyone changing the code, see [AGENTS.md](AGEN
 ┌────▼──────────────────────────── portable core (native/core/) ───────────────┐
 │ addon.c         N-API surface, event queue, threadsafe function              │
 │ render_gles2.c  one shader, one vertex format, one batch per frame           │
-│ text.c          HarfBuzz (shaping) + FreeType (glyphs) + texture atlas       │
+│ text.c          HarfBuzz + FreeType, font fallback, alpha and color atlases  │
 └────┬─────────────────────────────────────────────────────────────────────────┘
      │  nb_platform.h contract (window, events, fonts)
 ┌────▼──────────────────────── OS backend (native/platform/linux/) ────────────┐
@@ -29,7 +29,7 @@ for the rules and conventions for anyone changing the code, see [AGENTS.md](AGEN
 │ wayland.c    xdg-shell, EGL, pointer, keyboard (xkb + compose), cursor       │
 │ x11.c        Xlib + EWMH, EGL, XIM, Xcursor, XRandR                          │
 │ pump.c       poll() thread that signals when there are events                │
-│ fonts.c      fontconfig                                                      │
+│ fonts.c      fontconfig: UI font, fallback order per codepoint               │
 │ codecs.c     AVIF/HEIC via libheif (dlopen, optional)                        │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -138,10 +138,27 @@ the fps cap on fast monitors, frames are skipped with `native.requestFrame()`, w
 without drawing. X11 has no frame callback: the pacing comes from a timer at the monitor's
 refresh rate (XRandR).
 
+Every frame request carries a reason: `inv` (`invalidate()`, i.e. the tree changed), `ev` (a
+native event: `configure`, or input changing hover/scroll state) or `raf` (frame callbacks
+still pending after a frame). The first request since the last frame is the frame's reason;
+`NB_STATS` counts them and `NB_TRACE=frames` prints them with the requesting stack. A request
+made while a frame is laid out or painted (after the `requestAnimationFrame` callbacks) is
+marked `[in frame]`: if that keeps happening for 30 frames with no other request, nothing is
+changing and the app is stuck redrawing; outside production (`NODE_ENV`), `run()` warns once
+with the top of that stack.
+
+`run()` is `runWith(loadNative(), ...)`; `runWith` takes the native core and hooks (`env`,
+`now`, `log`, `warn`) so `test/app.test.tsx` drives the whole loop with a fake core: it
+counts `render` calls while sending `configure`, `frame` and pointer events.
+
 ## Layout
 
 `src/render/layout.ts` is a simplified flexbox: `direction`, `gap`, `padding`, `grow`, `align`
-(default `stretch`), `justify`, `min/max`, and `position: "absolute"` with `left/top`.
+(default `stretch`, overridden per child by `alignSelf`), `justify`, `min/max`, and
+`position: "absolute"` with `left/top/right/bottom`. Absolute children are placed after the
+in-flow ones, from the content box and minus the scroll offset (they scroll with the content);
+both edges of an axis without a size stretch them (`absoluteSpan`), and a wrapping child gets
+its height at that width (`heightAt`).
 
 Shrinking follows CSS's `min-size: auto`: a child does not get smaller than its own content,
 unless it is scrollable, clips its content (`clip`) or has an explicit `minWidth`/
@@ -171,9 +188,69 @@ shrink. Measured on 2026-10-12 in the same session: layout of `bench` (1000 chan
 2.5 → 2.7 ms and of the 500-row table 2.5 → 2.7 ms per frame; the first version, without
 these shortcuts, cost 7.9 and 4.4 ms.
 
+**`aspectRatio`** joins the same machinery: a box with a ratio and no fixed size sets `wraps`
+and also `fluid` (propagated up like `wraps`), because past its natural width its height
+keeps growing, so `heightAt` must not take the "wide enough" shortcut. `heightAt` returns
+`width / ratio` (or the content's height, if taller; a measured node such as `Image` takes the
+ratio as is). The other direction is resolved where the height is known: a fixed `height`
+gives the width (`ratioWidth`, used by `crossSize` and grid cells), and a child stretched in a
+row whose inner height is known takes `height * ratio` as its flex basis (`rowBasis`).
+
+**Grid** (`direction: "grid"`, the `Grid` widget) is laid out by `layout.ts` itself, not by
+chunking children into rows: `<For>` keeps inserting into one parent and a change only
+reflows. Cells are `(inner - gaps) / columns` wide (`cellWidth`); each row is as tall as the
+tallest `heightAt(cell, cellWidth)` (`gridRows`), the same function serving `intrinsic`,
+`heightAt` and `minHeightAt` (with `heightFloor`). `placeGrid` stretches cells to their row
+(`align`/`alignSelf` otherwise; an `aspectRatio` cell keeps its shape, as CSS grid does) and
+culls through `place()` like any child; absolute children go through the shared
+`placeAbsolute`.
+
+**`wrap`** on a Row/Column reuses the flex code per line: `wrapLines` breaks the children at
+the inner main size by their natural size (a line always takes at least one child), then calls
+`mainSizes` for each line, so `grow` and shrinking stay inside it, and measures the line's
+thickness (its thickest child). The same function serves `heightAt`, `minHeightAt` (with
+`heightFloor`) and `placeWrapped`, which applies `justify` and `alignSelf` inside each line and
+stacks lines from the start, `rowGap` apart (no `align-content`). A wrapping Row is one more
+"height depends on width" node: naturally a single line (`wraps` set, so `heightAt` keeps its
+"wide enough" shortcut), shrinkable down to its widest child (`shrinks()` reports SHRINKS_X).
+A wrapping Column breaks at the height it is placed with; its natural width is only known for
+a fixed `height`. Overflow is checked per line along it (only a child longer than the line
+overflows) and once across, for the stacked lines. Nodes without `wrap` take none of these
+paths (dashboard table, 500 rows: layout 2.77 → 2.79 ms/frame, within noise).
+
+**`margin`** lives only in the parent's arithmetic: a node's box (`x`, `y`, `width`,
+`height`) stays its border box, so painting and hit testing never see it. Every function that
+sums or compares children adds their margins (`intrinsic`, `heightAt`, the floors of
+`minWidth`/`minHeightAt`, `gridRows`, `wrapLines`); `mainSizes` runs flex on outer sizes
+(basis, `grow` clamps and shrink floors include the margin, as in CSS) and returns the box
+sizes; `crossSize` takes the cross margins out of the room, so a stretched child fits inside
+them; placement adds the start margin before a child and the end margin after it. Absolute
+children add theirs to the edge distances (`absoluteSpan`). Without a margin, the helpers
+return shared zeros and `mainSizes` skips its extra array (dashboard table, 500 rows: layout
+2.73 → 2.78 ms/frame, within noise).
+
 The wrapping itself lives in `render/text-wrap.ts`: greedy, at spaces, like CSS's
 `overflow-wrap: normal` (a word longer than the line overflows). Word widths are summed
 instead of measuring the whole line again; a line that fits whole is measured only once.
+Its "…" truncation is also exported as `truncate()`, which `<Canvas>`'s `g.text(..., { maxWidth })`
+uses. `underline` needs no opcode: `Text` paints a RECT under each line it drew, as wide as
+that line, a third of the descent below the baseline (ascent from the font metrics), with a
+thickness of `max(1, fontSize / 14)` and both snapped to device pixels so it stays sharp.
+
+**Weights, italics, letter spacing.** `inheritedFont()` (`widgets/props.ts`) resolves a
+node's `FontStyle` (`{ weight, italic, letterSpacing }`; the nearest `fontWeight` or `bold`
+up the tree gives the weight) and keeps the same object while nothing changed, so the
+per-node layout caches compare it by identity. The measurer receives it, and the TEXT
+command carries it as a font id (`weight * 2 + italic`, `fontId()`) plus the spacing. In
+`text.c` each font id gets its UI face from `nb_platform_font_path(weight, italic, ...)` the
+first time it is used (fontconfig's closest match; an upright match for italic comes back
+with `oblique` and gets a FreeType shear). A variable font is opened at its base index with
+the `wght` axis set (HarfBuzz ignores the coordinates FreeType gives a named instance), and
+gets one face per weight; a static file is shared by every weight that maps to it. Fallback
+fonts are asked per (weight, italic) too. Letter spacing is added in `layout_runs` after the
+last glyph of every HarfBuzz cluster, the last one included, so `width(a + b) = width(a) +
+width(b)` keeps holding: wrapping sums word widths and selection measures prefixes, and both
+stay exact. A nonzero spacing turns `liga`/`clig` off, as CSS does.
 
 **Culling:** each node that clips (`Scroll`, `clip`, the `Window`) narrows the visible region
 passed to its children. A child entirely outside it (counting its shadow) gets its own box,
@@ -183,7 +260,7 @@ visible ones reach painting and HarfBuzz. Limitation: a descendant that overflow
 a culled node (e.g., an absolute popup) disappears along with it.
 
 The natural size of all children is still computed every frame, because the content height
-depends on them; each `Text` keeps its last measurement (text, size, bold) so this does not
+depends on them; each `Text` keeps its last measurement (text, size, font) so this does not
 cost a trip to the global cache. Incremental layout is on the
 [roadmap](ROADMAP.md).
 
@@ -237,6 +314,31 @@ because it tests each child's box before descending (a list has many children of
 Computing every frame whether each subtree can shrink cost ~7% of the layout; that is why
 `shrinks()` only runs when something needs to shrink.
 
+### Overflow warnings
+
+After placing a container's in-flow children, `place()` calls `checkOverflow()`
+(`src/render/overflow.ts`). It compares what the children need along the container's
+direction (their sizes after shrinking, so wrapping text and `grow` children have already
+given up what they can) with the inner size, and across it the widest child with the inner
+cross size; an axis the container scrolls on is skipped. That is two comparisons per
+container in the ordinary frame, and culled subtrees are never visited. Only when something
+overflows does it look for the first child that reaches past the visible region `place()`
+was given (narrowed by every clipping ancestor and the window), then for the nearest
+clipping node that cuts it off: a `Scroll` along that axis means the excess is reachable by
+scrolling, so nothing is reported; otherwise a warning names the container, the child, the
+clip (or "the window") and the numbers, and `UINode.overflow` holds the excess for
+`debugTree()` (`[overflow +42]`). Spilling content that stays visible is not reported.
+
+Warnings are collected per root for the last layout (`overflowWarnings(root)`), never
+printed by layout itself: tests read them with `layoutWarnings()`, and `run()` prints each
+one once per session (keyed by the container's path from the root, the child and the axis)
+when not in production (`NODE_ENV=production` or a packaged executable, detected by Bun's
+`/$bunfs/` in `import.meta.url`). Measured on 2026-10-12 without a window (sidebar + 1000-row
+table, 400 layouts x 5 runs alternating with the check disabled): 1.10–1.17 ms both ways,
+within the noise. With a window (`NB_STATS`, alternating runs): `bun run bench` layout
+1.67–1.68 → 1.60–1.65 ms; `bench:dashboard` (500-row table) 2.52–2.70 → 2.61–2.75 ms (means
+2.60 → 2.69), overlapping ranges.
+
 ### Overlays
 
 `<Overlay>` leaves a zero-size marker (`position: "absolute"`) where it was declared and
@@ -266,7 +368,7 @@ Painting does not call the C node by node: `render/paint.ts` writes everything i
 | Op | Code | Following floats |
 |---|---|---|
 | RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
-| TEXT | 2 | x y(line top) size font(0/1 bold) · r g b a · index into `texts[]` |
+| TEXT | 2 | x y(line top) size font id (weight * 2 + italic) · r g b a · index into `texts[]` · letterSpacing |
 | CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
@@ -274,6 +376,7 @@ Painting does not call the C node by node: `render/paint.ts` writes everything i
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · start cap, end cap (0 butt, 1 round) |
 | TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
 | ARC | 9 | cx cy · outer radius, inner radius · start, sweep (radians; 0 = up, clockwise) · r g b a |
+| GRADIENT | 10 | x0 y0 x1 y1 · n · n × (offset r g b a): fills the next op (see below) |
 
 The format exists in three places that must stay in sync: `native/include/nb.h`,
 `src/render/paint.ts` and `native/core/render_gles2.c`.
@@ -286,11 +389,51 @@ shadows are computed in the fragment shader with distance functions.
 
 Colors are composited in **premultiplied alpha** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`), and the
 border is drawn over the background, as in CSS. Blending in "straight" alpha produces dark
-artifacts at the corners.
+artifacts at the corners. The vertex shader premultiplies each vertex color, so anything that
+varies across a shape (gradients, antialiasing coverage) is interpolated in premultiplied space.
+
+**Gradients.** A `GRADIENT` op is a prefix: it fills the op right after it (RECT, LINE,
+TRIANGLES, ARC; paint.ts sends that op in white, which multiplies the gradient). While it is
+active, `push_vertex` collects each triangle and cuts it along the stop lines
+(Sutherland-Hodgman on `t`, the position projected on the gradient line, interpolating all 19
+vertex floats); each piece's vertices are colored from the two stops around it. Between two
+stops a linear gradient is affine in position, so per-vertex colors are exact, at any angle and
+with any number of stops, and the shape keeps its own distance function: rounded corners,
+borders, line caps and arc edges work unchanged. Beyond the ends the end colors continue. The
+style form (`{ linear, angle }`) becomes a line in `render/gradient.ts` with the CSS length
+(`|w sin a| + |h cos a|`), so the far corners land on 0 and 1. Radial gradients are not
+affine and would need a shader mode; they are not implemented.
 
 Text: HarfBuzz does the shaping (accents, ligatures, kerning), FreeType rasterizes each glyph
 once and stores it in a texture atlas. The measurements the layout asks of the C are cached
 on the TypeScript side.
+
+**Font fallback.** A string the UI font cannot fully draw is cut into clusters (a base
+codepoint plus its combining marks, variation selectors, skin-tone modifiers, ZWJ-joined
+parts, tag sequences; regional indicators in pairs), so an emoji sequence never splits across
+fonts. Each cluster picks a face by its base: one with emoji presentation (emoji planes, the
+BMP `Emoji_Presentation` list, or a U+FE0F, ZWJ or skin tone in the cluster; U+FE0E forces
+text) asks for a color font first; otherwise the UI font if it has the glyph
+(`FT_Get_Char_Index`), then the platform's fallback, `nb_platform_font_fallback`. On Linux
+that is fontconfig's `FcFontSort` of the UI font's pattern (or of `emoji` with `color=true`),
+computed once and walked for the first font whose charset has the codepoint. The answer is
+cached per codepoint, so fontconfig is asked once per character the UI font lacks, and up to
+32 faces stay loaded (UI fonts included; past that, the UI font's tofu). Consecutive clusters
+with the same face become a run, each run is shaped with its own font and the pens
+concatenate. `measure` and `draw` walk the same runs, so layout and painting agree. Strings
+that are pure ASCII skip all of it (one run, no decoding). Ascent and descent always come from
+the UI font, so a fallback glyph never changes the line height.
+
+**Color emoji.** Noto Color Emoji is a CBDT font: bitmaps at fixed strikes (109 px), no
+outlines. For such a face the closest strike is selected with `FT_Select_Size`, HarfBuzz scales
+the advances from the font's own tables (`hb_font_set_scale` to the requested size) and each
+glyph is loaded with `FT_LOAD_COLOR` as premultiplied BGRA, box-filtered down to its final
+pixel size once, and stored in a second atlas, RGBA, allocated on the first color glyph.
+COLRv0 and sbix fonts go through the same path (FreeType renders them to BGRA); COLRv1
+(gradients) is not rendered by FreeType, so such fonts show their monochrome fallback glyphs.
+The renderer draws those quads with their own mode: the shader samples the color atlas
+(texture unit 2) and multiplies by the text color's alpha only, so `color` does not tint an
+emoji but `opacity` fades it. Both atlases are reset together when either fills up.
 
 Images: PNG, JPEG and WebP are decoded in TypeScript to RGBA (`src/image/png.ts` with the
 runtime's zlib, `jpeg.ts`, `webp.ts`). All three reproduce the output of the reference
@@ -314,7 +457,10 @@ coverage horizontally, with 16 samples per pixel vertically. `<Icon>` rasterizes
 physical size (logical size × scale), aligned to pixels. If all of the SVG's colors are
 `currentColor`, it rasterizes in white once, and the color enters as a tint in the IMAGE
 command: the shader multiplies the texels by it, and changing the color does not redo the
-icon.
+icon. The `fill` prop overrides the root `<svg>`'s fill in the style that `walk()` computes for
+it (attribute and `style=""` alike), so only shapes that inherit it change; a `fill` color
+makes the icon multicolor (rasterized with its colors, no tint). Rasterized bitmaps are cached
+by SVG, pixel size, stroke width, fill and, for multicolor icons, color.
 
 Drawing primitives (`<Canvas>`): each line segment is a rectangle oriented along the
 segment; the shader receives the position in that frame of reference and computes the
@@ -336,6 +482,37 @@ and those that use it pay ~15 KB.
 
 Coordinates: TypeScript works in logical pixels; the C multiplies by the screen's integer
 scale (Wayland: `preferred_buffer_scale`; X11: `Xft.dpi / 96`).
+
+### Offscreen rendering (screenshots)
+
+`renderOffscreen(width, height, scale, commands, texts)` runs the same `nb_render_frame` as a
+window, into a framebuffer object instead of a window surface, and reads it back. The
+platform contract has `nb_platform_offscreen_begin(w, h)`: on Linux (`offscreen.c`) an EGL
+display that needs no display server (`EGL_PLATFORM_SURFACELESS_MESA`, else the first
+`EGL_EXT_platform_device`), a GLES2 context with no surface (`EGL_KHR_surfaceless_context`;
+a 1x1 pbuffer otherwise) and an RGBA8 texture attached to an FBO (RGBA8 renderbuffers are an
+extension in GLES2). The context is created on the first shot (~30-140 ms, driver dependent)
+and kept; each shot after that costs a few ms plus layout and paint. `nb_render_read_pixels`
+flips the rows (GL reads bottom-up) and un-premultiplies: the output has **straight alpha**,
+like `decodeImage` and PNG. Uncovered pixels stay transparent, as in the window.
+
+The renderer's GL objects (program, glyph atlas, image textures) live in whichever context
+created them, so a process uses either a window or the offscreen renderer: `open()` after a
+shot and a shot with a window open both throw.
+
+On the TypeScript side, `captureTree` (`src/runtime/screenshot.ts`) swaps in, for the shot,
+real text metrics at the shot's scale (`measureText(..., scale)`), the display scale and the
+native image backend, lays out, paints, renders, and then puts the previous ones back (and
+lays the tree out again with them). The headless image backend of tests keeps the decoded
+pixels (`keepsPixels`), and a source painted earlier by another backend is uploaded again,
+so an icon a test already painted still shows up. `screenshot()` (testing) wraps it;
+`run()` checks `NB_SCREENSHOT` and calls `screenshotApp` instead of opening a window: it
+mounts the app as `run()` does, at the `<Window>`'s size (or `NB_SCREENSHOT_WIDTH/HEIGHT`),
+applies `NB_SCREENSHOT_THEME`, runs frames on a simulated 16 ms clock until no
+`requestAnimationFrame` callback is pending (at most 120, or exactly `NB_SCREENSHOT_FRAMES`),
+waiting one `setImmediate` per frame for the app's promises, renders at `NB_SCREENSHOT_SCALE`,
+writes the PNG (`src/image/png-encode.ts`: Sub/Up filter per row, zlib) and exits.
+`nodebuilder screenshot` (`cli/screenshot.ts`) only sets those variables and spawns the app.
 
 ## Events and threads
 
@@ -360,6 +537,16 @@ click and double click, pointer capture while a button is held, scrolling (wheel
 keys; see "Scrolling") and keyboard with Tab. Whatever belongs to the window (move, resize,
 cursor, clock) goes through an `InputHost` interface; `run()` wires it to the addon, and the
 tests (and `interact()` from `@nodebuilderjs/core/testing`) use a windowless host.
+The hit test walks siblings in paint order (`stacked()`: by `zIndex`, then child order, the
+same order `paintTree` draws them), top first. Like CSS overflow, it also descends into
+children outside the parent's box when the parent does not clip or scroll, so the part of an
+absolute badge that sticks out is clickable; the price is that a miss walks the visible,
+non-clipped subtrees instead of only the child that contains the point (`pointerMove` in the
+500-row table: ~1.1 → ~3.9 µs, still far below a frame).
+The testing helpers that target a node (`click`, `interact().press`...) first check what the
+hit test would see: the node and its ancestors are not `culled`, and its center lies inside
+every clipping or scrolling ancestor and the window. Otherwise they throw instead of letting
+the event miss silently.
 
 `createInput` registers focus on the root (`root.focusHost`); that is how a `ref`'s
 `focus()` and `blur()` reach the input. A `focus()` made while the widget is being created
@@ -374,7 +561,11 @@ The backend is chosen at runtime: Wayland if `WAYLAND_DISPLAY` is set, otherwise
 `DISPLAY` is set (`NB_BACKEND=wayland|x11` forces one). Both implement the same vtable
 (`native/platform/linux/linux.h`), so any new window feature goes into both.
 
-The window always draws its own decoration (title bar, buttons, resize edges). On X11, the
+The window always draws its own decoration (title bar, buttons, resize edges). The title bar
+is a node with `dragRegion`: `runtime/input.ts` turns a left press on it into an interactive
+move (`InputHost.move`) and a double click into `toggleMaximize`, unless a node between it and
+the pointer took the press (clickable, focusable or with `onPointerDown`). Custom title bars
+(`decorations={false}`) use the same path. On X11, the
 window manager's decoration is turned off and move/maximize use EWMH messages; without a
 compositor, the window loses transparency and rounded corners.
 
@@ -403,7 +594,7 @@ server.
 ## Porting to other systems
 
 Everything OS-specific sits behind `native/include/nb_platform.h`: opening a window, pumping
-events, cursor, font discovery. The core (`native/core/`) only includes Node-API, GLES2,
+events, cursor, font discovery, offscreen GL context. The core (`native/core/`) only includes Node-API, GLES2,
 FreeType, HarfBuzz and libc. A new OS is a `native/platform/<os>/` folder with the
 implementation of this contract and a `build.sh`. On Windows and macOS the planned path is
 ANGLE (GLES on top of Direct3D/Metal) or a new `render_<api>.c` with the same interface.
@@ -457,8 +648,17 @@ NB_STATS=1 bun examples/bench.tsx        # N=1000 MODE=one|all|static
 NB_STATS=1 bun examples/dashboard.tsx    # TAB=overview|table|logs|settings ROWS=500 CYCLE=30
 ```
 
-`NB_STATS=1` prints every second: fps, time per frame (state, layout, paint, native), node
-count, command buffer size, heap and RSS.
+`NB_STATS=1` prints every second: fps, time per frame (state, layout, paint, native), why the
+frames happened (`why: inv 3 ev 2 raf 0`, see "A frame"), node count, command buffer size,
+heap and RSS. An idle app prints nothing (no frames). If it does not go idle, `NB_TRACE=frames`
+shows, per frame, the reason and the top 6 stack frames of whoever asked:
+
+```
+frame 2: inv [in frame]
+    at invalidatesWhilePainting (src/app.tsx:9:5)
+    at paintTree (src/render/paint.ts:140:8) x4
+    at renderFrame (src/runtime/app.ts:234:5)
+```
 
 The comparisons use the same scene built in plain HTML and JavaScript, running in Electron
 (`compare/electron/`) and in a Tauri 2 shell (`compare/tauri/`, which loads the same files).

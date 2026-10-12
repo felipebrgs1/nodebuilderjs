@@ -47,12 +47,17 @@ bun run build:native        # builds native/build/<platform>-<arch>/nodebuilder.
 bun run typecheck           # tsc 7 --noEmit (~0.1 s)
 bun test                    # all tests, no window (~0.1 s)
 bun test test/svg.test.tsx  # one file; -t "pattern" filters by test name
+bun run check:snippets      # typechecks the ts/tsx snippets of README.md and the template docs
 bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll | widgets   # examples
 bun run dev                 # todo with --watch
 bun run bench               # stress test with NB_STATS=1 (env: N=1000 MODE=one|all|static)
 bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settings ROWS=500
                             #   LIVE=0 CYCLE=<frames per tab switch>)
 bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]
+bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --wait-frames N]
+                            # PNG of the app without a window or display server (EGL offscreen)
+bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
+                            # icon imports for an app (validated in its node_modules); `icons list [filter]`
 bun run npm:build           # npm packages in dist/npm/ (does not publish)
 scripts/compare.sh <label> <warmup-s> <sample-s> -- <command...>  # CPU/RAM of the process tree
 ```
@@ -77,19 +82,23 @@ from internal details, so that refactoring does not break tests for no reason.
 |---|---|
 | Reactivity, control flow (`For`/`Index`/`Show`/`Switch`) | signals and effects directly; count runs and disposals (a `Probe` with a counter in the body and in `onCleanup`) |
 | Errors (`ErrorBoundary`, `catchError`) | a component or effect that throws; check the `fallback`, that the scope was disposed (the effect no longer runs, `onCleanup` ran) and that, without a boundary, the error reaches the caller and the queue keeps going |
-| Widgets and layout | mount with `mount` (`@nodebuilderjs/core/testing`) or `insert` into a root `UINode`, run `layout()` and check `x`/`y`/`width`/`height` or `debugTree()`. Fake metrics: 8 px per character, 20 px line |
+| Widgets and layout | mount with `mount` (`@nodebuilderjs/core/testing`) or `insert` into a root `UINode`, run `layout()` and check `x`/`y`/`width`/`height` or `debugTree()`. Fake metrics: 8 px per character, 20 px line (`useRealTextMetrics()` for the installed fonts, `skipIf(!canUseRealTextMetrics())`) |
 | Painting and command buffer | `drawCommands(node)` / `decode(buffer)` from `test/helpers.ts` return named commands (`{ op: "line", x0, ... }`). A new draw primitive starts here |
+| Frame loop (when frames render) | `runWith(fakeNative, app, { maxFps: 1000 }, hooks)` from `runtime/app.ts` (see `test/app.test.tsx`): the fake records `render`/`requestFrame` and the test sends `configure`/`frame`/pointer events through `open`'s callback, then awaits a `setImmediate` tick. `hooks` inject `env`, `now`, `log`, `warn`. Close with `windowControls.close()` and reset the globals `run()` sets (text measurer, image backend, frame clock) |
 | Events (mouse, keyboard, focus) | `interact(root)` from `@nodebuilderjs/core/testing`, or `createInput(root, host)` from `runtime/input.ts` with a fake host that records move/resize/cursor and controls the clock |
 | Images and textures | `setImageBackend({ create, destroy })` records texture creation and release |
 | Decoders and rasterizers | "golden" tests: the reference output (libjpeg-turbo, libwebp, librsvg, ImageMagick) lives in `test/fixtures/`, generated once; compare byte for byte or with an explicit tolerance. Then fuzzing with flipped bytes and truncated files: every error is a format message (never a TypeError), and absurd dimensions are rejected before allocating (2^28 pixel limit) |
 | Addon (what runs without a window) | call the native function through `loadNative()` in a test; use `test.skipIf` when it depends on something optional in the system (e.g. libheif) |
+| Pixels (the C drawing: shaders, corners, AA, text, images) | `renderOffscreen()` in the addon or `screenshot(root)` from testing, behind `test.skipIf(!canScreenshot())`; assert colors at chosen points (fonts and drivers vary), not whole images |
 
 What cannot be tested automatically is documented when closing the task:
 
-- **Visual** (the drawing C code, shaders, corners, AA): open the example in the background
-  and capture the active window with `spectacle -b -n -a -o <scratch>/x.png`; inspect
-  pixels with `magick` (crop + `-filter point -resize 800%`). The automated test covers the
-  TS side (the emitted commands); the capture covers the C.
+- **Visual** (how it looks): `bun cli/nodebuilder.ts screenshot examples/x.tsx <scratch>/x.png`
+  (no window; `--scale 2`, `--theme dark`) and look at the PNG; inspect pixels with `magick`
+  (crop + `-filter point -resize 800%`). Pixel assertions go in tests via `screenshot()`
+  (see the table above). What the offscreen path cannot show (the window itself: CSD
+  resize edges, compositor transparency, X11 vs Wayland) still needs the example opened in
+  the background and `spectacle -b -n -a -o <scratch>/x.png`.
 - **System keyboard** (accents, dead keys, compose): the xkb -> text path is in C and can
   only be tested by actually typing; ask the user. From the key event onward (focus, Tab,
   TextField), use `interact().key/type`.
@@ -99,33 +108,46 @@ What cannot be tested automatically is documented when closing the task:
 
 ### Test organization
 
-- One file per subject: `core` (reactivity, tree, layout, culling), `control-flow`
+- One file per subject: `core` (reactivity, tree, layout, culling), `grid` (`Grid`, `aspectRatio`), `wrap` (`wrap` rows/columns), `margin`, `app` (`run()` with a
+  fake native: idle renders nothing, frame reasons, `NB_TRACE`, frame loop and overflow
+  warnings), `overflow` (overflow detection, `layoutWarnings()`), `control-flow`
   (`Show`, `Switch`/`Match`, `Index`, nesting without recreating components),
   `error-boundary` (errors, effect queue), `context`, `ref`
   (`ref`, programmatic focus and scrolling, `onResize`), `overlay`, `style` (`opacity`, `translate`),
-  `text` (line wrapping, alignment, `maxLines`, multi-line selection), `controls`
+  `text` (line wrapping, alignment, `maxLines`, multi-line selection), `font-fallback`
+  (fallback fonts and color emoji with real fonts, `skipIf` they are missing), `font-style`
+  (weights, italics and letter spacing with real fonts and pixels), `controls`
   (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `popups`
   (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets following the switch),
   `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
   (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
-  `input` (events),
-  `clipboard`, `text-selection`, `testing` (public helpers), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
+  `input` (events), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
+  `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
+  `clipboard`, `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
+  pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
 - Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
-  ~0.1 s; a test that needs more than that must have a reason.
+  ~0.5 s (most of it: the EGL context of `screenshot` and the spawns of `cli`); a test that
+  needs more than a few ms must have a reason.
 - Small fixtures (a few KB). Record where they came from (tool and version, as in
   `svg-LICENSES.md`) and the license of third-party files.
-- Code snippets in skills or the README are tested too: they must pass the typecheck.
+- Code snippets in skills, the template's AGENTS.md or the README are tested too:
+  `bun run check:snippets` typechecks every fenced `ts`/`tsx` block that has an `import` (one
+  tsc run, kept out of `bun test`; `check-snippets.test.ts` covers only the extraction). A
+  fragment without imports is illustrative and skipped; `<!-- no-check -->` on the line before
+  the fence skips a block, `<!-- check -->` checks one without imports. Third-party packages
+  the docs suggest (`lucide`) are stubbed in the script.
 
 ### Before finishing a task
 
-- `bun run typecheck && bun test` green; `bun run build:native` if you touched C.
+- `bun run typecheck && bun test` green; `bun run build:native` if you touched C;
+  `bun run check:snippets` if you touched a snippet in the README or the template docs.
 - **When closing a block, reread the tests of every modified area** (not just the new ones)
   and check that they are still correct and up to date: names and comments that describe
   today's behavior, cases that became trivial or redundant, and what is missing in the
   interaction with what changed (e.g. an old widget with the new prop). Fix in the same commit.
-- Visual change: an example opened and captured. Performance change: before and after
-  numbers.
+- Visual change: a screenshot of the example looked at (`nodebuilder screenshot`).
+  Performance change: before and after numbers.
 - Docs alongside, in English: README (public API, limitations), ARCHITECTURE (how it
   works), ROADMAP (item done), this file (structure, conventions) and the template skills
   (public API, new widget, resolved limitation, plus the table in `template/AGENTS.md`).
@@ -137,7 +159,8 @@ What cannot be tested automatically is documented when closing the task:
 src/                   one module per folder; relative imports with `.js`
   index.ts             public API (re-exports the modules)
   jsx-runtime.ts       own JSX runtime; jsx() only creates descriptions (ElementDesc)
-  testing.ts           @nodebuilderjs/core/testing: mount, findByText, click, interact
+  testing.ts           @nodebuilderjs/core/testing: mount, findBy/AllByText, findBy/AllByLabel, click, interact,
+                       layoutWarnings, screenshot/savePNG/canScreenshot, use{Fake,Real}TextMetrics
   theme.ts             lightTheme/darkTheme, `theme` (reactive getters), setTheme, colorScheme
   animation/index.ts   animate, createTween, createPresence, easing, mixColor
   assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts references it with preserve="true")
@@ -149,20 +172,23 @@ src/                   one module per folder; relative imports with `.js`
     context.ts         createContext/useContext (value stored in the owner scope)
   render/              tree -> layout -> command buffer
     node.ts            UINode (retained tree), Style, handlers, invalidate(), measureText(), displayScale()
-    layout.ts          simplified flexbox + culling
+    layout.ts          simplified flexbox (+ wrap) + grid (equal columns) + aspectRatio + culling
+    overflow.ts        overflow warnings: children cut off by a clip or the window (layoutWarnings, run() in dev)
     paint.ts           tree -> CommandBuffer (Float32Array) + parseColor
     shapes.ts          polyline (LINE segments) and fillPolygon (triangulation + AA fringe)
+    gradient.ts        linear gradients: stop offsets (CSS rules), the CSS gradient line of a box
     scrollbar.ts       clamped scroll position and scrollbar geometry (painting and input)
-    text-wrap.ts       <Text> line wrapping (greedy, at spaces) and maxLines with "…"
+    text-wrap.ts       <Text> line wrapping (greedy, at spaces), maxLines with "…", truncate()
   runtime/
-    app.ts             run(): window, frame scheduling, NB_STATS; wires input to the addon
+    app.ts             run()/runWith(): window, frame scheduling, NB_STATS/NB_TRACE; wires input to the addon
     input.ts           events -> UI: hit test, hover, cursor, focus, clicks, capture, scrolling, keyboard
     native.ts          loads native/build/<platform>-<arch>/nodebuilder.node (literal requires)
     frames.ts          frame clock: requestAnimationFrame queue, frameNow, animating()
     clipboard.ts       clipboard (text): in memory without a window, native with run(); read via event
+    screenshot.ts      captureTree: real metrics + native images, layout, paint, renderOffscreen
   widgets/             one file per widget; index.ts re-exports
-    props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps, inherited, interaction
-    containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
+    props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps (+ hoverStyle/pressStyle), inherited, interaction, createInteraction
+    containers.ts      Box, Column, Row, Grid, Scroll, Spacer, Divider, Card
     text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
     toggle.ts radio.ts slider.ts progress.ts   controls (Toggle, RadioGroup, Slider, ProgressBar/Spinner)
     select.ts tabs.ts tooltip.ts dialog.ts     on top of Overlay (Tabs opens nothing, but uses roving.ts)
@@ -175,6 +201,7 @@ src/                   one module per folder; relative imports with `.js`
     png.ts             PNG (all color types, tRNS, Adam7) via node:zlib
     jpeg.ts            baseline/progressive JPEG, CMYK/YCCK, EXIF; identical to libjpeg-turbo
     webp.ts            WebP VP8 (lossy), VP8L, alpha, first animation frame; identical to libwebp
+    png-encode.ts      PNG encoder (RGBA, Sub/Up filters, node:zlib) for screenshots
   svg/                 SVG for icons (<Icon>)
     parse.ts           XML, presentation attributes, style="", transform
     render.ts          shapes -> geometry -> bitmap
@@ -192,7 +219,7 @@ native/
   include/nb_platform.h CONTRACT each OS implements (window, event pump, fonts, codecs)
   core/                 portable, nothing OS-specific
     addon.c             N-API surface, event queue, threadsafe function
-    text.c              HarfBuzz + FreeType + glyph atlas
+    text.c              HarfBuzz + FreeType; font fallback by cluster, alpha atlas + RGBA color-emoji atlas
     render_gles2.c      GLES2 renderer: one shader, one vertex format, single batch; textures
   platform/linux/       Linux backend
     linux.h             nb_linux_backend vtable (internal to Linux)
@@ -200,8 +227,9 @@ native/
     wayland.c           Wayland (xdg-shell), EGL, pointer, keyboard (xkb + compose), cursor
     x11.c               X11 (Xlib + EWMH), EGL, XIM (dead keys), Xcursor, XRandR
     pump.c              poll() thread over the active backend's fds + exit eventfd
-    fonts.c             font discovery via fontconfig
+    fonts.c             font discovery via fontconfig: UI font + fallback (FcFontSort, per codepoint)
     codecs.c            AVIF/HEIC via libheif (dlopen; own declarations, no header)
+    offscreen.c         EGL context with no display server (surfaceless/device) + FBO, for screenshots
     build.sh            backend build (called by scripts/build-native.sh)
     protocols/          xdg-shell.xml (vendored; wayland-protocols is not installed)
   build/<platform>-<arch>/  output (names from process.platform/arch: linux-x64, ...)
@@ -210,7 +238,8 @@ test/            one file per module (bun:test; bunfig.toml limits bun test to t
   charts/        tests for src/charts (scales and each chart type)
   fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
 examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
-cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts
+cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts,
+                 icons.ts (`icons add/list`: writes an app's icon imports)
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces published together with core (see "Publishing to npm")
   linux-x64/     @nodebuilderjs/linux-x64: only the prebuilt addon (generated, not in git)
@@ -218,7 +247,7 @@ packages/        workspaces published together with core (see "Publishing to npm
                          .agents/skills/; index.js creates the links in .claude/skills/)
 lib/             JS + .d.ts for Node (generated by scripts/npm.ts, not in git)
 compare/         the same scenes in Electron, Tauri, Flutter and egui (benchmarks)
-scripts/         build-native.sh, measure.sh, compare.sh, npm.ts
+scripts/         build-native.sh, measure.sh, compare.sh, npm.ts, check-snippets.ts
 ```
 
 ## Mental model (flow of a frame)
@@ -270,7 +299,10 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   (`MaybeAccessor` of each `Style` field).
 - **When adding a field to `Style`**, also add it to `STYLE_KEYS` (`widgets/props.ts`);
   new handlers go in `Handlers` (`render/node.ts`) and `HANDLER_KEYS`.
-- Inherited through the tree: `color`, `fontSize`, `bold` (the `inherited` function).
+- Inherited through the tree: `color`, `fontSize`, `bold`, `fontWeight`, `italic`,
+  `letterSpacing`, `underline` (the `inherited` function; `inheritedFont()` resolves the
+  weight, where the nearest `fontWeight` or `bold` wins and `fontWeight` beats `bold` on the
+  same node). Text widgets measure and paint with that `FontStyle`.
 - A widget that opens something on top returns `[node, <Show><Overlay>]` (the `Overlay` stays
   outside the node, so the list's events do not bubble up through the trigger); the trigger
   keeps focus and handles keys while it is open.
@@ -278,8 +310,25 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   fades, leaves focus and the Tab order and changes the cursor; the control's handlers check
   the returned accessor. Keys the control uses (arrows in `Slider`) call `e.stop()`,
   otherwise they scroll the surrounding `Scroll`.
-- Every widget passes its props through `applyProps`: it is what wires style, handlers and
-  the `ref` (the `ref` receives the `UINode`, typed as `ElementRef`). New widgets too.
+- Every widget passes its props through `applyProps`: it is what wires style, handlers,
+  `ariaLabel` (into `UINode.ariaLabel`; `UINode.label` is the debug label), `dragRegion`
+  (a node flag, not a `Style` field) and the `ref` (the `ref` receives the `UINode`, typed
+  as `ElementRef`). New widgets too.
+- A control inside a drag region keeps the press because it is clickable, focusable or has
+  `onPointerDown` (`pointerDown` in `runtime/input.ts`); a new pressable widget needs one of
+  those, otherwise pressing it in a custom title bar moves the window. Taking the press only
+  blocks the window move: `onPointerDown` keeps bubbling to every ancestor until `stop()`,
+  past clickable nodes too (a parent's `pressStyle` shows like CSS `:active`); only `onClick`
+  stops at the innermost node that has one.
+- Handlers are **chained, never replaced**: `applyProps` adds the app's handlers (and the
+  ones from spread `createInteraction().props`, carried under a unique symbol key so a later
+  `onPointerEnter={...}` cannot drop them) after the node's; a widget that sets a handler
+  after `applyProps`/`interaction(node)` calls the previous one first (`Slider`, `TextField`).
+  `interaction(node)` is one tracker per node (widgets and `hoverStyle` share it).
+- `hoverStyle`/`pressStyle` use `UINode.override(key, value)`: while it is active, `set()`
+  only updates the base underneath, so theme effects and reactive props do not fight it and
+  the latest base comes back on leave. `hoverStyle` alone attaches only enter/leave (an
+  `onPointerDown` would make the node claim the press and break window drag regions).
 - Focus by click only (e.g. `<Text selectable>`, which needs focus for Ctrl+C):
   `focusable = true` and `tabStop = false`, so it stays out of the Tab order.
 - Color/size defaults come from `theme.ts`, not hard-coded in widgets. Theme colors go
@@ -322,6 +371,21 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   number reused: every backend fd is non-blocking. `nb_wl_dispatch()` never blocks
   (prepare_read/read_events/cancel_read).
 - Events to JS: fill an `nb_event` and call `nb_push_event()` **on the JS thread**.
+- **Offscreen** (`nb_platform_offscreen_begin`, JS thread, no pump): its own EGL display and
+  context, outside the window backends' vtable; the target is a texture FBO left bound for
+  `nb_render_frame`, and `nb_render_read_pixels` returns straight alpha, top row first. The
+  renderer's GL objects belong to one context, so `addon.c` refuses a window after a shot and
+  a shot while a window is open.
+- **Fonts:** `nb_platform_font_path(weight, italic, &index, &oblique)` gives the UI font
+  closest to a CSS weight and slant (`oblique`: an upright face stands in for italic, the core
+  slants it), `nb_platform_font_fallback(cp, weight, italic, emoji, &index)` a file (and face
+  index) that has `cp`, color fonts only when `emoji` (JS thread, may be slow: `text.c` asks
+  once per font id, caches fallbacks per codepoint and font id, and never calls it for
+  ASCII-only strings). Font ids are `weight * 2 + italic`; variable fonts get their `wght`
+  axis set in the core (FreeType). Letter spacing is added per HarfBuzz cluster in
+  `layout_runs`, shared by measure and draw. `text.c` keeps `measure` and `draw` on the same run itemization; color
+  glyphs go to the RGBA atlas and are drawn with `MODE_COLOR_GLYPH` (texture unit 2, only the
+  alpha of the text color applies).
 - After calls that may receive events (e.g. `eglSwapBuffers`), the core calls
   `nb_platform_flush()` and requests a delivery (`request_delivery()`).
 - Coordinates: JS works in **logical px**; C multiplies by the integer `scale`
@@ -349,7 +413,7 @@ Keep **`native/include/nb.h`, `src/render/paint.ts` and `native/core/render_gles
 | Op | Code | Following floats |
 |---|---|---|
 | RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
-| TEXT | 2 | x y(line top) size font(0/1 bold) · r g b a · index into `texts[]` |
+| TEXT | 2 | x y(line top) size font id (weight * 2 + italic, `fontId()`) · r g b a · index into `texts[]` · letterSpacing |
 | CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
@@ -357,13 +421,24 @@ Keep **`native/include/nb.h`, `src/render/paint.ts` and `native/core/render_gles
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · capStart capEnd (0 butt, 1 round) |
 | TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
 | ARC | 9 | cx cy · outer inner · start sweep (radians; 0 = up, clockwise) · r g b a |
+| GRADIENT | 10 | x0 y0 x1 y1 · n · n × (offset r g b a): a linear gradient that fills the next op only (that op's color multiplies it; paint.ts sends white) |
 
-Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes into
+Colors in 0..1, not premultiplied (the vertex shader premultiplies, so per-vertex colors
+interpolate premultiplied, like CSS). The renderer cuts the triangles of a gradient-filled op at
+the stop lines and colors their vertices: exact for linear gradients, any shape. A new op also goes into
 `decode()` in `test/helpers.ts`, which the tests use to read the buffer.
 
 ### Layout (render/layout.ts)
 - Flex: `direction` (column by default in `Column`/`Box`), `gap`, `padding`, `grow`,
-  `align` (**stretch** by default), `justify`, `min/max`, `position: "absolute"` (`left/top`).
+  `align` (**stretch** by default; `alignSelf` overrides it per child, read through `alignOf()`),
+  `justify`, `min/max`, `position: "absolute"` (`left/top/right/bottom` from the content box;
+  both edges without a size stretch, as in CSS; it scrolls with a `Scroll`'s content).
+- **Stacking:** `zIndex` orders siblings only (no global stacking contexts): `stacked(node)`
+  (`render/node.ts`) gives the children by zIndex, then child order (stable sort, and the
+  children array itself when none has a zIndex, so no allocation per frame). `paintTree`
+  and `hitTest` (`runtime/input.ts`) both use it; overlays stay above the tree. The hit test
+  descends into children outside the parent's box unless the parent clips or scrolls (CSS
+  overflow: an absolute badge sticking out is clickable there).
 - **Shrinking follows CSS `min-size: auto`:** a child does not shrink below its own
   content, unless it is `scrollable`/`clip` or has an explicit `minWidth/minHeight`.
   Wrapping text shrinks down to its longest word. Children with `grow` shrink first.
@@ -372,6 +447,32 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
   widths before their heights; a row, the opposite. A widget with its own measurement whose
   height changes with width defines `minContentWidth` (without it, layout assumes a fixed
   height and takes the shortcut).
+- **`aspectRatio`** (width / height) is "height depends on width" too: `intrinsic()` sets
+  `wraps` and `fluid` (no "wide enough" shortcut in `heightAt`, which returns `width / ratio`,
+  or the content if taller; measured nodes take the ratio as is). A fixed `height` gives the
+  width (`ratioWidth`); a child stretched in a row of known inner height gets
+  `height * ratio` as its flex basis (`rowBasis`).
+- **Grid** (`direction: "grid"` + `columns`, `rowGap`; the `Grid` widget): equal cells
+  (`cellWidth`), rows as tall as their tallest cell (`gridRows`, shared by `intrinsic`,
+  `heightAt` and `minHeightAt`), placed by `placeGrid`; cells stretch to the row unless
+  `align`/`alignSelf` says otherwise or they have an `aspectRatio`. Children stay in one
+  parent, so `<For>` stays keyed. Every `direction === "row"` check has a grid branch next
+  to it: a new layout function needs one too.
+- **`margin`** is outside the box: every size function adds the child's margins to it
+  (`intrinsic`, `heightAt`, `minWidth`/`minHeightAt` floors, `gridRows`, `wrapLines`), flex
+  (`mainSizes`) works on outer sizes and returns the box, `crossSize` subtracts the cross
+  margins from the room, and placement offsets by the start margins (`absoluteSpan` adds them to
+  the edges). `margins()`/`marginX()`/`marginY()` return shared zeros without a margin, and
+  `mainSizes` only allocates when a child has one. Overflow math counts them. Hit test and
+  paint use the box, so they ignore it.
+- **`wrap`** (Row/Column, not grid): `wrapLines` breaks the in-flow children into lines by
+  their natural main size and runs `mainSizes` per line (grow/shrink stay inside it);
+  `placeWrapped` places line by line (`justify`/`alignSelf` per line, lines packed at the
+  start, `rowGap` apart). A wrapping Row is "height depends on width": `intrinsic` = one line
+  (`wraps` set), `heightAt`/`minHeightAt` sum the lines, `shrinks()` reports SHRINKS_X and
+  `minWidth` is the widest child. A wrapping Column breaks at the height it is placed with; only
+  a fixed `height` gives it a natural width. Overflow is checked per line along it, and for the
+  lines stacked across.
 - `Scroll` = column with `scrollable = true` (vertical); `horizontal` = row with
   `scrollableX = true`; both = column with both flags. On the scrolling axis, it does not
   shrink its children; on the cross axis, each child gets at least the visible space without
@@ -388,8 +489,16 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
 - **Culling:** `place()` receives the visible region (narrowed by each node with clip/scroll).
   A child outside it gets its box but is marked `culled`: its subtree is not positioned,
   painted (`paintTree`) or hit-tested on click (`hitTest`). Coordinates of descendants of a
-  `culled` node are stale; never use them without checking the flag.
+  `culled` node are stale; never use them without checking the flag. A non-clipping parent
+  does not narrow the region, so a child sticking out of it is not culled; but a child
+  sticking out of a culled parent disappears with it.
 - Clip (`clip`/scroll) clips inside the border, with radius `radius - borderWidth`.
+- **Overflow warnings:** `place()` ends with `checkOverflow()` (`render/overflow.ts`): children
+  that need more than the inner size on an axis the node does not scroll, cut off by a clip or
+  the window (a `Scroll` on that axis does not count). Collected per root for the last layout,
+  never printed by layout: `run()` prints each once in dev, tests read `layoutWarnings()`. Keep
+  the ordinary path at two comparisons per container; anything costlier runs only when
+  something overflows.
 
 - `translateX/Y` add to the position in `place()` (after flex); everything else sees the
   shifted position. Overlays: `root.layers` is recomputed on every `layout()`; a test that
@@ -397,8 +506,12 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
 
 ## Performance
 
-- `NB_STATS=1` prints every second: fps, ms/frame (state, layout, paint, native), nodes,
-  command buffer size, heap and RSS.
+- `NB_STATS=1` prints every second: fps, ms/frame (state, layout, paint, native), why the
+  frames happened (`why: inv 3 ev 2 raf 0`: `invalidate()`, native/input events,
+  `requestAnimationFrame`), nodes, command buffer size, heap and RSS.
+- `NB_TRACE=frames` logs one line per frame with its reason and the top 6 stack frames of the
+  request (reactive plumbing removed); `[in frame]` = asked while that frame was being laid
+  out or painted. Stacks are only taken when tracing (and, in dev, for in-frame requests).
 - fps cap: `run(app, { maxFps })` or `NB_MAX_FPS`; default 120. On Wayland the frame stays
   aligned to vsync: we skip vblanks with `native.requestFrame()` (commit without drawing).
   On X11 pacing is timer-based (not aligned to vsync). 1.5 ms tolerance so 144 Hz does not
@@ -484,8 +597,11 @@ packages, all with the version from the root `package.json`:
 ## Current limitations
 
 - TextField: no selection, copy, undo (paste exists); Text: a word longer than the line
-  overflows (selection only with `selectable`, no Shift+click or keyboard); a single font
-  (no fallback: emojis do not show up).
+  overflows (selection only with `selectable`, no Shift+click or keyboard); weights only as
+  the system font has them (no synthetic bold; italic falls back to a slanted upright face),
+  no font family choice; `underline` is painted in TS and
+  `TextField` ignores it. Font fallback and color emoji work (CBDT/sbix/COLRv0), but COLRv1
+  fonts are not drawn in color and there is no bidi reordering.
 - `<Canvas>`: a self-intersecting polygon is not drawn; translucent lines get darker at the
   joins (each segment is drawn separately); adjacent pie slices show a thin light seam
   (both edges antialiased, as in browsers); triangulating radial shapes with thousands of
@@ -496,6 +612,8 @@ packages, all with the version from the root `package.json`:
   (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms, WebP 105–180 ms); no mipmaps (downscaling
   an image a lot makes it jagged) and no @2x variant.
 - `opacity` multiplies the alpha of each command (it is not group opacity); no `scale`/`rotate`.
+- Gradients: linear only (backgrounds and Canvas fills); no radial/conic; borders, text and
+  shadows are solid.
 - `<ErrorBoundary>` does not cover the event handler's own code (only the effects its
   writes trigger); `<Switch>` does not accept a function child that returns `<Match>`
   (the `Match`es must be in the JSX, so they can be read without running anything).
@@ -506,10 +624,13 @@ packages, all with the version from the root `package.json`:
 - Dark theme does not follow the system (missing the XDG portal over D-Bus); a theme color
   copied as a fixed value (`color={theme.x}`) does not follow the switch. Animations without
   `scale`/`rotate` or declarative `transition`.
+- Screenshots need EGL (Mesa surfaceless or an EGL device); a process that took one cannot
+  open a window afterwards (and vice versa).
 - No accessibility (AT-SPI), multi-window, IME
   (text-input-v3), DnD, real fractional scaling (KDE 125% renders at 2x and downscales).
 - Window always uses its own decoration (CSD): title bar, move, maximize,
-  resize from the edges (6 px). `xdg-decoration` (SSD on KDE) not yet.
+  resize from the edges (6 px); `decorations={false}` swaps the bar for the app's own
+  (`dragRegion` + `<WindowControls />`). `xdg-decoration` (SSD on KDE) not yet.
 - X11: timer-based frames (no Present extension, so there may be tearing without a
   compositor and ~5–10% lower fps than on Wayland); integer scale only; tested only via
   XWayland (KDE). A pure X11 session and the no-compositor path have not been tested yet.
@@ -550,6 +671,17 @@ packages, all with the version from the root `package.json`:
   `create-nodebuilderjs` renames it when copying. Relative symlinks also do not survive
   pack/`cpSync`: that is why the `.claude/skills/` links are created by `index.js`.
 - `Object.keys(native)` returns `[]` (non-enumerable properties); it is not an error.
+- Bun drops import attributes on re-exports: `export { default as x } from "x.svg" with
+  { type: "text" }` gives the file's path, not its text. Import, then export
+  (`import x from "x.svg" with { type: "text" }; export { x };`), as `nodebuilder icons add` writes.
+
+### Frame loop
+- Code that runs inside `renderFrame` (`layout()`, `refreshHover()`, paint) must only call
+  `invalidate()` when something really changed: an unconditional invalidate there redraws
+  at the fps cap forever while idle (this happened with the scrollbar highlight). To find
+  who asks for frames, run with `NB_TRACE=frames` (look for `[in frame]`); in dev, `run()`
+  warns once after 30 frames in a row that request themselves with nothing else changing.
+  `test/app.test.tsx` pins "an idle window renders once".
 
 ### Native
 - libwayland headers < 1.22 lack the v6 fields of `wl_surface_listener`, and an old
