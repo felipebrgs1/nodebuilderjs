@@ -1,4 +1,4 @@
-// Headless helpers for app tests (bun test): no window, fake text metrics.
+// Headless helpers for app tests (bun test): no window, fake text metrics (real ones on request).
 //   const { root } = mount(() => <App />);
 //   click(findByText(root, "Save")!);
 //   savePNG(screenshot(root), "app.png"); // real pixels, still without a window
@@ -7,23 +7,73 @@ import { writeFileSync } from "node:fs";
 import { type Child, insert } from "./jsx-runtime.js";
 import { layout } from "./render/layout.js";
 import { overflowWarnings } from "./render/overflow.js";
-import { UINode, setTextMeasurer } from "./render/node.js";
+import { type TextMeasurer, UINode, setTextMeasurer } from "./render/node.js";
 import { createRoot } from "./reactive/signals.js";
 import { runFrameCallbacks, setAnimating, setFrameClock } from "./runtime/frames.js";
 import { createInput } from "./runtime/input.js";
-import { loadNative } from "./runtime/native.js";
+import { loadNative, nativeTextMeasurer } from "./runtime/native.js";
 import { type Screenshot, type ScreenshotOptions, captureTree } from "./runtime/screenshot.js";
 
 export type { Screenshot, ScreenshotOptions } from "./runtime/screenshot.js";
 
-/** 8 px per character, 20 px lines: layout is deterministic without fonts. */
-export function useFakeTextMetrics() {
-  setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
+export interface FakeTextMetrics {
+  /** Width of every character, in px (default 8). */
+  charWidth?: number;
+  /** Line height in px (default 20): ascent 3/4, descent 1/4. */
+  lineHeight?: number;
+}
+
+// What mount() installs: fake metrics (the default) or the addon's real ones.
+let metrics: TextMeasurer = fakeMeasurer({});
+
+function fakeMeasurer({ charWidth = 8, lineHeight = 20 }: FakeTextMetrics): TextMeasurer {
+  return (text) => ({ width: text.length * charWidth, ascent: lineHeight * 0.75, descent: lineHeight * 0.25 });
+}
+
+/**
+ * Fake text metrics, the default: 8 px per character and 20 px lines unless given, so
+ * layout is deterministic without fonts. Also restores them after useRealTextMetrics().
+ */
+export function useFakeTextMetrics(options: FakeTextMetrics = {}) {
+  metrics = fakeMeasurer(options);
+  setTextMeasurer(metrics);
+}
+
+let realMetrics: boolean | undefined;
+
+/** Whether useRealTextMetrics() works here (the native core loads). For `test.skipIf(!canUseRealTextMetrics())`. */
+export function canUseRealTextMetrics(): boolean {
+  if (realMetrics === undefined) {
+    try {
+      loadNative().measureText("x", 14, 0, 1);
+      realMetrics = true;
+    } catch {
+      realMetrics = false;
+    }
+  }
+  return realMetrics;
+}
+
+/**
+ * Measures text with the installed fonts (FreeType + HarfBuzz from the native core, no
+ * window) in this and every later mount(), until the returned function (or
+ * useFakeTextMetrics()) puts the previous metrics back. Catches overflow that 8 px per
+ * character hides, but the numbers depend on the machine's fonts: assert relations
+ * ("fits", "narrower than"), not exact pixels. Throws when the native core is missing.
+ */
+export function useRealTextMetrics(): () => void {
+  const previous = metrics;
+  metrics = nativeTextMeasurer(loadNative(), 1);
+  setTextMeasurer(metrics);
+  return () => {
+    metrics = previous;
+    setTextMeasurer(previous);
+  };
 }
 
 /** Renders `view` into a detached root and lays it out at `width`x`height`. */
 export function mount(view: () => Child, size = { width: 800, height: 600 }) {
-  useFakeTextMetrics();
+  setTextMeasurer(metrics);
   setAnimating(false); // animations finish at once unless the test calls frames()
   setFrameClock(null);
   const root = new UINode("root");

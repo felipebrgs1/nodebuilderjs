@@ -1,12 +1,13 @@
 ---
 name: nodebuilder-testing
-description: Write and debug tests for nodebuilder apps with bun test, without opening a window (mount, findByText, findByLabel, click, interact for mouse and keyboard, layout, debugTree, layoutWarnings for hidden overflow), and look at the UI with screenshots (nodebuilder screenshot, screenshot()). Use when creating tests, when verifying a behavior, layout or visual change, or when a component test fails.
+description: Write and debug tests for nodebuilder apps with bun test, without opening a window (mount, findByText, findByLabel, click, interact for mouse and keyboard, layout, debugTree, layoutWarnings for hidden overflow, real text metrics), and look at the UI with screenshots (nodebuilder screenshot, screenshot()). Use when creating tests, when verifying a behavior, layout or visual change, or when a component test fails.
 ---
 
 # Tests without a window
 
 `bun test` runs the files in `test/`. Nothing opens a window: `mount` builds the tree with
-fake text metrics (**8 px per character, 20 px line**), so layout is deterministic.
+fake text metrics (**8 px per character, 20 px line**), so layout is deterministic (real
+fonts on request: `useRealTextMetrics()`, below).
 
 ```tsx
 import { expect, test } from "bun:test";
@@ -92,6 +93,26 @@ test("plays a genre that starts off screen", () => {
   expect(findAllByText(root, /o/)).toHaveLength(3); // Rock, Pop, Soul
 });
 ```
+- **Real text metrics:** `useRealTextMetrics()` makes this and every later `mount` measure
+  text with the installed fonts (no window) and returns a function that restores the previous
+  metrics; `useFakeTextMetrics({ charWidth, lineHeight })` sets fake ones (the default is 8
+  and 20). Use real metrics to check that a label really fits (`layoutWarnings()` empty with
+  a `clip` panel); numbers depend on the machine's fonts, so assert relations, not exact
+  pixels. Guard with `test.skipIf(!canUseRealTextMetrics())` and restore in `afterEach`.
+
+```tsx
+import { afterEach, expect, test } from "bun:test";
+import { Row, Text } from "@nodebuilderjs/core";
+import { canUseRealTextMetrics, layoutWarnings, mount, useFakeTextMetrics, useRealTextMetrics } from "@nodebuilderjs/core/testing";
+
+afterEach(() => useFakeTextMetrics());
+
+test.skipIf(!canUseRealTextMetrics())("the header fits with real fonts", () => {
+  useRealTextMetrics();
+  const { root } = mount(() => <Row width={240} clip><Text>Recently played</Text></Row>);
+  expect(layoutWarnings(root)).toEqual([]);
+});
+```
 - `debugTree(node)` (from `@nodebuilderjs/core`): tree with positions, great for inspecting
   layout; a container whose children overflow a clip is marked `[overflow +42]`.
 - Animations finish immediately in tests (there is no window): a closed `Dialog` leaves the
@@ -136,7 +157,7 @@ test.skipIf(!canScreenshot())("the banner is red", () => {
 
 - `screenshot(root | () => view, { width, height, scale, background })` →
   `{ width, height, scale, rgba, pixel(x, y), toPNG() }`; size in device pixels. Uncovered
-  areas stay transparent. The fake text metrics come back after the shot.
+  areas stay transparent. The test's text metrics (fake by default) come back after the shot.
 - Pixels depend on the machine's fonts and GPU: assert colors at chosen points, not whole
   images. `canScreenshot()` is false without a GPU driver (e.g. some CI runners).
 

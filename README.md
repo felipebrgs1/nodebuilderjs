@@ -647,6 +647,30 @@ test("play and pause", () => {
   warnings of the last layout (see Layout); `expect(layoutWarnings()).toEqual([])` catches a
   child hidden by a too-narrow panel before a click finds it. `mount` does not fail on them by
   itself: a deliberate overflow (a clipped marquee) is allowed.
+- **Text metrics:** fake by default. `useFakeTextMetrics({ charWidth, lineHeight })` changes
+  them; `useRealTextMetrics()` makes this and every later `mount` measure with the installed
+  fonts (the native core's FreeType + HarfBuzz, still no window) and returns a function that
+  puts the previous metrics back. Real metrics catch overflow that 8 px per character hides,
+  but they depend on the machine's fonts: assert relations ("fits", "narrower than"), not
+  exact pixels, and guard with `test.skipIf(!canUseRealTextMetrics())`.
+
+```tsx
+import { afterEach, expect, test } from "bun:test";
+import { Row, Text } from "@nodebuilderjs/core";
+import { canUseRealTextMetrics, layoutWarnings, mount, useFakeTextMetrics, useRealTextMetrics } from "@nodebuilderjs/core/testing";
+
+afterEach(() => useFakeTextMetrics());
+
+test.skipIf(!canUseRealTextMetrics())("the header fits with real fonts", () => {
+  useRealTextMetrics();
+  const { root } = mount(() => (
+    <Row width={240} clip>
+      <Text>Recently played</Text>
+    </Row>
+  ));
+  expect(layoutWarnings(root)).toEqual([]);
+});
+```
 
 #### Seeing the UI: screenshots without a window
 
@@ -679,7 +703,7 @@ test.skipIf(!canScreenshot())("the banner is red", () => {
 `screenshot(root | view, { width, height, scale, background })` returns `{ width, height,
 scale, rgba, pixel(x, y), toPNG() }`; `rgba` has straight (not premultiplied) alpha, rows top
 to bottom, and what nothing covers stays transparent (the window's rounded corners too). The
-tree is laid out with real fonts for the shot and gets its fake metrics back afterwards.
+tree is laid out with real fonts for the shot and gets its own metrics (fake, by default) back afterwards.
 Pixels depend on the installed fonts and GPU driver: compare colors at points, not whole images.
 
 ## Distributing

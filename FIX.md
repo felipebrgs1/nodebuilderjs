@@ -27,24 +27,6 @@ effort inside each group. Delete an item from here when it ships (and add it to 
 
 ---
 
-## A. Agents and debugging
-
-### A4. Realistic text metrics in tests (report item 6) - small
-
-**Problem:** fake metrics (8 px/char) make overflow tests unrepresentative.
-
-**API:** `useRealTextMetrics()` in `@nodebuilderjs/core/testing` (loads the addon,
-`measureText` works without a window); `useFakeTextMetrics({ charWidth, lineHeight })`
-keeps being the default. Document the trade-off (real metrics depend on installed fonts).
-
-**Implementation:** `nat.measureText` already works without `open()`, and
-`nativeTextMeasurer(nat, scale)` (`src/runtime/native.ts`) is what screenshots use: install it.
-
-**Tests:** `test/testing.test.tsx`: with real metrics "iiii" is narrower than "MMMM";
-`skipIf` no addon.
-
----
-
 ## B. Layout
 
 ### B4. `wrap` on Row (report item 2) - medium
@@ -160,4 +142,4 @@ premultiplied space (as CSS does) and un-premultiply; test that
 
 1. B4 (wrap)
 2. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
-3. C2 (weights, spacing), A4, E1, F4
+3. C2 (weights, spacing), E1, F4

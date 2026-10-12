@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### New
+- **Real text metrics in tests:** `useRealTextMetrics()` in `@nodebuilderjs/core/testing`
+  makes `mount` measure text with the installed fonts (the native core, no window) until the
+  returned function restores the previous metrics; `canUseRealTextMetrics()` for `skipIf`.
+  `useFakeTextMetrics({ charWidth, lineHeight })` stays the default (8 and 20).
 - **`zIndex`:** paint and hit-test order among siblings (default 0; ties keep child order).
   Siblings only, no global stacking contexts; overlays stay above everything. The part of a
   child that sticks out of a parent that does not `clip` (an absolute badge) is now clickable.
