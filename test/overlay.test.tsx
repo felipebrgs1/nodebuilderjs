@@ -224,3 +224,17 @@ test("Tab stays inside the topmost modal overlay", () => {
   }
   expect(seen).toEqual(['Text "a"', 'Text "b"', 'Text "a"']);
 });
+
+test("an anchored overlay with wrapping text is as tall as its lines at the width it gets", () => {
+  let anchor!: ElementRef;
+  const { root } = mount(() => (
+    <Column>
+      <Box position="absolute" left={0} top={0} width={60} height={20} ref={(e) => (anchor = e)} />
+      <Overlay anchor={() => anchor} matchWidth offset={0}>
+        <Text>aaa bbb ccc</Text>
+      </Overlay>
+    </Column>
+  ));
+  const layer = root.layers[0]!;
+  expect([layer.width, layer.height]).toEqual([60, 40]);
+});

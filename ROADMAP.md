@@ -97,7 +97,9 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
 
 ## Texto e entrada
 
-- Quebra de linha e texto com várias linhas
+- ~~Quebra de linha e texto com várias linhas~~ **feito** (2026-10-12): quebra por padrão,
+  `wrap`, `maxLines` com "…", `textAlign`, `lineHeight`, seleção em várias linhas. Falta
+  hifenização e quebrar palavra longa no meio (opcional, como `overflow-wrap: anywhere`).
 - Fallback de fontes (emojis, CJK) e escolha de família de fonte
 - Seleção no `TextField` (com Ctrl+C/Ctrl+X); seleção primária (colar com o botão do meio);
   Shift+clique e setas para estender a seleção do `<Text selectable>`

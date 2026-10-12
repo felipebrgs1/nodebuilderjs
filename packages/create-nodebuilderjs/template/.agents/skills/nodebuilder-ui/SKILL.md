@@ -15,7 +15,7 @@ props planas. Reatividade estilo SolidJS: **só funções são reativas** (veja 
 | `Window` | raiz, uma por app, com barra de título própria | `title`, `width`, `height` (tamanho inicial), `appId`, `onClose` (retorne `false` para não fechar) |
 | `Column` / `Row` / `Box` | contêiner flex (coluna, linha; `Box` é coluna) | estilo + eventos |
 | `Scroll` | coluna com rolagem vertical | precisa de `grow={1}` ou `height`; filhos podem ser maiores |
-| `Text` | texto de uma linha (sem quebra automática) | filhos (`{count}`, `"a"`) ou `text={() => ...}`, `selectable` (o usuário seleciona e copia) |
+| `Text` | texto; quebra linha nos espaços para caber na largura | filhos (`{count}`, `"a"`) ou `text={() => ...}`, `wrap` (padrão `true`), `maxLines` (corta com "…"), `textAlign`, `lineHeight`, `selectable` |
 | `Image` | PNG, JPEG, WebP, AVIF | veja a skill `nodebuilder-imagens` |
 | `Icon` | ícone SVG (Lucide, Phosphor), cor herdada como texto | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icones` |
 | `Canvas` | desenho livre: linhas, polígonos, arcos, texto | `draw={(g) => ...}` + tamanho; skill `nodebuilder-desenho` |
@@ -144,8 +144,12 @@ let botao: ElementRef | undefined;
   `Scroll`, `clip` ou `minWidth/minHeight` explícito. Lista longa dentro de uma coluna
   que cresce sem parar? Envolva em `<Scroll grow={1}>`.
 - Para um `Scroll` dentro de uma coluna com `grow`, a coluna também precisa de `minHeight={0}`.
-- Não há porcentagens, `flex-wrap`, grid nem quebra de linha de texto: monte linhas com `Row`
-  e larguras fixas (veja tabelas: `Text width={110}`) ou `grow`.
+- Numa `Row` sem espaço, quem tem `grow` encolhe primeiro: o texto longo vai com
+  `grow={1}` (e `maxLines={1}` para virar "…"), os rótulos curtos ao lado ficam inteiros.
+- Texto quebra sozinho na largura que recebe (`\n` também quebra); palavra maior que a linha
+  transborda. Uma linha só: `wrap={false}` (transborda) ou `maxLines={1}` (corta com "…").
+- Não há porcentagens, `flex-wrap` nem grid: monte linhas com `Row` e larguras fixas (veja
+  tabelas: `Text width={110}`) ou `grow`.
 
 ## Tema e janela
 
@@ -154,7 +158,7 @@ let botao: ElementRef | undefined;
 - `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`;
   `windowState.width()`, `.height()`, `.maximized()`, `.activated()` são accessors.
 - Ainda não existem: tema escuro reativo, API de animações (anime `opacity`/`translate` à
-  mão), `scale`/`rotate`, quebra de linha, seleção no `TextField`
+  mão), `scale`/`rotate`, seleção no `TextField`
   (e Ctrl+C nele), IME, várias janelas.
 
 ## Selecionar e copiar texto

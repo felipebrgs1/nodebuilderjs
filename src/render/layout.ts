@@ -1,10 +1,16 @@
 // A small flexbox: row/column, gap, padding, grow, shrink-to-fit, align,
 // justify, min/max sizes, absolute children and vertical scrolling.
+//
+// Wrapping text makes a height depend on the width given, so sizes come in two steps: the
+// natural (max-content) size of every node, cached per layout, and `heightAt(node, width)`,
+// which only does real work in subtrees that contain wrapping text.
 
 import { type Edges, type Size, type UINode, overlayLayers } from "./node.js";
 import { batch } from "../reactive/signals.js";
 
-let cache = new Map<UINode, Size>();
+let cache = new Map<UINode, Natural>();
+let heights = new Map<UINode, { width: number; height: number }>();
+let mins = new Map<UINode, number>();
 let resized: UINode[] = [];
 
 /** Visible region in absolute logical pixels; narrowed by every clipping node. */
@@ -17,6 +23,8 @@ export interface Rect {
 
 export function layout(root: UINode, width: number, height: number) {
   cache = new Map();
+  heights = new Map();
+  mins = new Map();
   resized = [];
   const view = { x0: 0, y0: 0, x1: width, y1: height };
   place(root, 0, 0, width, height, view);
@@ -47,9 +55,8 @@ function placeLayer(layer: UINode, width: number, height: number, view: Rect): b
   if (!a || rootOf(a) !== rootOf(layer)) return false;
   for (let n: UINode | null = a; n; n = n.parent) if (n.culled) return false;
 
-  const k = intrinsic(layer);
-  const w = o.matchWidth ? a.width : k.width;
-  const h = k.height;
+  const w = o.matchWidth ? a.width : intrinsic(layer).width;
+  const h = heightAt(layer, w);
   const gap = o.offset;
   const below = a.y + a.height + gap, above = a.y - gap - h;
   const after = a.x + a.width + gap, before = a.x - gap - w;
@@ -104,19 +111,28 @@ function inFlow(n: UINode) {
   return n.style.position !== "absolute";
 }
 
-/** Natural size of a node, ignoring the space its parent offers. */
-export function intrinsic(node: UINode): Size {
+/** Natural size plus whether the height changes with the width given (wrapping text inside). */
+interface Natural extends Size {
+  wraps: boolean;
+  /** Width the content wants before `width`/`min`/`max` apply: from there on nothing wraps. */
+  content: number;
+}
+
+/** Natural size of a node, ignoring the space its parent offers (text on as few lines as it can). */
+export function intrinsic(node: UINode): Natural {
   const hit = cache.get(node);
   if (hit) return hit;
   const s = node.style;
   const [pt, pr, pb, pl] = edges(s.padding);
   let width: number;
   let height: number;
+  let wraps = false;
 
   if (node.measure) {
     const m = node.measure(Infinity);
     width = m.width + pl + pr;
     height = m.height + pt + pb;
+    wraps = node.minContentWidth !== undefined;
   } else {
     const row = s.direction === "row";
     const kids = node.children.filter(inFlow);
@@ -126,18 +142,143 @@ export function intrinsic(node: UINode): Size {
       const k = intrinsic(c);
       main += row ? k.width : k.height;
       cross = Math.max(cross, row ? k.height : k.width);
+      wraps ||= k.wraps;
     }
-    main += Math.max(0, kids.length - 1) * (s.gap ?? 0);
+    const gaps = Math.max(0, kids.length - 1) * (s.gap ?? 0);
+    main += gaps;
     width = (row ? main : cross) + pl + pr;
     height = (row ? cross : main) + pt + pb;
   }
 
-  const size = {
+  const size: Natural = {
     width: clamp(s.width ?? width, s.minWidth, s.maxWidth),
     height: clamp(s.height ?? height, s.minHeight, s.maxHeight),
+    wraps: wraps && s.height === undefined,
+    content: width,
   };
   cache.set(node, size);
   return size;
+}
+
+/** How narrow a child may get when its row shrinks (like CSS `min-width: auto`). */
+function minFloor(c: UINode): number {
+  return c.style.minWidth ?? (c.scrollable || c.style.clip ? 0 : minWidth(c));
+}
+
+/** Narrowest width without overflowing: wrapping text down to its longest word; the natural width otherwise. Only asked when a row shrinks. */
+function minWidth(node: UINode): number {
+  const k = intrinsic(node);
+  if (!k.wraps) return k.width;
+  const hit = mins.get(node);
+  if (hit !== undefined) return hit;
+  const s = node.style;
+  const [, pr, , pl] = edges(s.padding);
+  let min: number;
+  if (s.width !== undefined) min = k.width;
+  else {
+    let content: number;
+    if (node.measure) content = node.minContentWidth!();
+    else {
+      const kids = node.children.filter(inFlow);
+      const floors = kids.map(minFloor);
+      content = s.direction === "row"
+        ? floors.reduce((a, b) => a + b, 0) + Math.max(0, kids.length - 1) * (s.gap ?? 0)
+        : Math.max(0, ...floors);
+    }
+    min = clamp(Math.min(k.width, content + pl + pr), s.minWidth, s.maxWidth);
+  }
+  mins.set(node, min);
+  return min;
+}
+
+/** Height of `node` laid out `width` wide. */
+function heightAt(node: UINode, width: number): number {
+  const k = intrinsic(node);
+  // At its natural width nothing wraps, and more room never adds lines.
+  if (!k.wraps || width >= k.content) return k.height;
+  const hit = heights.get(node);
+  if (hit && hit.width === width) return hit.height;
+  const s = node.style;
+  const [pt, pr, pb, pl] = edges(s.padding);
+  const inner = Math.max(0, width - pl - pr);
+  const kids = node.children.filter(inFlow);
+  let content: number;
+  if (node.measure) {
+    content = node.measure(inner).height;
+  } else if (s.direction === "row") {
+    const widths = mainSizes(node, kids, inner, true);
+    content = kids.reduce((h, c, i) => Math.max(h, heightAt(c, widths[i]!)), 0);
+  } else {
+    const align = s.align ?? "stretch";
+    content = kids.reduce((h, c) => h + heightAt(c, crossSize(align, c, false, inner, intrinsic(c).width)), 0);
+    content += Math.max(0, kids.length - 1) * (s.gap ?? 0);
+  }
+  const height = clamp(content + pt + pb, s.minHeight, s.maxHeight);
+  heights.set(node, { width, height });
+  return height;
+}
+
+/** A child's size across its parent's direction. */
+function crossSize(align: string, c: UINode, row: boolean, innerCross: number, natural: number): number {
+  const fixed = row ? c.style.height : c.style.width;
+  return clamp(
+    fixed ?? (align === "stretch" ? innerCross : Math.min(natural, innerCross)),
+    row ? c.style.minHeight : c.style.minWidth,
+    row ? c.style.maxHeight : c.style.maxWidth,
+  );
+}
+
+/**
+ * Children's sizes along the parent's direction: natural size, then the free space shared by
+ * `grow`, or the missing space taken in proportion to size. In a column, `crosses` are the
+ * children's widths (their heights may depend on them).
+ */
+function mainSizes(node: UINode, kids: UINode[], innerMain: number, row: boolean, crosses?: number[]): number[] {
+  const gap = node.style.gap ?? 0;
+  const mainMin = (c: UINode) => (row ? c.style.minWidth : c.style.minHeight) ?? 0;
+  const mainMax = (c: UINode) => (row ? c.style.maxWidth : c.style.maxHeight) ?? Infinity;
+  const fixedMain = (c: UINode) => (row ? c.style.width : c.style.height);
+
+  const sizes = kids.map((c, i) => fixedMain(c) ?? (row ? intrinsic(c).width : heightAt(c, crosses![i]!)));
+  const used = sizes.reduce((a, b) => a + b, 0) + Math.max(0, kids.length - 1) * gap;
+  const free = innerMain - used;
+
+  if (free > 0) {
+    const totalGrow = kids.reduce((a, c) => a + (c.style.grow ?? 0), 0);
+    if (totalGrow > 0) {
+      kids.forEach((c, i) => {
+        const g = c.style.grow ?? 0;
+        if (g > 0) sizes[i] = clamp(sizes[i]! + (free * g) / totalGrow, mainMin(c), mainMax(c));
+      });
+    }
+  } else if (free < 0 && !node.scrollable) {
+    // Shrink proportionally to natural size, but (like CSS min-size: auto) never below a
+    // child's content (wrapping text: its longest word) unless it scrolls/clips or sets an
+    // explicit min.
+    const floor = kids.map((c, i) => {
+      if (row) return minFloor(c);
+      return c.style.minHeight ?? (c.scrollable || c.style.clip ? 0 : sizes[i]!);
+    });
+    // Children that grow give up their room first (like Flutter's Expanded), so a label
+    // next to them keeps its size; then everyone, as in CSS.
+    let overflow = -free;
+    for (const growingOnly of [true, false]) {
+      for (let pass = 0; pass < kids.length && overflow > 0.01; pass++) {
+        const open = kids.map((c, i) => fixedMain(c) === undefined && sizes[i]! > floor[i]! && (!growingOnly || (c.style.grow ?? 0) > 0));
+        const total = sizes.reduce((a, v, i) => a + (open[i] ? v : 0), 0);
+        if (total <= 0) break;
+        let taken = 0;
+        kids.forEach((c, i) => {
+          if (!open[i]) return;
+          const next = clamp(sizes[i]! - (overflow * sizes[i]!) / total, floor[i]!, mainMax(c));
+          taken += sizes[i]! - next;
+          sizes[i] = next;
+        });
+        overflow -= taken;
+      }
+    }
+  }
+  return sizes;
 }
 
 function place(node: UINode, x: number, y: number, width: number, height: number, view: Rect) {
@@ -164,51 +305,21 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   const row = s.direction === "row";
   const gap = s.gap ?? 0;
   const kids = node.children.filter(inFlow);
+  const align = s.align ?? "stretch";
+
+  // A row knows widths first and heights from them; a column the other way around.
+  let sizes: number[];
+  let crosses: number[];
+  if (row) {
+    sizes = mainSizes(node, kids, innerW, true);
+    crosses = kids.map((c, i) => crossSize(align, c, true, innerH, heightAt(c, sizes[i]!)));
+  } else {
+    crosses = kids.map((c) => crossSize(align, c, false, innerW, intrinsic(c).width));
+    sizes = mainSizes(node, kids, innerH, false, crosses);
+  }
 
   const innerMain = row ? innerW : innerH;
   const innerCross = row ? innerH : innerW;
-  const mainMin = (c: UINode) => (row ? c.style.minWidth : c.style.minHeight) ?? 0;
-  const mainMax = (c: UINode) => (row ? c.style.maxWidth : c.style.maxHeight) ?? Infinity;
-  const fixedMain = (c: UINode) => (row ? c.style.width : c.style.height);
-
-  const sizes = kids.map((c) => fixedMain(c) ?? (row ? intrinsic(c).width : intrinsic(c).height));
-  const used = sizes.reduce((a, b) => a + b, 0) + Math.max(0, kids.length - 1) * gap;
-  let free = innerMain - used;
-
-  if (free > 0) {
-    const totalGrow = kids.reduce((a, c) => a + (c.style.grow ?? 0), 0);
-    if (totalGrow > 0) {
-      kids.forEach((c, i) => {
-        const g = c.style.grow ?? 0;
-        if (g > 0) sizes[i] = clamp(sizes[i]! + (free * g) / totalGrow, mainMin(c), mainMax(c));
-      });
-      free = 0;
-    }
-  } else if (free < 0 && !node.scrollable) {
-    // Shrink proportionally to natural size, but (like CSS min-size: auto) never
-    // below a child's content unless it scrolls/clips or sets an explicit min.
-    const floor = kids.map((c, i) => {
-      const explicit = row ? c.style.minWidth : c.style.minHeight;
-      if (explicit !== undefined) return explicit;
-      return c.scrollable || c.style.clip ? 0 : sizes[i]!;
-    });
-    let overflow = -free;
-    for (let pass = 0; pass < kids.length && overflow > 0.01; pass++) {
-      const open = kids.map((c, i) => fixedMain(c) === undefined && sizes[i]! > floor[i]!);
-      const total = sizes.reduce((a, v, i) => a + (open[i] ? v : 0), 0);
-      if (total <= 0) break;
-      let taken = 0;
-      kids.forEach((c, i) => {
-        if (!open[i]) return;
-        const next = clamp(sizes[i]! - (overflow * sizes[i]!) / total, floor[i]!, mainMax(c));
-        taken += sizes[i]! - next;
-        sizes[i] = next;
-      });
-      overflow -= taken;
-    }
-    free = 0;
-  }
-
   const content = sizes.reduce((a, b) => a + b, 0) + Math.max(0, kids.length - 1) * gap;
   node.contentHeight = (row ? innerH : content) + pt + pb;
   if (node.scrollable) node.scrollY = clamp(node.scrollY, 0, Math.max(0, node.contentHeight - height));
@@ -222,15 +333,8 @@ function place(node: UINode, x: number, y: number, width: number, height: number
     case "space-between": if (kids.length > 1) spacing = gap + leftover / (kids.length - 1); break;
   }
 
-  const align = s.align ?? "stretch";
   kids.forEach((c, i) => {
-    const natural = row ? intrinsic(c).height : intrinsic(c).width;
-    const fixedCross = row ? c.style.height : c.style.width;
-    const crossSize = clamp(
-      fixedCross ?? (align === "stretch" ? innerCross : Math.min(natural, innerCross)),
-      row ? c.style.minHeight : c.style.minWidth,
-      row ? c.style.maxHeight : c.style.maxWidth,
-    );
+    const crossSize = crosses[i]!;
     const crossOffset = align === "center" ? (innerCross - crossSize) / 2 : align === "end" ? innerCross - crossSize : 0;
     const main = sizes[i]!;
     const scroll = node.scrollable ? node.scrollY : 0;
@@ -241,7 +345,7 @@ function place(node: UINode, x: number, y: number, width: number, height: number
 
   for (const c of node.children) {
     if (inFlow(c)) continue;
-    const k = intrinsic(c);
-    place(c, innerX + (c.style.left ?? 0), innerY + (c.style.top ?? 0), c.style.width ?? k.width, c.style.height ?? k.height, view);
+    const w = intrinsic(c).width;
+    place(c, innerX + (c.style.left ?? 0), innerY + (c.style.top ?? 0), w, heightAt(c, w), view);
   }
 }

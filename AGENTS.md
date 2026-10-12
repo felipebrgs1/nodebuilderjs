@@ -48,7 +48,7 @@ bun run build:native        # compila native/build/<platform>-<arch>/nodebuilder
 bun run typecheck           # tsc 7 --noEmit (~0,1 s)
 bun test                    # todos os testes, sem janela (~0,1 s)
 bun test test/svg.test.tsx  # um arquivo; -t "padrão" filtra pelo nome do teste
-bun run counter | todo | images | icons | drawing | charts | overlays   # exemplos (.tsx direto)
+bun run counter | todo | images | icons | drawing | charts | overlays | text   # exemplos
 bun run dev                 # todo com --watch
 bun run bench               # stress test com NB_STATS=1 (env: N=1000 MODE=one|all|static)
 bun run bench:dashboard     # app realista (env: TAB=overview|table|logs|settings ROWS=500
@@ -102,6 +102,7 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
 
 - Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `context`, `ref`
   (`ref`, foco e rolagem por código, `onResize`), `overlay`, `style` (`opacity`, `translate`),
+  `text` (quebra de linha, alinhamento, `maxLines`, seleção em várias linhas),
   `input` (eventos),
   `clipboard`, `text-selection`, `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulação), `draw` (primitivas e `shapes.ts`), `canvas` e `charts/`. Assunto novo ganha arquivo novo; quando o `core` crescer, divida-o.
@@ -114,6 +115,10 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
 ### Antes de concluir uma tarefa
 
 - `bun run typecheck && bun test` verdes; `bun run build:native` se mexeu em C.
+- **Ao fechar um bloco, releia os testes de cada área modificada** (não só os novos) e
+  confira se continuam corretos e atualizados: nomes e comentários que descrevem o
+  comportamento de hoje, casos que ficaram triviais ou redundantes, e o que falta testar na
+  interação com o que mudou (ex.: um widget antigo com a prop nova). Ajuste no mesmo commit.
 - Mudança visual: um exemplo aberto e capturado. Mudança de desempenho: números de antes e
   depois.
 - Documentação junto: README (API pública, limitações), ARCHITECTURE (funcionamento),
@@ -138,6 +143,7 @@ src/                   um módulo por pasta; imports relativos com `.js`
     layout.ts          flexbox simplificado + culling
     paint.ts           árvore -> CommandBuffer (Float32Array) + parseColor
     shapes.ts          polyline (segmentos LINE) e fillPolygon (triangulação + franja de AA)
+    text-wrap.ts       quebra de linha do <Text> (gulosa, nos espaços) e maxLines com "…"
   runtime/
     app.ts             run(): janela, agendamento de frames, NB_STATS; liga o input ao addon
     input.ts           eventos -> UI: hit test, hover, cursor, foco, cliques, captura, rolagem, teclado
@@ -189,7 +195,7 @@ test/            um arquivo por módulo (bun:test; bunfig.toml limita o bun test
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> comandos com nome
   charts/        testes de src/charts (escalas e cada tipo de gráfico)
   fixtures/      entradas e saídas de referência (.raw, .pnm do djpeg, PNG do librsvg...)
-examples/        counter, todo, images, icons, drawing, charts, overlays, bench, dashboard (.tsx) + assets/
+examples/        counter, todo, images, icons, drawing, charts, overlays, text, bench, dashboard (.tsx) + assets/
 cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.ts
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces publicados junto com o core (veja "Publicação no npm")
@@ -316,6 +322,11 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica). Op novo tamb�
   `align` (padrão **stretch**), `justify`, `min/max`, `position: "absolute"` (`left/top`).
 - **Encolhimento segue o CSS `min-size: auto`:** um filho não encolhe abaixo do próprio
   conteúdo, exceto se for `scrollable`/`clip` ou tiver `minWidth/minHeight` explícito.
+  Texto que quebra encolhe até a palavra mais longa. Filhos com `grow` encolhem primeiro.
+- **Altura depende da largura** (texto que quebra): `intrinsic()` é o tamanho natural e
+  `heightAt(node, width)` a altura numa largura. Uma coluna calcula as larguras dos filhos
+  antes das alturas; uma linha, o contrário. Widget de medida própria cuja altura muda com a
+  largura define `minContentWidth` (sem ele, o layout supõe altura fixa e usa o atalho).
 - `Scroll` = coluna com `scrollable = true` e `minHeight: 0`.
 - **Culling:** `place()` recebe a região visível (estreitada por cada nó com clip/scroll). Filho
   fora dela ganha a caixa mas fica `culled`: subárvore não é posicionada, pintada (`paintTree`)
@@ -413,8 +424,8 @@ todos com a versão do `package.json` da raiz:
 
 ## Limitações atuais
 
-- TextField: sem seleção, cópia, undo (colar existe); Text: sem quebra de linha (seleção só
-  com `selectable`, sem Shift+clique nem teclado); uma fonte só
+- TextField: sem seleção, cópia, undo (colar existe); Text: palavra maior que a linha
+  transborda (seleção só com `selectable`, sem Shift+clique nem teclado); uma fonte só
   (sem fallback: emojis não aparecem).
 - `<Canvas>`: polígono que cruza a si mesmo não é desenhado; linhas translúcidas escurecem
   nas junções (cada segmento é desenhado à parte); fatias vizinhas de pizza mostram uma

@@ -3,7 +3,7 @@
 
 export { type BoxProps, type StyleProps, applyProps } from "./props.js";
 export { Box, Card, Column, Divider, Row, Scroll, Spacer } from "./containers.js";
-export { Text } from "./text.js";
+export { Text, type TextAlign } from "./text.js";
 export { Image, type ImageFit } from "./image.js";
 export { Icon, type IconInput } from "./icon.js";
 export { Canvas, type DrawContext } from "./canvas.js";

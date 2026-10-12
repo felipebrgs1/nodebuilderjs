@@ -55,7 +55,8 @@ código como o Claude Code.
   para listas e condições, e de `createContext` para valores compartilhados pela árvore.
 
 Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens, ícones,
-desenho livre, gráficos, overlays (menu, diálogo e dica) e um painel
+desenho livre, gráficos, overlays (menu, diálogo e dica), texto (parágrafos, alinhamento,
+reticências) e um painel
 com abas, tabela e gráfico.
 
 ### Imagens
@@ -174,6 +175,28 @@ const [largura, setLargura] = createSignal(0);
   da janela), `focus()`, `blur()` e, num `Scroll`, `scrollTo(y)` e `scrollY`. O `ref` é
   chamado quando o widget é criado, antes do layout; um `focus()` nessa hora vale assim que
   o widget entra na árvore.
+
+### Texto
+
+`<Text>` quebra linha nos espaços para caber na largura que recebe, como na web; `\n` sempre
+quebra. Palavra maior que a linha transborda (não é cortada no meio).
+
+```tsx
+import { Row, Text, theme } from "@nodebuilderjs/core";
+
+<Text textAlign="center" lineHeight={1.4}>Um parágrafo longo que quebra em várias linhas.</Text>;
+<Row gap={8}>
+  <Text grow={1} maxLines={1}>nome-de-arquivo-muito-comprido.pdf</Text>
+  <Text color={theme.text.secondary}>12 MB</Text>
+</Row>;
+```
+
+- `wrap={false}`: uma linha só (fora as quebras com `\n`), mesmo que transborde.
+- `maxLines`: corta e termina a última linha em "…"; `maxLines={1}` encurta uma linha só.
+- `textAlign` (`"start"`, `"center"`, `"end"`) e `lineHeight` (múltiplo do espaçamento da
+  fonte, padrão 1).
+- Numa `Row` sem espaço, quem tem `grow` encolhe primeiro (como o `Expanded` do Flutter); um
+  texto que quebra pode encolher até a palavra mais longa, e com `maxLines` até o "…".
 
 ### Overlays: diálogos, menus e dicas
 
@@ -344,7 +367,7 @@ Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#me
 ## Limitações atuais
 
 - Só Linux x64 (arm64, Windows e macOS estão no roadmap).
-- Texto sem quebra de linha e com uma fonte só (emojis não aparecem).
+- Texto com uma fonte só (emojis não aparecem); palavra maior que a linha transborda.
 - Campo de texto sem seleção, cópia e desfazer (colar funciona).
 - SVG só no subconjunto para ícones (sem gradientes, texto, filtros); AVIF/HEIC dependem da
   `libheif` do sistema.

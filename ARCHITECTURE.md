@@ -92,7 +92,27 @@ monitor (XRandR).
 
 O encolhimento segue o `min-size: auto` do CSS: um filho não fica menor que o próprio
 conteúdo, a menos que seja rolável, recorte o conteúdo (`clip`) ou tenha `minWidth`/
-`minHeight` explícito. `Scroll` é uma coluna rolável com `minHeight: 0`.
+`minHeight` explícito. Para texto que quebra, "o próprio conteúdo" na largura é a palavra
+mais longa (com `maxLines`, o "…"). Numa linha sem espaço, os filhos com `grow` encolhem
+primeiro e só depois os outros, proporcionalmente; é diferente do CSS, que encolhe todos
+juntos e faz um rótulo curto ao lado de um texto longo quebrar. `Scroll` é uma coluna rolável
+com `minHeight: 0`.
+
+**Altura que depende da largura.** Texto que quebra muda de altura conforme a largura, então
+o tamanho vem em dois passos. `intrinsic(node)` dá o tamanho natural (texto no menor número de
+linhas) e marca `wraps` quando há texto que quebra na subárvore. `heightAt(node, width)` dá
+a altura com aquela largura: numa coluna, a largura de cada filho é conhecida antes (`align`)
+e a altura vem dela; numa linha, as larguras vêm do flex (`mainSizes`) e as alturas delas.
+Para não pagar isso em toda a árvore, `heightAt` devolve a altura natural quando não há nada
+que quebre ou quando a largura dada cobre a natural (com mais espaço, nada quebra). Um
+`Text` só se declara "quebrável" (`minContentWidth`) se tiver espaço ou `maxLines`. A largura
+mínima (`minWidth`) é calculada só quando uma linha precisa encolher. Medido em 2026-10-12
+na mesma sessão: layout do `bench` (1000 textos mudando) 2,5 → 2,7 ms e da tabela de 500
+linhas 2,5 → 2,7 ms por frame; a primeira versão, sem esses atalhos, custava 7,9 e 4,4 ms.
+
+A quebra em si fica em `render/text-wrap.ts`: gulosa, nos espaços, como o `overflow-wrap:
+normal` do CSS (palavra maior que a linha transborda). As larguras das palavras são somadas
+em vez de medir a linha inteira de novo; a linha que cabe inteira é medida uma vez só.
 
 **Culling:** cada nó que recorta (`Scroll`, `clip`, a `Window`) estreita a região visível
 passada aos filhos. Um filho totalmente fora dela (contando a sombra) recebe a própria caixa,

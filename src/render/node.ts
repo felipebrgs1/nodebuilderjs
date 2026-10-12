@@ -207,8 +207,10 @@ export class UINode implements ElementRef {
   scrollable = false;
   /** Pressing here (outside clickable children) moves the window. */
   dragRegion = false;
-  /** Optional intrinsic size (text, custom widgets). */
+  /** Optional intrinsic size (text, custom widgets); `maxWidth` is Infinity for the natural size. */
   measure?: (maxWidth: number) => Size;
+  /** Content that wraps: the narrowest width it can take (its longest word). Its height then depends on the width given to measure(). */
+  minContentWidth?: () => number;
   /** Optional custom drawing, called after background and before children. */
   paint?: (p: Painter, node: UINode) => void;
   /** Debug label shown by `debugTree`. */

@@ -75,6 +75,7 @@
     "drawing": "bun examples/drawing.tsx",
     "charts": "bun examples/charts.tsx",
     "overlays": "bun examples/overlays.tsx",
+    "text": "bun examples/text.tsx",
     "dev": "bun --watch examples/todo.tsx",
     "bench": "NB_STATS=1 bun examples/bench.tsx",
     "bench:dashboard": "NB_STATS=1 bun examples/dashboard.tsx",
