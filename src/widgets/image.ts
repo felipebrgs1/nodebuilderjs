@@ -14,12 +14,11 @@ export const FULL_UV = [0, 0, 1, 1] as const;
  * pixel); with only one of them, the other follows the aspect ratio. Files showing in
  * several places are decoded once and freed when the last one unmounts.
  */
-export function Image(props: StyleProps & Handlers & { src: MaybeAccessor<ImageInput>; fit?: MaybeAccessor<ImageFit>; opacity?: MaybeAccessor<number> }) {
+export function Image(props: StyleProps & Handlers & { src: MaybeAccessor<ImageInput>; fit?: MaybeAccessor<ImageFit> }) {
   const node = new UINode("Image");
   applyProps(node, props);
   let source: ImageSource | null = null;
   let fit: ImageFit = "contain";
-  let opacity = 1;
   createEffect(() => {
     const s = acquireImage(read(props.src));
     source = s;
@@ -29,7 +28,6 @@ export function Image(props: StyleProps & Handlers & { src: MaybeAccessor<ImageI
   });
   createEffect(() => {
     fit = read(props.fit ?? "contain");
-    opacity = read(props.opacity ?? 1);
     invalidate();
   });
 
@@ -49,7 +47,7 @@ export function Image(props: StyleProps & Handlers & { src: MaybeAccessor<ImageI
     return { width: source.width, height: source.height };
   };
   node.paint = (p, n) => {
-    if (!source?.width || opacity <= 0) return;
+    if (!source?.width) return;
     const [pt, pr, pb, pl] = edges(n.style.padding);
     let x = n.x + pl, y = n.y + pt;
     let w = Math.max(0, n.width - pl - pr), h = Math.max(0, n.height - pt - pb);
@@ -68,7 +66,7 @@ export function Image(props: StyleProps & Handlers & { src: MaybeAccessor<ImageI
     }
     // Like CSS, the content's corners follow the box's radius minus the padding.
     const radius = Math.max(0, (n.style.radius ?? 0) - Math.min(pt, pr, pb, pl));
-    p.image(x, y, w, h, source, uv, radius, opacity);
+    p.image(x, y, w, h, source, uv, radius);
   };
   return node;
 }

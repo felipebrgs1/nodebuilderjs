@@ -48,6 +48,9 @@ ui.drag(slider, 80, 0);     // arrasta 80 px para a direita
 - `ref={(el) => el.focus()}` (foco ao criar) vale num microtask: crie o `interact(root)` e
   faça `await Promise.resolve()` antes de digitar. `onResize` dispara a cada `relayout()`
   em que o tamanho mudou.
+- Overlays são posicionados no layout: depois de abrir ou fechar um, chame `relayout()`.
+  O conteúdo fica em `root.layers` (não em `root.children`); `findByText(root, ...)` busca
+  nos dois.
 
 ## Área de transferência e seleção
 

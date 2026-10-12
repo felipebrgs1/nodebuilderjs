@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { Box, Button, Column, Scroll, Text, TextField, createSignal } from "@nodebuilderjs/core";
+import { Box, Button, Column, Overlay, Scroll, Text, TextField, createSignal } from "@nodebuilderjs/core";
 import type { PointerEvent } from "@nodebuilderjs/core";
-import { findByText, interact, mount } from "@nodebuilderjs/core/testing";
+import { click, findByText, interact, mount } from "@nodebuilderjs/core/testing";
 
 test("interact: hover, press and release go through the real event delivery", () => {
   const log: string[] = [];
@@ -50,4 +50,17 @@ test("interact: scroll over a node", () => {
   ));
   interact(root).scroll(root.children[0]!, 60);
   expect(root.children[0]!.scrollY).toBe(60);
+});
+
+test("findByText and click also reach overlay content", () => {
+  const log: string[] = [];
+  const { root } = mount(() => (
+    <Column>
+      <Overlay>
+        <Button label="Renomear" onClick={() => log.push("renomear")} />
+      </Overlay>
+    </Column>
+  ));
+  click(findByText(root, "Renomear")!);
+  expect(log).toEqual(["renomear"]);
 });

@@ -26,9 +26,11 @@ export function mount(view: () => Child, size = { width: 800, height: 600 }) {
   return { root, dispose, relayout: () => layout(root, size.width, size.height) };
 }
 
+/** Searches the subtree; from a root, also its overlay layers (as of the last layout). */
 export function findAll(node: UINode, match: (n: UINode) => boolean, found: UINode[] = []): UINode[] {
   if (match(node)) found.push(node);
   for (const c of node.children) findAll(c, match, found);
+  if (node.isRoot) for (const layer of node.layers) findAll(layer, match, found);
   return found;
 }
 

@@ -106,6 +106,26 @@ conteúdo depende deles; cada `Text` guarda a última medida (texto, tamanho, ne
 isso não custar uma ida ao cache global. O layout incremental está no
 [roadmap](ROADMAP.md).
 
+### Overlays
+
+`<Overlay>` deixa um marcador de tamanho zero (`position: "absolute"`) onde foi declarado e
+cria a camada à parte: `layer.parent` é o marcador, mas a camada não é filha dele. Assim ela
+herda contexto, ownership e estilo de texto daquele ponto, e os eventos sobem pelos
+ancestrais do marcador (como o portal do React). As camadas vivas ficam num conjunto global
+(`overlayLayers`, em ordem de criação); a cada `layout()`, a raiz pega as suas
+(`root.layers`) e as posiciona depois da árvore, quando as âncoras já têm caixa. Uma camada
+ancorada some se a âncora saiu da árvore ou está numa subárvore `culled` (a caixa estaria
+velha). A pintura desenha as camadas depois da árvore, recortadas pelo primeiro filho da
+raiz se ele recorta (os cantos da `Window`). O hit test começa pelas camadas, de cima para
+baixo; uma camada que cobre a janela só é alvo se for `modal`. O registro acontece antes de
+os filhos rodarem, então um overlay aberto de dentro de outro fica por cima dele.
+
+`translateX`/`translateY` são somados à posição do nó em `place()`, depois do flex: os filhos
+são posicionados a partir dela, e hit test, culling e `ref` enxergam a posição deslocada sem
+nada especial. `opacity` é um multiplicador no `CommandBuffer` (`opacity`), acumulado por
+`paintTree` na descida e aplicado ao alfa de toda cor emitida. É barato e não precisa do C,
+mas não é opacidade de grupo: isso exigiria desenhar a subárvore numa textura à parte.
+
 ## Command buffer
 
 A pintura não chama o C nó a nó: `render/paint.ts` escreve tudo num único `Float32Array`, que

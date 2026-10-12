@@ -13,7 +13,7 @@ export type BoxProps = StyleProps & Handlers & { children?: Child };
 const STYLE_KEYS: (keyof Style)[] = [
   "direction", "gap", "padding", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow",
   "align", "justify", "position", "left", "top", "clip", "background", "radius", "borderWidth", "borderColor",
-  "shadow", "color", "fontSize", "bold", "cursor",
+  "shadow", "color", "fontSize", "bold", "cursor", "opacity", "translateX", "translateY",
 ];
 const HANDLER_KEYS: (keyof Handlers)[] = [
   "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur", "onResize",

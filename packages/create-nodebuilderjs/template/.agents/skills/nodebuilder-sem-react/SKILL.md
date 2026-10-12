@@ -26,6 +26,8 @@ nem Solid**. O JSX parece o de sempre, mas os elementos são os widgets do
 | `createContext` / `useContext` | iguais: `createContext(padrão)`, `<Ctx.Provider value={...}>`, `useContext(Ctx)`; valor que muda vai como accessor |
 | `useRef` + `ref={r}` / `el.focus()` | `ref={(el) => ...}` em qualquer widget: `el.focus()`, `el.blur()`, `el.scrollTo(y)`, `el.width` |
 | `ResizeObserver`, media queries | `onResize={(s) => setLargura(s.width)}` + signal |
+| `createPortal`, `position: fixed`, `z-index`, modal/dropdown/tooltip de biblioteca | `<Overlay>` (`modal`, `anchor={() => el}`, `onDismiss`); skill `nodebuilder-ui` |
+| CSS `opacity`, `transform: translate(...)` | props `opacity`, `translateX`, `translateY` (sem `scale`/`rotate`) |
 | CSS `:hover` | `onPointerEnter`/`onPointerLeave` + signal |
 | texto selecionável (padrão na web) | só com `<Text selectable>`; sem a prop não seleciona (como `user-select: none`) |
 | `navigator.clipboard.writeText/readText` | `clipboard.writeText(t)` / `await clipboard.readText()` |

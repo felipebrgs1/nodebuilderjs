@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Show, theme), contexto (createContext), ref (focar, rolar, medir) e onResize, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
+description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Card, For, Show, theme), contexto (createContext), ref (focar, rolar, medir), onResize, overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
 ---
 
 # Interface com nodebuilder
@@ -39,7 +39,9 @@ const [nome, setNome] = createSignal("");
 - Layout: `direction` (`"row"`/`"column"`), `gap`, `padding` (`8`, `[v, h]` ou
   `[top, right, bottom, left]`), `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
   `maxHeight`, `grow`, `align`, `justify`, `position: "absolute"` + `left`/`top`, `clip`.
-- Visual: `background`, `radius`, `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}`.
+- Visual: `background`, `radius`, `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}`,
+  `opacity` (0 a 1, vale para os filhos), `translateX`/`translateY` (desloca depois do
+  layout, sem empurrar os irmãos; para animar).
 - Texto (herdados pelos filhos): `color`, `fontSize`, `bold`. Cursor: `cursor="pointer"`.
 - Cores são strings hex (`"#3584e4"`, `"#00000010"` com alfa) ou `"transparent"`.
 - Eventos em qualquer contêiner: `onClick`, `onPointerDown/Up/Enter/Leave`,
@@ -84,6 +86,54 @@ const irParaOFim = () => lista?.scrollTo(Infinity);
 - `useContext` só funciona no corpo do componente (não dentro de um `onClick` ou `setTimeout`):
   leia lá e guarde numa variável.
 
+## Diálogos, menus e dicas: `<Overlay>`
+
+Nada de `zIndex` nem `position: fixed`: o que precisa ficar por cima de tudo (fora do
+recorte de um `Scroll` ou `Card`) vai num `<Overlay>`, quase sempre dentro de um `<Show>`.
+
+```tsx
+import { Button, Card, Overlay, Row, Show, Text, createSignal, theme } from "@nodebuilderjs/core";
+import type { ElementRef } from "@nodebuilderjs/core";
+
+const [menu, setMenu] = createSignal(false);
+const [confirmar, setConfirmar] = createSignal(false);
+let botao: ElementRef | undefined;
+<>
+  <Button ref={(el) => (botao = el)} label="Opções" onClick={() => setMenu((m) => !m)} />
+  <Show when={menu}>
+    <Overlay anchor={() => botao} matchWidth onDismiss={() => setMenu(false)}>
+      <Card padding={4} shadow={{ color: "#00000030", blur: 16, y: 4 }}>
+        <Button label="Excluir" variant="flat" onClick={() => (setMenu(false), setConfirmar(true))} />
+      </Card>
+    </Overlay>
+  </Show>
+  <Show when={confirmar}>
+    <Overlay modal background="#00000059" align="center" justify="center" onDismiss={() => setConfirmar(false)}>
+      <Card width={320} gap={12}>
+        <Text bold>Excluir arquivo?</Text>
+        <Row gap={8} justify="end">
+          <Button label="Cancelar" variant="flat" onClick={() => setConfirmar(false)} />
+          <Button label="Excluir" variant="danger" onClick={() => setConfirmar(false)} />
+        </Row>
+      </Card>
+    </Overlay>
+  </Show>
+</>;
+```
+
+- `anchor={() => el}` (sempre como função): fica ao lado do elemento, `placement`
+  `"bottom"` (padrão), `"top"`, `"right"` ou `"left"`, troca de lado se não couber, não sai da
+  janela; `offset` (4) e `matchWidth` (mesma largura, para menus).
+- Sem `anchor`: cobre a janela; posicione com `align`/`justify`/`padding` ou com
+  `position="absolute"` + `left`/`top`. O espaço vazio deixa o clique passar (toasts, dicas).
+- `modal`: bloqueia clique e Tab no que está atrás; `background` escurece o fundo.
+- `onDismiss`: clique fora (no modal, no fundo escuro; nunca na âncora) ou Esc. Feche o
+  `<Show>` ali.
+- Declare o `<Overlay>` **fora** de um `Button` (ao lado dele, como acima): eventos dentro
+  do overlay sobem pelos pais do lugar onde ele foi declarado.
+- Transição: anime `opacity` e `translateY` com um signal atualizado em
+  `requestAnimationFrame` (veja `examples/overlays.tsx` no repositório do nodebuilder).
+
 ## Regras do layout (flexbox simplificado)
 
 - `align` padrão é **stretch**: filhos ocupam toda a largura de uma coluna. Use
@@ -103,7 +153,8 @@ const irParaOFim = () => lista?.scrollTo(Infinity);
   `theme.danger.base`, `theme.divider`...). Mude `theme` antes de `run()` para personalizar.
 - `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`;
   `windowState.width()`, `.height()`, `.maximized()`, `.activated()` são accessors.
-- Ainda não existem: tema escuro reativo, animações, quebra de linha, seleção no `TextField`
+- Ainda não existem: tema escuro reativo, API de animações (anime `opacity`/`translate` à
+  mão), `scale`/`rotate`, quebra de linha, seleção no `TextField`
   (e Ctrl+C nele), IME, várias janelas.
 
 ## Selecionar e copiar texto

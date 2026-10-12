@@ -55,6 +55,32 @@ export function createInput(root: UINode, host: InputHost) {
     return node;
   }
 
+  /**
+   * Overlay layers first (top to bottom). A layer covering the window is not a target itself
+   * (the pointer goes through its empty space), unless it is modal.
+   */
+  function hitTop(x: number, y: number): UINode | null {
+    for (let i = root.layers.length - 1; i >= 0; i--) {
+      const layer = root.layers[i]!;
+      const hit = hitTest(layer, x, y);
+      if (hit && (hit !== layer || layer.overlay!.anchor || layer.overlay!.modal)) return hit;
+    }
+    return hitTest(root, x, y);
+  }
+
+  /** A press that should close `layer`: outside it, or on a modal's backdrop, but never on its anchor. */
+  function pressOutside(layer: UINode, path: UINode[]) {
+    const o = layer.overlay!;
+    if (path.includes(layer) && !(o.modal && path[0] === layer)) return false;
+    const anchor = o.anchor?.() as UINode | undefined;
+    return !(anchor && path.includes(anchor));
+  }
+
+  /** The topmost overlay that closes on an outside press or Escape. */
+  function dismissible(): UINode | undefined {
+    return root.layers.findLast((l) => l.overlay?.onDismiss);
+  }
+
   function pathTo(node: UINode | null): UINode[] {
     const path: UINode[] = [];
     for (let n = node; n; n = n.parent) path.push(n);
@@ -79,7 +105,7 @@ export function createInput(root: UINode, host: InputHost) {
   }
 
   function refreshHover() {
-    const next = pointer ? pathTo(hitTest(root, pointer.x, pointer.y)) : [];
+    const next = pointer ? pathTo(hitTop(pointer.x, pointer.y)) : [];
     const prev = hoverPath;
     hoverPath = next;
     batch(() => {
@@ -130,7 +156,7 @@ export function createInput(root: UINode, host: InputHost) {
   }
 
   return {
-    hitTest: (x: number, y: number) => hitTest(root, x, y),
+    hitTest: (x: number, y: number) => hitTop(x, y),
 
     get focused() {
       return focused;
@@ -167,7 +193,9 @@ export function createInput(root: UINode, host: InputHost) {
       const repeat = now - lastClick.time < CLICK_INTERVAL && Math.abs(x - lastClick.x) < 4 && Math.abs(y - lastClick.y) < 4;
       lastClick = { time: now, x, y, clicks: repeat ? lastClick.clicks + 1 : 1 };
 
-      const path = pathTo(hitTest(root, x, y));
+      const path = pathTo(hitTop(x, y));
+      const outside = dismissible();
+      if (outside && pressOutside(outside, path)) outside.overlay!.onDismiss!();
       pressed = path[0] ?? null;
       pressedButton = button;
       setFocus(path.find((n) => n.focusable) ?? null);
@@ -185,7 +213,7 @@ export function createInput(root: UINode, host: InputHost) {
     },
 
     pointerUp(x: number, y: number, button: number) {
-      const path = pathTo(hitTest(root, x, y));
+      const path = pathTo(hitTop(x, y));
       const e = pointerEvent(x, y, button, lastClick.clicks);
       for (const n of path) {
         n.handlers.onPointerUp?.(at(n, e));
@@ -199,7 +227,7 @@ export function createInput(root: UINode, host: InputHost) {
     scroll(x: number, y: number, dx: number, dy: number) {
       let stopped = false;
       const e = { dx, dy, stop: () => (stopped = true) };
-      for (const n of pathTo(hitTest(root, x, y))) {
+      for (const n of pathTo(hitTop(x, y))) {
         n.handlers.onScroll?.(e);
         if (stopped) return;
         if (n.scrollable && n.contentHeight > n.height && dy) {
@@ -217,8 +245,12 @@ export function createInput(root: UINode, host: InputHost) {
       if (focused && !focused.attached) setFocus(null);
       for (let n = focused; n && !stopped; n = n.parent) n.handlers.onKeyDown?.(e);
       if (stopped) return;
+      const layer = dismissible();
+      if (ev.key === "Escape" && layer) return layer.overlay!.onDismiss!();
       if (ev.key === "Tab" || ev.key === "ISO_Left_Tab") {
-        const list = focusables(root);
+        const modal = root.layers.findLastIndex((l) => l.overlay!.modal);
+        const scope = modal >= 0 ? root.layers.slice(modal) : [root, ...root.layers];
+        const list = scope.flatMap((n) => focusables(n));
         if (!list.length) return;
         const i = focused ? list.indexOf(focused) : -1;
         const step = ev.shift ? -1 : 1;

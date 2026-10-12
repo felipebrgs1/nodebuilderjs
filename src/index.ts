@@ -13,5 +13,5 @@ export { theme } from "./theme.js";
 export { decodeImage } from "./image/decode.js";
 export { type Bitmap, type ImageInput } from "./image/source.js";
 export { parseSvg, renderSvg, type IconNode, type Svg } from "./svg/index.js";
-export { UINode, debugTree, setTextMeasurer, type Style, type ElementRef, type Painter, type KeyEvent, type PointerEvent } from "./render/node.js";
+export { UINode, debugTree, setTextMeasurer, type Style, type ElementRef, type Placement, type Painter, type KeyEvent, type PointerEvent } from "./render/node.js";
 export { layout } from "./render/layout.js";

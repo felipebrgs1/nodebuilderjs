@@ -40,6 +40,11 @@ export interface Style {
   bold?: boolean;
   // interaction
   cursor?: string;
+  /** 0..1, multiplies the alpha of everything the node and its children draw. */
+  opacity?: number;
+  /** Moves the node and its children after layout (siblings stay put), like CSS translate. */
+  translateX?: number;
+  translateY?: number;
 }
 
 export interface PointerEvent {
@@ -95,6 +100,8 @@ export interface Size {
 
 /** What custom-painted nodes draw with (implemented by paint.ts). */
 export interface Painter {
+  /** 0..1, multiplies the alpha of everything drawn (set by paintTree from `opacity`). */
+  opacity: number;
   rect(x: number, y: number, w: number, h: number, color: Color, radius?: number, borderWidth?: number, borderColor?: Color): void;
   shadow(x: number, y: number, w: number, h: number, color: Color, radius: number, blur: number): void;
   text(x: number, y: number, text: string, size: number, color: Color, bold?: boolean): void;
@@ -155,6 +162,23 @@ export function measureText(text: string, size: number, bold = false): TextMetri
 export function invalidate() {
   scheduleFrame();
 }
+
+export type Placement = "bottom" | "top" | "right" | "left";
+
+/** Set on the top node of an <Overlay> layer. */
+export interface OverlayOptions {
+  /** Absent: the layer covers the window. Present: the layer is sized to its content next to the anchor. */
+  anchor?: () => ElementRef | undefined;
+  placement: Placement;
+  offset: number;
+  matchWidth: boolean;
+  /** Covers the window (ignoring `anchor`), blocks the pointer and keeps Tab inside. */
+  modal: boolean;
+  onDismiss?: () => void;
+}
+
+/** Every live overlay layer, in creation order (later ones draw above). Each root picks its own in layout(). */
+export const overlayLayers = new Set<UINode>();
 
 /** What a `ref` receives: the box from the last layout (window coordinates) and imperative actions. */
 export interface ElementRef {
@@ -236,6 +260,10 @@ export class UINode implements ElementRef {
   }
 
   isRoot = false;
+  /** On a root: overlay layers drawn above the tree, bottom to top (filled by layout). */
+  layers: UINode[] = [];
+  /** On an overlay layer: how it is placed and dismissed. Its `parent` is the <Overlay> placeholder. */
+  overlay?: OverlayOptions;
   /** On a root: the input system's focus, set by createInput (what focus()/blur() go through). */
   focusHost?: { readonly focused: UINode | null; setFocus(node: UINode | null): void };
   /** Last size given to onResize. */

@@ -11,3 +11,4 @@ export { Button } from "./button.js";
 export { Checkbox } from "./checkbox.js";
 export { TextField } from "./text-field.js";
 export { Window } from "./window.js";
+export { Overlay } from "./overlay.js";

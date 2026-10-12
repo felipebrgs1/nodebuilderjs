@@ -55,7 +55,7 @@ código como o Claude Code.
   para listas e condições, e de `createContext` para valores compartilhados pela árvore.
 
 Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens, ícones,
-desenho livre, gráficos e um painel
+desenho livre, gráficos, overlays (menu, diálogo e dica) e um painel
 com abas, tabela e gráfico.
 
 ### Imagens
@@ -174,6 +174,47 @@ const [largura, setLargura] = createSignal(0);
   da janela), `focus()`, `blur()` e, num `Scroll`, `scrollTo(y)` e `scrollY`. O `ref` é
   chamado quando o widget é criado, antes do layout; um `focus()` nessa hora vale assim que
   o widget entra na árvore.
+
+### Overlays: diálogos, menus e dicas
+
+`<Overlay>` desenha o conteúdo numa camada acima da janela inteira, fora do recorte de quem
+o contém, e continua enxergando o contexto e a cor de texto do lugar onde foi declarado.
+
+```tsx
+import { Button, Card, Overlay, Show, Text, createSignal } from "@nodebuilderjs/core";
+import type { ElementRef } from "@nodebuilderjs/core";
+
+// Menu ancorado num botão: abaixo dele (acima, se não couber), da mesma largura.
+const [aberto, setAberto] = createSignal(false);
+let botao: ElementRef | undefined;
+<>
+  <Button ref={(el) => (botao = el)} label="Opções" onClick={() => setAberto((a) => !a)} />
+  <Show when={aberto}>
+    <Overlay anchor={() => botao} matchWidth onDismiss={() => setAberto(false)}>
+      <Card padding={4}><Text>Renomear</Text></Card>
+    </Overlay>
+  </Show>
+</>;
+
+// Diálogo modal: cobre a janela, escurece o fundo e bloqueia o clique e o Tab de trás.
+<Overlay modal background="#00000059" align="center" justify="center" onDismiss={() => setAberto(false)}>
+  <Card width={320}><Text>Excluir arquivo?</Text></Card>
+</Overlay>;
+```
+
+- Sem `anchor`, a camada cobre a janela e posiciona os filhos com as props de flex
+  (`align`, `justify`, `padding`) ou com `position="absolute"`. O espaço vazio deixa o clique
+  passar, a não ser com `modal`.
+- Com `anchor`: `placement` (`"bottom"`, `"top"`, `"right"`, `"left"`), `offset` (4) e
+  `matchWidth`. Passe a âncora como função (`() => botao`), porque o `ref` só é preenchido
+  quando o botão é criado.
+- `onDismiss` é chamado num clique fora (no modal, no fundo; nunca na âncora) e no Esc.
+- Um overlay aberto depois fica por cima dos anteriores.
+
+`opacity` (0 a 1) e `translateX`/`translateY` valem em qualquer widget e servem para
+transições, como no exemplo `bun run overlays`. Eles atualizam com um signal e
+`requestAnimationFrame`. `translate` desloca o nó e os filhos depois do layout, sem
+empurrar os irmãos, como o `transform` do CSS.
 
 ### Área de transferência
 
@@ -307,7 +348,10 @@ Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#me
 - Campo de texto sem seleção, cópia e desfazer (colar funciona).
 - SVG só no subconjunto para ícones (sem gradientes, texto, filtros); AVIF/HEIC dependem da
   `libheif` do sistema.
-- Sem animações, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).
+- Sem API de animações (dá para animar `opacity`/`translate` com `requestAnimationFrame`),
+  sem `scale`/`rotate`, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).
+- `opacity` é aplicada a cada coisa desenhada, não ao grupo: filhos que se sobrepõem
+  aparecem um através do outro.
 
 ## Contribuir
 

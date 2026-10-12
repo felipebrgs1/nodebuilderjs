@@ -23,7 +23,7 @@ que suportam skills as carregam sozinhos; os outros devem ler a skill do assunto
 
 | Skill | Quando |
 |---|---|
-| `nodebuilder-ui` | telas, widgets, props de estilo, layout, `For`/`Show`, contexto, `ref` (focar, rolar), `onResize`, tema, texto selecionável, copiar/colar |
+| `nodebuilder-ui` | telas, widgets, props de estilo, layout, `For`/`Show`, contexto, `ref` (focar, rolar), `onResize`, `Overlay` (diálogo, menu, dica), `opacity`/`translate`, tema, texto selecionável, copiar/colar |
 | `nodebuilder-sem-react` | antes de instalar bibliotecas ou portar código React/web |
 | `nodebuilder-imagens` | imagens (PNG, JPEG, WebP, AVIF), arquivos no app |
 | `nodebuilder-icones` | ícones (Lucide, Phosphor) e SVG com `Icon` |

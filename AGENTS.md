@@ -48,7 +48,7 @@ bun run build:native        # compila native/build/<platform>-<arch>/nodebuilder
 bun run typecheck           # tsc 7 --noEmit (~0,1 s)
 bun test                    # todos os testes, sem janela (~0,1 s)
 bun test test/svg.test.tsx  # um arquivo; -t "padrão" filtra pelo nome do teste
-bun run counter | todo | images | icons | drawing | charts   # exemplos (Bun executa .tsx direto)
+bun run counter | todo | images | icons | drawing | charts | overlays   # exemplos (.tsx direto)
 bun run dev                 # todo com --watch
 bun run bench               # stress test com NB_STATS=1 (env: N=1000 MODE=one|all|static)
 bun run bench:dashboard     # app realista (env: TAB=overview|table|logs|settings ROWS=500
@@ -101,7 +101,8 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
 ### Organização dos testes
 
 - Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `context`, `ref`
-  (`ref`, foco e rolagem por código, `onResize`), `input` (eventos),
+  (`ref`, foco e rolagem por código, `onResize`), `overlay`, `style` (`opacity`, `translate`),
+  `input` (eventos),
   `clipboard`, `text-selection`, `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulação), `draw` (primitivas e `shapes.ts`), `canvas` e `charts/`. Assunto novo ganha arquivo novo; quando o `core` crescer, divida-o.
 - Testes rápidos e determinísticos: sem rede, sem relógio, sem janela. A suíte toda roda em
@@ -146,6 +147,7 @@ src/                   um módulo por pasta; imports relativos com `.js`
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps, inherited, interaction
     containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
     text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
+    overlay.ts         <Overlay>: camada acima da janela (marcador na árvore + root.layers)
     text-selection.ts  posições de caracteres, palavra sob o clique (Text selectable; TextField)
   image/
     source.ts          fontes de imagem: cache por caminho, contagem de uso, handle na GPU
@@ -187,7 +189,7 @@ test/            um arquivo por módulo (bun:test; bunfig.toml limita o bun test
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> comandos com nome
   charts/        testes de src/charts (escalas e cada tipo de gráfico)
   fixtures/      entradas e saídas de referência (.raw, .pnm do djpeg, PNG do librsvg...)
-examples/        counter, todo, images, icons, drawing, charts, bench, dashboard (.tsx) + assets/
+examples/        counter, todo, images, icons, drawing, charts, overlays, bench, dashboard (.tsx) + assets/
 cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.ts
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces publicados junto com o core (veja "Publicação no npm")
@@ -321,6 +323,10 @@ Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica). Op novo tamb�
   nunca as use sem checar a marca.
 - Clip (`clip`/scroll) recorta por dentro da borda, com raio `radius - borderWidth`.
 
+- `translateX/Y` somam à posição em `place()` (depois do flex); o resto enxerga a posição
+  deslocada. Overlays: `root.layers` é recalculado a cada `layout()`; um teste que abre ou
+  fecha um overlay precisa de `relayout()` antes de olhar `root.layers` ou os comandos.
+
 ## Desempenho
 
 - `NB_STATS=1` imprime por segundo: fps, ms/frame (state, layout, paint, native), nós,
@@ -419,7 +425,8 @@ todos com a versão do `package.json` da raiz:
 - Imagens: AVIF/HEIC só com a `libheif` do sistema; decodificação síncrona na thread do JS
   (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms, WebP 105–180 ms); sem mipmaps (reduzir
   muito uma imagem serrilha) e sem versão @2x.
-- Sem acessibilidade (AT-SPI), animações/transições, tema escuro, multi-janela, IME
+- `opacity` multiplica o alfa de cada comando (não é de grupo); sem `scale`/`rotate`.
+- Sem acessibilidade (AT-SPI), API de animações/transições, tema escuro, multi-janela, IME
   (text-input-v3), DnD, escala fracionária real (KDE 125% renderiza em 2x e reduz).
 - Janela sempre com decoração própria (CSD): barra de título, mover, maximizar,
   redimensionar pelas bordas (6 px). `xdg-decoration` (SSD no KDE) ainda não.

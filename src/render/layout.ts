@@ -1,7 +1,7 @@
 // A small flexbox: row/column, gap, padding, grow, shrink-to-fit, align,
 // justify, min/max sizes, absolute children and vertical scrolling.
 
-import type { Edges, Size, UINode } from "./node.js";
+import { type Edges, type Size, type UINode, overlayLayers } from "./node.js";
 import { batch } from "../reactive/signals.js";
 
 let cache = new Map<UINode, Size>();
@@ -18,11 +18,52 @@ export interface Rect {
 export function layout(root: UINode, width: number, height: number) {
   cache = new Map();
   resized = [];
-  place(root, 0, 0, width, height, { x0: 0, y0: 0, x1: width, y1: height });
+  const view = { x0: 0, y0: 0, x1: width, y1: height };
+  place(root, 0, 0, width, height, view);
+  // Overlays after the tree, so anchors are already placed; nested ones come after their
+  // parent layer (they were created inside it).
+  root.layers = [];
+  for (const layer of overlayLayers) if (rootOf(layer) === root && placeLayer(layer, width, height, view)) root.layers.push(layer);
   // After the whole tree is placed: handlers may change state (and the tree) freely.
   const nodes = resized;
   resized = [];
   if (nodes.length) batch(() => nodes.forEach((n) => n.handlers.onResize?.(n.reportedSize!)));
+}
+
+function rootOf(node: UINode): UINode {
+  let n = node;
+  while (n.parent) n = n.parent;
+  return n;
+}
+
+/** False when an anchored layer has nowhere to go (anchor gone, or its box is stale from culling). */
+function placeLayer(layer: UINode, width: number, height: number, view: Rect): boolean {
+  const o = layer.overlay!;
+  if (!o.anchor || o.modal) {
+    place(layer, 0, 0, width, height, view);
+    return true;
+  }
+  const a = o.anchor() as UINode | undefined;
+  if (!a || rootOf(a) !== rootOf(layer)) return false;
+  for (let n: UINode | null = a; n; n = n.parent) if (n.culled) return false;
+
+  const k = intrinsic(layer);
+  const w = o.matchWidth ? a.width : k.width;
+  const h = k.height;
+  const gap = o.offset;
+  const below = a.y + a.height + gap, above = a.y - gap - h;
+  const after = a.x + a.width + gap, before = a.x - gap - w;
+  let x = a.x;
+  let y = a.y;
+  // Preferred side, or the opposite one when only that fits.
+  switch (o.placement) {
+    case "bottom": y = below + h > height && above >= 0 ? above : below; break;
+    case "top": y = above < 0 && below + h <= height ? below : above; break;
+    case "right": x = after + w > width && before >= 0 ? before : after; break;
+    case "left": x = before < 0 && after + w <= width ? after : before; break;
+  }
+  place(layer, clamp(x, 0, Math.max(0, width - w)), clamp(y, 0, Math.max(0, height - h)), w, h, view);
+  return true;
 }
 
 /** How far a node's own drawing reaches outside its box (shadows). */
@@ -100,8 +141,8 @@ export function intrinsic(node: UINode): Size {
 }
 
 function place(node: UINode, x: number, y: number, width: number, height: number, view: Rect) {
-  node.x = x;
-  node.y = y;
+  node.x = x + (node.style.translateX ?? 0);
+  node.y = y + (node.style.translateY ?? 0);
   node.width = width;
   node.height = height;
   if (node.handlers.onResize && (node.reportedSize?.width !== width || node.reportedSize.height !== height)) {
@@ -116,8 +157,8 @@ function place(node: UINode, x: number, y: number, width: number, height: number
 
   const s = node.style;
   const [pt, pr, pb, pl] = edges(s.padding);
-  const innerX = x + pl;
-  const innerY = y + pt;
+  const innerX = node.x + pl;
+  const innerY = node.y + pt;
   const innerW = Math.max(0, width - pl - pr);
   const innerH = Math.max(0, height - pt - pb);
   const row = s.direction === "row";

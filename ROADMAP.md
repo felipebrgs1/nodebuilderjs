@@ -13,6 +13,7 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - Gráficos (`@nodebuilderjs/core/charts`) com API no formato do Recharts
 - `onPointerMove` e `interact()` para testar mouse e teclado sem janela
 - `createContext`/`useContext`, `ref` (foco, rolagem e caixa do layout) e `onResize`
+- `<Overlay>` (diálogos modais, menus ancorados, dicas), `opacity` e `translateX`/`translateY`
 - Área de transferência do sistema (texto, Wayland e X11): `clipboard`, colar no `TextField`,
   `<Text selectable>` para selecionar e copiar texto fixo
 - `bun create nodebuilderjs` gera o app com `AGENTS.md` e skills para agentes (`.agents/skills`)
@@ -149,7 +150,8 @@ Depois:
   contexto
 - Imagens: decodificar fora da thread do JS, mipmaps para imagens muito reduzidas, versões
   @2x para HiDPI e animações (GIF, WebP animado)
-- Animações e transições
+- Animações e transições (já dá para animar `opacity`/`translate` à mão); `scale`/`rotate`
+  e opacidade de grupo pedem desenhar a subárvore numa textura
 - Tema escuro, seguindo a preferência do sistema
 - **Experimento:** `@nodebuilderjs/react`, um renderer React opcional (via
   `react-reconciler`, como o React Native e o Ink) mapeando para os mesmos widgets e para
