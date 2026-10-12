@@ -2,13 +2,16 @@ import { insert, jsx } from "../jsx-runtime.js";
 import { type Style, UINode } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, untrack } from "../reactive/signals.js";
 import { theme } from "../theme.js";
-import { interaction } from "./props.js";
+import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
 import { Text } from "./text.js";
 
-export function Checkbox(props: { checked: Accessor<boolean>; onChange: (checked: boolean) => void; label?: MaybeAccessor<string> }) {
+export function Checkbox(
+  props: StyleProps & { checked: Accessor<boolean>; onChange: (checked: boolean) => void; label?: MaybeAccessor<string>; disabled?: MaybeAccessor<boolean> },
+) {
   const row = new UINode("Checkbox");
   Object.assign(row.style, { direction: "row", align: "center", gap: 10, cursor: "pointer" } satisfies Style);
-  row.focusable = true;
+  applyProps(row, props);
+  const disabled = disableable(row, props);
   const box = new UINode("CheckboxBox");
   Object.assign(box.style, { width: 20, height: 20, radius: 6 } satisfies Style);
   const mark = new UINode("CheckboxMark");
@@ -17,7 +20,7 @@ export function Checkbox(props: { checked: Accessor<boolean>; onChange: (checked
   box.setSlot(box.addSlot(), [mark]);
 
   const state = interaction(row);
-  const toggle = () => props.onChange(!untrack(props.checked));
+  const toggle = () => !disabled() && props.onChange(!untrack(props.checked));
   row.handlers.onClick = toggle;
   row.handlers.onKeyDown = (e) => {
     if (e.key === "space" || e.key === "Return") {

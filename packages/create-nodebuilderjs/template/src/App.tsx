@@ -1,29 +1,32 @@
-import { Column, Icon, Row, Scroll, Text, Window, theme } from "@nodebuilderjs/core";
-import { Atividade } from "./componentes/Atividade.js";
-import { Contador } from "./componentes/Contador.js";
-import { Tarefas } from "./componentes/Tarefas.js";
-import { criarEstado } from "./estado.js";
-import { brilho } from "./icones.js";
+import { Column, Icon, Row, Scroll, Spacer, Text, Toggle, Window, colorScheme, setTheme, theme } from "@nodebuilderjs/core";
+import { Activity } from "./components/Activity.js";
+import { Counter } from "./components/Counter.js";
+import { Tasks } from "./components/Tasks.js";
+import { sparkle } from "./icons.js";
+import { createState } from "./state.js";
 
 export function App() {
-  const estado = criarEstado();
+  const state = createState();
   return (
     <Window title="{{title}}" appId="{{appId}}" width={720} height={760}>
       <Scroll grow={1} padding={20} gap={16}>
         <Row gap={12} align="center">
-          <Icon svg={brilho} size={32} color={theme.accent.base} />
-          <Column gap={2}>
+          {/* Theme colors go inside functions, so they follow a theme switch. */}
+          <Icon svg={sparkle} size={32} color={() => theme.accent.base} />
+          <Column gap={2} grow={1}>
             <Text fontSize={22} bold>{"{{title}}"}</Text>
-            <Text color={theme.text.secondary}>Edite src/App.tsx e salve: o bun run dev reabre a janela.</Text>
+            <Text color={() => theme.text.secondary}>Edit src/App.tsx and save: bun run dev reopens the window.</Text>
           </Column>
+          <Spacer size={8} />
+          <Toggle checked={() => colorScheme() === "dark"} onChange={(on) => setTheme(on ? "dark" : "light")} label="Dark" />
         </Row>
         <Row gap={16} align="start">
           <Column grow={1} gap={16}>
-            <Contador estado={estado} />
-            <Atividade estado={estado} />
+            <Counter state={state} />
+            <Activity state={state} />
           </Column>
           <Column grow={1}>
-            <Tarefas estado={estado} />
+            <Tasks state={state} />
           </Column>
         </Row>
       </Scroll>

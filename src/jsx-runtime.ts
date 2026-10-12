@@ -2,7 +2,7 @@
 // jsx() only records a lightweight description; the component runs once when the
 // description is inserted into the tree (so <Show>/<For> can decide lazily).
 
-import { createEffect, untrack } from "./reactive/signals.js";
+import { type Accessor, createEffect, createMemo, untrack } from "./reactive/signals.js";
 import { UINode } from "./render/node.js";
 
 export interface ElementDesc {
@@ -53,6 +53,35 @@ export function resolve(child: Child, out: UINode[] = []): UINode[] {
   return out;
 }
 
+/**
+ * Runs every component in `child` now and turns each accessor into a memo of its own
+ * built content. What is left holds only nodes, arrays and those memos, so `resolve`
+ * on it just collects nodes: a change inside one accessor re-runs that accessor alone,
+ * never the components around it (a <Show> toggling inside a row does not rebuild the row).
+ */
+export function build(child: Child): Child {
+  if (child == null || typeof child === "boolean" || child instanceof UINode) return child;
+  if (isElement(child)) return build(instantiate(child));
+  if (typeof child === "function") return createMemo(() => build(child()), { equals: false });
+  if (Array.isArray(child)) return child.map(build);
+  return textNode(String(child));
+}
+
+/** Builds `child` in the current scope; the accessor returns its nodes, kept up to date. */
+export function render(child: Child): Accessor<UINode[]> {
+  const built = build(child);
+  if (isStatic(built)) {
+    const nodes = resolve(built);
+    return () => nodes;
+  }
+  return createMemo(() => resolve(built), { equals: false });
+}
+
+function isStatic(built: Child): boolean {
+  if (typeof built === "function") return false;
+  return !Array.isArray(built) || built.every(isStatic);
+}
+
 /** Inserts children into `parent`; every accessor becomes its own reactive slot. */
 export function insert(parent: UINode, child: Child) {
   if (child == null || typeof child === "boolean") return;
@@ -62,7 +91,8 @@ export function insert(parent: UINode, child: Child) {
     insert(parent, instantiate(child));
   } else if (typeof child === "function") {
     const slot = parent.addSlot();
-    createEffect(() => parent.setSlot(slot, resolve((child as () => Child)())));
+    const built = build(child);
+    createEffect(() => parent.setSlot(slot, resolve(built)));
   } else {
     parent.setSlot(parent.addSlot(), resolve(child));
   }

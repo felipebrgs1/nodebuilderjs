@@ -6,6 +6,7 @@ import { type Child, insert } from "./jsx-runtime.js";
 import { layout } from "./render/layout.js";
 import { type PointerEvent, UINode, setTextMeasurer } from "./render/node.js";
 import { createRoot } from "./reactive/signals.js";
+import { runFrameCallbacks, setAnimating, setFrameClock } from "./runtime/frames.js";
 import { createInput } from "./runtime/input.js";
 
 /** 8 px per character, 20 px lines: layout is deterministic without fonts. */
@@ -16,6 +17,8 @@ export function useFakeTextMetrics() {
 /** Renders `view` into a detached root and lays it out at `width`x`height`. */
 export function mount(view: () => Child, size = { width: 800, height: 600 }) {
   useFakeTextMetrics();
+  setAnimating(false); // animations finish at once unless the test calls frames()
+  setFrameClock(null);
   const root = new UINode("root");
   root.isRoot = true;
   const dispose = createRoot((d) => {
@@ -26,9 +29,11 @@ export function mount(view: () => Child, size = { width: 800, height: 600 }) {
   return { root, dispose, relayout: () => layout(root, size.width, size.height) };
 }
 
+/** Searches the subtree; from a root, also its overlay layers (as of the last layout). */
 export function findAll(node: UINode, match: (n: UINode) => boolean, found: UINode[] = []): UINode[] {
   if (match(node)) found.push(node);
   for (const c of node.children) findAll(c, match, found);
+  if (node.isRoot) for (const layer of node.layers) findAll(layer, match, found);
   return found;
 }
 
@@ -59,10 +64,11 @@ export function click(node: UINode) {
  * the node helpers use the node's center. Call `relayout()` after changes that move nodes.
  */
 export function interact(root: UINode) {
+  let cursor = "default";
   const input = createInput(root, {
     size: () => ({ width: root.width, height: root.height }),
     resizable: () => false,
-    setCursor() {},
+    setCursor: (name) => (cursor = name),
     move() {},
     resize() {},
     invalidate() {},
@@ -73,6 +79,9 @@ export function interact(root: UINode) {
     input.keyDown({ key: name, text, shift: !!options.shift, ctrl: !!options.ctrl, alt: false, repeat: false });
   return {
     move: (x: number, y: number) => input.pointerMove(x, y),
+    /** Presses the left button at a window position (e.g. on a scrollbar). */
+    down: (x: number, y: number) => input.pointerDown(x, y, 0),
+    up: (x: number, y: number) => input.pointerUp(x, y, 0),
     hover: (node: UINode) => input.pointerMove(...center(node)),
     press: (node: UINode) => input.pointerDown(...center(node), 0),
     release: (node: UINode) => input.pointerUp(...center(node), 0),
@@ -84,7 +93,9 @@ export function interact(root: UINode) {
       for (let i = 1; i <= steps; i++) input.pointerMove(x + (dx * i) / steps, y + (dy * i) / steps);
       input.pointerUp(x + dx, y + dy, 0);
     },
-    scroll: (node: UINode, dy: number) => input.scroll(...center(node), 0, dy),
+    /** Turns the wheel over the node's center: `dy` down, `dx` right; with `shift`, a vertical turn scrolls sideways. */
+    scroll: (node: UINode, dy: number, options: { dx?: number; shift?: boolean } = {}) =>
+      input.scroll(...center(node), options.dx ?? 0, dy, !!options.shift),
     /** A key by its name ("Return", "BackSpace", "Tab", "a"...), producing no text. */
     key: (name: string, options?: { shift?: boolean; ctrl?: boolean }) => key(name, "", options),
     /** Types text into the focused node, one key per character. */
@@ -93,6 +104,29 @@ export function interact(root: UINode) {
     },
     get focused() {
       return input.focused;
+    },
+    /** Pointer shape the window would show ("default", "pointer", "text"...). */
+    get cursor() {
+      return cursor;
+    },
+  };
+}
+
+/**
+ * Takes over the frame clock: animations (and requestAnimationFrame) run only as
+ * `advance(ms)` moves time, in 16 ms frames. Call it after mount(), which resets the clock.
+ */
+export function frames() {
+  setAnimating(true);
+  let time = 0;
+  setFrameClock(() => time);
+  return {
+    advance(ms: number) {
+      const end = time + ms;
+      while (time < end) {
+        time = Math.min(end, time + 16);
+        runFrameCallbacks(time);
+      }
     },
   };
 }

@@ -1,304 +1,469 @@
-# Arquitetura
+# Architecture
 
-Como o nodebuilder funciona por dentro. Para usar o framework, o [README](README.md) basta;
-para as regras e convenções de quem mexe no código, veja o [AGENTS.md](AGENTS.md).
+How nodebuilder works under the hood. To use the framework, the [README](README.md) is enough;
+for the rules and conventions for anyone changing the code, see [AGENTS.md](AGENTS.md).
 
-## Visão geral
+## Overview
 
 ```
- seu app (.tsx)
-     │  componentes, signals
+ your app (.tsx)
+     │  components, signals
 ┌────▼──────────────────────────────── TypeScript (src/) ──────────────────────┐
-│ reactive/     signals, effects, memos, ownership; <For>, <Show>              │
-│ jsx-runtime   JSX -> descrições preguiçosas                                  │
-│ widgets/      Window, Column, Text, Image, Icon, Button... criam UINodes     │
-│ image/        fontes de imagem; decodificadores PNG, JPEG, WebP              │
-│ svg/          SVG para ícones, sobre geometry/ (caminhos, contornos, raster) │
-│ render/       node: árvore retida · layout: flexbox · paint: command buffer  │
-│ runtime/      loop de frames, eventos, foco, hover, NB_STATS; addon nativo   │
+│ reactive/     signals, effects, memos, ownership; control flow, errors       │
+│ jsx-runtime   JSX -> lazy descriptions                                       │
+│ widgets/      Window, Column, Text, Image, Icon, Button... create UINodes    │
+│ image/        image sources; PNG, JPEG, WebP decoders                        │
+│ svg/          SVG for icons, on top of geometry/ (paths, strokes, raster)    │
+│ render/       node: retained tree · layout: flexbox · paint: command buffer  │
+│ runtime/      frame loop, events, focus, hover, NB_STATS; native addon       │
 └────┬─────────────────────────────────────────────────────────────────────────┘
-     │  N-API: render(commands, texts), measureText, createImage, decodeImage, eventos
-┌────▼──────────────────────────── núcleo portável (native/core/) ─────────────┐
-│ addon.c         superfície N-API, fila de eventos, threadsafe function       │
-│ render_gles2.c  um shader, um formato de vértice, um batch por frame         │
-│ text.c          HarfBuzz (shaping) + FreeType (glifos) + atlas de textura    │
+     │  N-API: render(commands, texts), measureText, createImage, decodeImage, events
+┌────▼──────────────────────────── portable core (native/core/) ───────────────┐
+│ addon.c         N-API surface, event queue, threadsafe function              │
+│ render_gles2.c  one shader, one vertex format, one batch per frame           │
+│ text.c          HarfBuzz (shaping) + FreeType (glyphs) + texture atlas       │
 └────┬─────────────────────────────────────────────────────────────────────────┘
-     │  contrato nb_platform.h (janela, eventos, fontes)
-┌────▼──────────────────────── backend do SO (native/platform/linux/) ─────────┐
-│ linux.c      escolhe Wayland ou X11 em tempo de execução                     │
-│ wayland.c    xdg-shell, EGL, ponteiro, teclado (xkb + compose), cursor       │
+     │  nb_platform.h contract (window, events, fonts)
+┌────▼──────────────────────── OS backend (native/platform/linux/) ────────────┐
+│ linux.c      picks Wayland or X11 at runtime                                 │
+│ wayland.c    xdg-shell, EGL, pointer, keyboard (xkb + compose), cursor       │
 │ x11.c        Xlib + EWMH, EGL, XIM, Xcursor, XRandR                          │
-│ pump.c       thread de poll() que avisa quando há eventos                    │
+│ pump.c       poll() thread that signals when there are events                │
 │ fonts.c      fontconfig                                                      │
-│ codecs.c     AVIF/HEIC via libheif (dlopen, opcional)                        │
+│ codecs.c     AVIF/HEIC via libheif (dlopen, optional)                        │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-A ideia é manter o máximo em TypeScript (fácil de ler, mudar e, de propósito, fácil para
-LLMs escreverem) e deixar o C pequeno e estável: ele só sabe abrir uma janela, entregar
-eventos, medir texto e desenhar uma lista de retângulos, textos, imagens e recortes.
+The idea is to keep as much as possible in TypeScript (easy to read, change and, on purpose,
+easy for LLMs to write) and to keep the C small and stable: all it knows is how to open a
+window, deliver events, measure text and draw a list of rectangles, text, images and clips.
 
-## Reatividade
+## Reactivity
 
-O modelo é o do SolidJS, implementado do zero em `src/reactive/signals.ts`:
+The model is SolidJS's, implemented from scratch in `src/reactive/signals.ts`:
 
-- `createSignal` guarda um valor e sabe quem o leu. Ao mudar, reexecuta só esses leitores.
-- `createEffect` e `createMemo` registram as leituras feitas durante a execução.
-- **Ownership:** tudo que é criado dentro de um effect ou `createRoot` é descartado junto
-  com ele (`onCleanup`). É assim que trocar de aba, por exemplo, libera tudo da aba antiga.
+- `createSignal` holds a value and knows who read it. When it changes, it reruns only those readers.
+- `createEffect` and `createMemo` record the reads made while they run.
+- **Update queue:** a write outside `batch` runs the affected effects right away
+  (`flushPending`). While that queue is running, new writes only join it: the effect that
+  wrote finishes before the ones it triggered (it never runs reentrantly, in the middle of
+  itself), and an update cycle is detected by the 100 000-run limit instead of blowing the
+  stack. An error that no scope handles does not stall the queue: the remaining pending
+  effects run and the first error is rethrown at the end, to whoever wrote the signal.
+- **Ownership:** everything created inside an effect or `createRoot` is disposed of along
+  with it (`onCleanup`). That is how switching tabs, for example, releases everything from the old tab.
+- **Context** (`reactive/context.ts`) also lives in the owner tree: the `Provider` creates a
+  scope holding the value and resolves the children inside it (`jsx()` is lazy; if they were
+  resolved elsewhere, the components would run outside the scope). `useContext` walks up the
+  owners. A `createRoot` is not disposed of by the surrounding owner, but it keeps a reference
+  to it just for this lookup: that way the rows of `<For>`, which are roots, see the outer context.
+- **Errors** also travel up the owner tree. `catchError(fn, onError)` creates a scope with
+  a handler (`Owner.onError`); `execute`, which runs every effect and memo, catches whatever the
+  run throws and hands it to the nearest handler up the owners (passing through the roots of
+  `<For>`/`<Index>`, like context). With no handler, it rethrows as before. The handler runs
+  with writes deferred until the end of the current update, so that the failing scope is not
+  disposed of in the middle of a computation that is still running.
+  `<ErrorBoundary>` (`reactive/error-boundary.ts`) creates the children inside a `catchError`:
+  an error during creation is seen right after it; a later error (an effect rerun by a
+  signal) schedules a new run of the boundary. In both cases the children's scope is
+  disposed of entirely (effects, `onCleanup`, overlays) and the `fallback` appears; `reset()`
+  creates the children again. Event handlers do not go through `execute`: whatever they throw
+  reaches their caller (the input), as in React and Solid.
 
-Não há compilador de JSX próprio: o TypeScript/Bun transforma o JSX em chamadas `jsx()`, que
-só criam **descrições** (`ElementDesc`). O componente executa quando a descrição é inserida
-na árvore. Isso permite que `<Show>` e `<For>` decidam quando (e se) instanciar os filhos.
+There is no custom JSX compiler: TypeScript/Bun turns JSX into `jsx()` calls, which only
+create **descriptions** (`ElementDesc`). The component runs when the description is inserted
+into the tree. This lets `<Show>`, `<Switch>` and `<For>` decide when (and whether) to
+instantiate their children; `<Switch>` reads the props of each `<Match>` straight from the
+description, without running anything.
 
-Como não há compilador, a regra é explícita: **só funções são reativas**. Uma prop
-`text={() => ...}` ou um filho `{count}` vira um effect que atualiza o nó diretamente; um
-valor comum é lido uma vez. Componentes rodam uma única vez; não existe re-render.
+Since there is no compiler, the rule is explicit: **only functions are reactive**. A prop
+`text={() => ...}` or a child `{count}` becomes an effect that updates the node directly; a
+plain value is read once. Components run exactly once; there is no re-render.
 
-Filhos ficam em **slots** (`UINode.addSlot/setSlot`). Cada filho-função é um slot com seu
-próprio effect: quando reexecuta, substitui só os nós daquele trecho. `<For>` é keyed por
-referência e cria um `createRoot` por item, descartado quando o item sai da lista.
+Children live in **slots** (`UINode.addSlot/setSlot`). Each function child is a slot with its
+own effect: when it reruns, it replaces only the nodes of that section. `<For>` is keyed by
+reference and creates one `createRoot` per item, disposed of when the item leaves the list;
+`<Index>` creates one root per position, with the value in a signal, and only creates or
+disposes of rows when the length changes.
 
-## Um frame
+**Build and collect** (`build`/`render` in `jsx-runtime.ts`): whatever mounts children inside
+a computation (the slot, the `Provider`, the rows of `<For>`/`<Index>`, the `<ErrorBoundary>`)
+first runs the components once (`build`), turning each function child into a memo of its own
+content, and only then collects the nodes (`resolve`). So when an inner reactive section
+changes (a `<Show>` inside a row, the list of a `<For>` right below a `Provider`), only that
+memo reruns and whatever surrounds it just recollects the nodes, without recreating
+components or losing their state. Content without any function gets no memo.
+Measured without a window (2026-10-12, median of 4 alternating runs): mounting and disposing
+of a 500-row `<For>` 100 times went from ~123 to ~100 ms (static rows no longer allocate a
+memo); the `try/catch` in `execute` and the non-reentrant queue did not change the cost of
+updates (1000 effects × 1000 updates in `batch`: ~264 and ~267 ms, within the noise).
+
+## Theme and animations
+
+`theme.ts` holds two presets (`lightTheme`, `darkTheme`) and the theme in use. The `theme`
+object has the shape of the presets, but each leaf is a getter that reads a version signal
+before returning the value: an effect (or the `draw` of a `<Canvas>`) that read
+`theme.text.primary` reruns when `setTheme()` or an assignment (`theme.divider = ...`) bumps
+the version, and painting, which reads the theme every frame, only needs the `invalidate()`.
+Widgets do not copy theme colors into the style at creation: they put them in an effect, and
+only when the app did not pass its own color. The cost is one function call per read; when
+painting 1000 texts, within the noise (measured on 2026-10-12).
+
+`runtime/frames.ts` is the frame clock: the `requestAnimationFrame` queue, run by `run()`
+before each layout, and `frameNow()`. `animation/` (`animate`, `createTween`,
+`createPresence`) uses this clock; an animation starts counting at the call, not at the first
+frame. Without a window nothing runs the queue, so `animate` jumps straight to the end when
+`animating()` is false: tests of code that uses `Dialog` or `Select` do not need to know about
+the transitions. `frames()` from `@nodebuilderjs/core/testing` turns on the fake clock and runs
+the queue in 16 ms steps; `mount()` goes back to windowless mode.
+
+## A frame
 
 ```
-signal muda
-  -> effect atualiza UINode.set(...) / setSlot(...)
+signal changes
+  -> effect updates UINode.set(...) / setSlot(...)
   -> invalidate() -> schedule()
-       respeita o frame pendente do compositor e o teto de fps (120 por padrão)
+       respects the compositor's pending frame and the fps cap (120 by default)
   -> renderFrame()
-       callbacks de requestAnimationFrame
-       layout()        posições e tamanhos da parte visível da árvore
-       refreshHover()  o nó sob o ponteiro pode ter mudado
-       paintTree()     árvore -> command buffer
-       native.render() C desenha e faz eglSwapBuffers
-  -> o compositor avisa (frame callback) que pode mandar o próximo
+       requestAnimationFrame callbacks
+       layout()        positions and sizes of the visible part of the tree
+       refreshHover()  the node under the pointer may have changed
+       paintTree()     tree -> command buffer
+       native.render() C draws and calls eglSwapBuffers
+  -> the compositor signals (frame callback) that the next one can be sent
 ```
 
-No Wayland o ritmo vem do frame callback do compositor (alinhado ao vsync). Para respeitar
-o teto de fps em monitores rápidos, frames são pulados com `native.requestFrame()`, que faz
-commit sem desenhar. No X11 não existe frame callback: o ritmo vem de um timer na taxa do
-monitor (XRandR).
+On Wayland the pacing comes from the compositor's frame callback (aligned to vsync). To honor
+the fps cap on fast monitors, frames are skipped with `native.requestFrame()`, which commits
+without drawing. X11 has no frame callback: the pacing comes from a timer at the monitor's
+refresh rate (XRandR).
 
 ## Layout
 
-`src/render/layout.ts` é um flexbox simplificado: `direction`, `gap`, `padding`, `grow`, `align`
-(padrão `stretch`), `justify`, `min/max`, e `position: "absolute"` com `left/top`.
+`src/render/layout.ts` is a simplified flexbox: `direction`, `gap`, `padding`, `grow`, `align`
+(default `stretch`), `justify`, `min/max`, and `position: "absolute"` with `left/top`.
 
-O encolhimento segue o `min-size: auto` do CSS: um filho não fica menor que o próprio
-conteúdo, a menos que seja rolável, recorte o conteúdo (`clip`) ou tenha `minWidth`/
-`minHeight` explícito. `Scroll` é uma coluna rolável com `minHeight: 0`.
+Shrinking follows CSS's `min-size: auto`: a child does not get smaller than its own content,
+unless it is scrollable, clips its content (`clip`) or has an explicit `minWidth`/
+`minHeight`. For wrapping text, "its own content" along the width is the longest word (with
+`maxLines`, the "…"). In a row that is out of space, the children with `grow` shrink first
+and only then the others, proportionally; this differs from CSS, which shrinks them all
+together and makes a short label next to a long text wrap.
 
-**Culling:** cada nó que recorta (`Scroll`, `clip`, a `Window`) estreita a região visível
-passada aos filhos. Um filho totalmente fora dela (contando a sombra) recebe a própria caixa,
-para a altura do conteúdo e as barras de rolagem continuarem certas, mas é marcado `culled`:
-seus descendentes não são posicionados, pintados nem testados no clique. Numa tabela de 500
-linhas, só as ~15 visíveis chegam à pintura e ao HarfBuzz. Limitação: um descendente que
-transborda a caixa de um nó descartado (ex.: um popup absoluto) some junto com ele.
+Whatever scrolls does not hold back its surroundings: a node's minimum (`minWidth` for rows,
+`minHeightAt` for columns) ignores the content of descendants that scroll or clip, so a
+column with a `Scroll grow={1}` inside shrinks without `minHeight={0}` (in CSS this calls
+for `min-height: 0`). In height, only what scrolls vertically (or clips) gives way; a `Scroll
+horizontal` keeps its height. Whether a subtree can shrink (`shrinks()`) is only asked when a
+row or column needs to shrink, with a per-layout cache, so the ordinary frame does not pay
+for it.
 
-O tamanho natural de todos os filhos ainda é calculado a cada frame, porque a altura do
-conteúdo depende deles; cada `Text` guarda a última medida (texto, tamanho, negrito) para
-isso não custar uma ida ao cache global. O layout incremental está no
+**Height that depends on width.** Wrapping text changes height with the width, so the size
+comes in two steps. `intrinsic(node)` gives the natural size (text in the fewest lines) and
+sets `wraps` when there is wrapping text in the subtree. `heightAt(node, width)` gives the
+height at that width: in a column, each child's width is known beforehand (`align`) and the
+height comes from it; in a row, the widths come from flex (`mainSizes`) and the heights from
+them. To avoid paying for this across the whole tree, `heightAt` returns the natural height
+when there is nothing that wraps or when the given width covers the natural one (with more
+space, nothing wraps). A `Text` only declares itself "wrappable" (`minContentWidth`) if it has
+a space or `maxLines`. The minimum width (`minWidth`) is computed only when a row needs to
+shrink. Measured on 2026-10-12 in the same session: layout of `bench` (1000 changing texts)
+2.5 → 2.7 ms and of the 500-row table 2.5 → 2.7 ms per frame; the first version, without
+these shortcuts, cost 7.9 and 4.4 ms.
+
+The wrapping itself lives in `render/text-wrap.ts`: greedy, at spaces, like CSS's
+`overflow-wrap: normal` (a word longer than the line overflows). Word widths are summed
+instead of measuring the whole line again; a line that fits whole is measured only once.
+
+**Culling:** each node that clips (`Scroll`, `clip`, the `Window`) narrows the visible region
+passed to its children. A child entirely outside it (counting its shadow) gets its own box,
+so that the content height and the scrollbars stay correct, but is marked `culled`: its
+descendants are not positioned, painted or hit-tested. In a 500-row table, only the ~15
+visible ones reach painting and HarfBuzz. Limitation: a descendant that overflows the box of
+a culled node (e.g., an absolute popup) disappears along with it.
+
+The natural size of all children is still computed every frame, because the content height
+depends on them; each `Text` keeps its last measurement (text, size, bold) so this does not
+cost a trip to the global cache. Incremental layout is on the
 [roadmap](ROADMAP.md).
+
+### Scrolling
+
+A node scrolls vertically (`scrollable`), horizontally (`scrollableX`) or both. `<Scroll>`
+is a column that scrolls vertically; `<Scroll horizontal>`, a row that scrolls horizontally;
+`<Scroll horizontal vertical>`, a column that scrolls both ways. Along the axis it scrolls on,
+the node does not shrink its children (main axis) and, on the cross axis, it gives each child
+at least the visible space without squeezing it below its content (`floor` in `crossSize`,
+like CSS shrink-to-fit): in a grid that scrolls on both axes, a table row keeps its natural
+width and a paragraph wraps at the visible width. `place()` measures
+`contentWidth`/`contentHeight` (children + padding), clamps `scrollX`/`scrollY` to the content
+and offsets the children; culling already worked on both axes.
+
+`render/scrollbar.ts` is the scrollbar geometry, used by painting and by input:
+`overflows`, `scrollTo`/`scrollBy` (clamped) and `scrollbar(n, axis)` with the band that
+catches the pointer plus the track and the thumb. The bars are drawn on top of the content
+(as in GTK and macOS) and take no space in the layout; with both, each one stops before the
+corner. Under the pointer, or while dragged, the bar thickens and shows the track
+(`UINode.activeScrollbar`, which input sets and painting reads; colors and sizes in
+`theme.scrollbar`).
+
+In input, the hit test returns the scrollable node itself when the point is in the band of a
+bar that has something to scroll (14 px at the edge): the content underneath gets neither
+hover nor click, but with nothing to scroll there is no band. Pressing the thumb starts a
+drag with capture (the position follows the pointer in the content/track ratio, even outside
+the bar); pressing the track advances one page (87.5% of the visible area). Pressing the bar
+does not change focus. The wheel delivers each axis to the nearest ancestor that scrolls on
+that axis and has something to scroll (the touchpad scrolls both at once); with Shift, the
+vertical wheel becomes horizontal (the C sends the modifiers in the scroll event). Keys that
+no `onKeyDown` stopped scroll the `Scroll` around the focus, or under the pointer: arrows
+40 px, PageUp/PageDown one page, Home/End to the end. The chain of what can scroll stops at a
+modal layer, so neither the wheel nor the keys reach what is behind an `<Overlay modal>`,
+even if the focus was left back there.
+
+`scrollIntoView()` only marks the node (`revealRequests`); the next `layout()` resolves it,
+after positioning the tree. A descendant of a `culled` node has a stale box, so first the
+layout repositions the outermost `culled` ancestor with no visible region (and repeats for
+whatever clips inside it) until the node's box is valid. Then it scrolls each surrounding
+`Scroll`, from the inside out, by the minimum needed to show it (its start, if it does not
+fit), and positions everything again with the new positions. This costs a second `place()`
+only in frames with a pending request. The walk up stops at the overlay: an element in an
+`<Overlay>` does not scroll what is behind the layer.
+
+Measured on 2026-10-12, without a window (500-row table with fake metrics, `layout()` and
+`paintTree()` 3000 times while scrolling, 5 runs alternating with the previous version):
+layout 0.544–0.585 → 0.558–0.613 ms (median 0.560 → 0.572, within the noise), painting
+0.032–0.037 → 0.033–0.037 ms, `pointerMove` 0.94–1.06 → 0.80–0.94 µs. The hit test got faster
+because it tests each child's box before descending (a list has many children off screen).
+Computing every frame whether each subtree can shrink cost ~7% of the layout; that is why
+`shrinks()` only runs when something needs to shrink.
+
+### Overlays
+
+`<Overlay>` leaves a zero-size marker (`position: "absolute"`) where it was declared and
+creates the layer separately: `layer.parent` is the marker, but the layer is not its child.
+That way it inherits context, ownership and text style from that point, and events bubble up
+through the marker's ancestors (like React's portal). Live layers are kept in a global set
+(`overlayLayers`, in creation order); on each `layout()`, the root takes its own
+(`root.layers`) and positions them after the tree, when the anchors already have a box. An
+anchored layer disappears if the anchor left the tree or is in a `culled` subtree (the box
+would be stale). Painting draws the layers after the tree, clipped by the root's first child
+if it clips (the `Window`'s corners). The hit test starts with the layers, top to bottom; a
+layer that covers the window is only a target if it is `modal`. Registration happens before
+the children run, so an overlay opened from inside another one sits on top of it.
+
+`translateX`/`translateY` are added to the node's position in `place()`, after flex: the
+children are positioned from it, and hit testing, culling and `ref` see the offset position
+with nothing special. `opacity` is a multiplier in the `CommandBuffer` (`opacity`),
+accumulated by `paintTree` on the way down and applied to the alpha of every emitted color.
+It is cheap and does not need the C, but it is not group opacity: that would require drawing
+the subtree into a separate texture.
 
 ## Command buffer
 
-A pintura não chama o C nó a nó: `render/paint.ts` escreve tudo num único `Float32Array`, que
-cruza a fronteira N-API uma vez por frame, junto com um array de textos.
+Painting does not call the C node by node: `render/paint.ts` writes everything into a single
+`Float32Array`, which crosses the N-API boundary once per frame, along with an array of texts.
 
-| Op | Código | Floats seguintes |
+| Op | Code | Following floats |
 |---|---|---|
 | RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
-| TEXT | 2 | x y(topo da linha) size font(0/1 bold) · r g b a · índice em `texts[]` |
-| CLIP | 3 | x y w h radius (scissor + máscara arredondada mais interna) |
-| UNCLIP | 4 | (nenhum) |
+| TEXT | 2 | x y(line top) size font(0/1 bold) · r g b a · index into `texts[]` |
+| CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
+| UNCLIP | 4 | (none) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
-| IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tinta; a = opacidade) · radius · id da imagem |
-| LINE | 7 | x0 y0 x1 y1 · largura · r g b a · ponta inicial, ponta final (0 reta, 1 redonda) |
-| TRIANGLES | 8 | n · r g b a · n × (x y cobertura) |
-| ARC | 9 | cx cy · raio externo, raio interno · início, varredura (radianos; 0 = cima, horário) · r g b a |
+| IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tint; a = opacity) · radius · image id |
+| LINE | 7 | x0 y0 x1 y1 · width · r g b a · start cap, end cap (0 butt, 1 round) |
+| TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
+| ARC | 9 | cx cy · outer radius, inner radius · start, sweep (radians; 0 = up, clockwise) · r g b a |
 
-O formato existe em três lugares que precisam ficar em sincronia: `native/include/nb.h`,
-`src/render/paint.ts` e `native/core/render_gles2.c`.
+The format exists in three places that must stay in sync: `native/include/nb.h`,
+`src/render/paint.ts` and `native/core/render_gles2.c`.
 
-## Renderização
+## Rendering
 
-`render_gles2.c` usa um único shader e um único formato de vértice. Retângulos com borda e
-cantos arredondados, sombras e glifos viram triângulos de um batch só. Cantos e sombras são
-calculados no fragment shader com funções de distância.
+`render_gles2.c` uses a single shader and a single vertex format. Rectangles with borders and
+rounded corners, shadows and glyphs all become triangles in a single batch. Corners and
+shadows are computed in the fragment shader with distance functions.
 
-As cores são compostas em **alpha pré-multiplicado** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`), e a
-borda é desenhada sobre o fundo, como no CSS. Misturar em alpha "reto" gera artefatos escuros
-nos cantos.
+Colors are composited in **premultiplied alpha** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`), and the
+border is drawn over the background, as in CSS. Blending in "straight" alpha produces dark
+artifacts at the corners.
 
-Texto: o HarfBuzz faz o shaping (acentos, ligaduras, kerning), o FreeType rasteriza cada
-glifo uma vez e o guarda num atlas de textura. As medidas que o layout pede ao C ficam em
-cache no lado TypeScript.
+Text: HarfBuzz does the shaping (accents, ligatures, kerning), FreeType rasterizes each glyph
+once and stores it in a texture atlas. The measurements the layout asks of the C are cached
+on the TypeScript side.
 
-Imagens: PNG, JPEG e WebP são decodificados em TypeScript para RGBA (`src/image/png.ts`
-com o zlib do runtime, `jpeg.ts`, `webp.ts`). Os três reproduzem exatamente a saída das
-bibliotecas de referência: o JPEG usa a IDCT inteira, o upsampling "fancy" e as tabelas de
-cor do libjpeg-turbo; o WebP, o upsampling e as fórmulas de ponto fixo do libwebp. AVIF e
-HEIC precisariam de um decodificador de AV1/HEVC, então vão para o SO:
-`nb_platform_decode_image` (contrato da plataforma) usa, no Linux, a `libheif` carregada
-com `dlopen`. A API dela só tem handles e funções, então as poucas declarações em
-`codecs.c` valem para qualquer versão com o soname `libheif.so.1`, e não é preciso o header
-para compilar. `createImage` copia os pixels para o C, que os pré-multiplica e cria a textura no
-primeiro frame que a desenha (pode não haver contexto GL antes disso). Cada troca de imagem
-dentro de um frame fecha o batch, então muitas imagens diferentes custam uma chamada de
-desenho cada. `src/image/source.ts` divide uma decodificação entre todos os `<Image>` do mesmo
-arquivo (por caminho) e libera a textura quando o último sai da árvore. Uma imagem que não
-carrega mostra um aviso no console e não desenha nada.
+Images: PNG, JPEG and WebP are decoded in TypeScript to RGBA (`src/image/png.ts` with the
+runtime's zlib, `jpeg.ts`, `webp.ts`). All three reproduce the output of the reference
+libraries exactly: JPEG uses libjpeg-turbo's integer IDCT, "fancy" upsampling and color
+tables; WebP, libwebp's upsampling and fixed-point formulas. AVIF and HEIC would need an
+AV1/HEVC decoder, so they go to the OS: `nb_platform_decode_image` (platform contract) uses,
+on Linux, `libheif` loaded with `dlopen`. Its API has only handles and functions, so the few
+declarations in `codecs.c` work for any version with the soname `libheif.so.1`, and the
+header is not needed to compile. `createImage` copies the pixels to the C, which
+premultiplies them and creates the texture on the first frame that draws it (there may be no
+GL context before that). Each image switch within a frame closes the batch, so many different
+images cost one draw call each. `src/image/source.ts` shares one decode among all `<Image>`s
+of the same file (by path) and releases the texture when the last one leaves the tree. An
+image that fails to load prints a warning to the console and draws nothing.
 
-Ícones (`src/svg/`, sobre `src/geometry/`): o SVG vira polígonos no espaço do usuário. Curvas e arcos são
-achatados com erro de 0,1 pixel da tela, e cada contorno vira um polígono por segmento,
-junção e ponta, todos no mesmo sentido, para que um preenchimento "nonzero" faça a união
-sem desenhar duas vezes onde se sobrepõem. Um rasterizador de linhas de varredura calcula a
-cobertura exata na horizontal, com 16 amostras por pixel na vertical. O `<Icon>` rasteriza
-no tamanho físico (tamanho lógico × escala), alinhado aos pixels. Se todas as cores do SVG
-são `currentColor`, ele rasteriza em branco uma vez, e a cor entra como tinta no comando
-IMAGE: o shader multiplica os texels por ela, e trocar a cor não refaz o ícone.
+Icons (`src/svg/`, on top of `src/geometry/`): the SVG becomes polygons in user space. Curves
+and arcs are flattened with an error of 0.1 screen pixel, and each stroke becomes one polygon
+per segment, join and cap, all with the same winding, so that a "nonzero" fill computes the
+union without drawing twice where they overlap. A scanline rasterizer computes the exact
+coverage horizontally, with 16 samples per pixel vertically. `<Icon>` rasterizes at the
+physical size (logical size × scale), aligned to pixels. If all of the SVG's colors are
+`currentColor`, it rasterizes in white once, and the color enters as a tint in the IMAGE
+command: the shader multiplies the texels by it, and changing the color does not redo the
+icon.
 
-Primitivas de desenho (`<Canvas>`): cada segmento de linha é um retângulo orientado ao
-longo do segmento; o shader recebe a posição nesse referencial e calcula a distância ao
-segmento (pontas redondas ou retas), de onde sai o antialiasing. Arcos fazem o mesmo com a
-distância a um setor de anel. Polígonos são triangulados em TypeScript
-(`src/geometry/triangulate.ts`, ear clipping) e ganham uma franja de 1 pixel da tela cuja
-cobertura vai de 1 a 0 (técnica do NanoVG); o GPU interpola a cobertura e o resultado é uma
-borda suave. Tudo isso entra no mesmo lote dos retângulos e textos. O `<Canvas>` grava as
-chamadas de `draw` quando um signal lido muda (ou o tamanho e a escala mudam), já
-convertidas em segmentos e triângulos; pintar só desloca essa gravação.
+Drawing primitives (`<Canvas>`): each line segment is a rectangle oriented along the
+segment; the shader receives the position in that frame of reference and computes the
+distance to the segment (round or butt caps), from which the antialiasing comes. Arcs do the
+same with the distance to an annular sector. Polygons are triangulated in TypeScript
+(`src/geometry/triangulate.ts`, ear clipping) and get a 1-screen-pixel fringe whose coverage
+goes from 1 to 0 (NanoVG's technique); the GPU interpolates the coverage and the result is a
+smooth edge. All of this goes into the same batch as rectangles and text. `<Canvas>` records
+the `draw` calls when a signal it read changes (or the size and scale change), already
+converted into segments and triangles; painting only offsets that recording.
 
-Gráficos (`src/charts`, importados de `@nodebuilderjs/core/charts`): `<LineChart>` e os
-outros são um `<Canvas>`. Os filhos (`<Line>`, `<XAxis>`...) não renderizam nada: como o
-`jsx()` só cria descrições (`ElementDesc`), o gráfico lê o tipo e as props de cada filho
-para saber o que desenhar, sem instanciá-los. Os passos dos eixos seguem o algoritmo do d3
-(1, 2 ou 5 vezes uma potência de 10). Ficam num subcaminho para que nomes como `Tooltip` e
-`Line` não colidam com widgets de interface; quem não importa não leva nada no bundle, e
-quem usa paga ~15 KB.
+Charts (`src/charts`, imported from `@nodebuilderjs/core/charts`): `<LineChart>` and the
+others are a `<Canvas>`. The children (`<Line>`, `<XAxis>`...) render nothing: since `jsx()`
+only creates descriptions (`ElementDesc`), the chart reads the type and props of each child
+to know what to draw, without instantiating them. Axis ticks follow d3's algorithm (1, 2 or
+5 times a power of 10). They live in a subpath so that names like `Tooltip` and `Line` do not
+collide with interface widgets; apps that do not import it ship nothing extra in the bundle,
+and those that use it pay ~15 KB.
 
-Coordenadas: o TypeScript trabalha em pixels lógicos; o C multiplica pela escala inteira da
-tela (Wayland: `preferred_buffer_scale`; X11: `Xft.dpi / 96`).
+Coordinates: TypeScript works in logical pixels; the C multiplies by the screen's integer
+scale (Wayland: `preferred_buffer_scale`; X11: `Xft.dpi / 96`).
 
-## Eventos e threads
+## Events and threads
 
-O Bun não implementa a libuv, então o addon não pode usá-la. Em vez disso:
+Bun does not implement libuv, so the addon cannot use it. Instead:
 
-1. Uma thread do backend só espera: no Linux, um `poll()` no socket do display, no timer de
-   repetição de teclas, nos pipes da área de transferência e num eventfd de controle. A
-   lista de fds é entregue pela thread do JS a cada volta (`backend->fds()`); quando muda
-   fora dela (uma colagem começou), `nb_linux_pump_refresh()` acorda o `poll()` pelo
-   eventfd para pegar a lista nova.
-2. Quando há algo, ela chama `wake()`, e o núcleo acorda o JS por uma
+1. A backend thread only waits: on Linux, a `poll()` on the display socket, the key-repeat
+   timer, the clipboard pipes and a control eventfd. The fd list is handed over by the JS
+   thread on every iteration (`backend->fds()`); when it changes outside of it (a paste
+   started), `nb_linux_pump_refresh()` wakes `poll()` through the eventfd to pick up the new
+   list.
+2. When something is ready, it calls `wake()`, and the core wakes the JS through a
    `napi_threadsafe_function`.
-3. Já na thread do JS, `nb_platform_pump_process()` lê e despacha tudo (no Wayland,
-   sem bloquear), e os eventos chegam ao `runtime/app.ts` em lote.
+3. Back on the JS thread, `nb_platform_pump_process()` reads and dispatches everything (on
+   Wayland, without blocking), and the events reach `runtime/app.ts` in a batch.
 
-Toda leitura, todo dispatch e toda chamada GL acontecem na thread do JS. A thread extra
-nunca toca em estado compartilhado além de acordar o JS.
+All reading, all dispatching and every GL call happen on the JS thread. The extra thread
+never touches shared state beyond waking the JS.
 
-No TypeScript, `runtime/input.ts` transforma os eventos crus em eventos de interface: hit
-test (ignorando nós `culled`), hover com entrada e saída, cursor, bordas de
-redimensionar, foco, clique e duplo clique, captura do ponteiro enquanto um botão está
-pressionado, rolagem e teclado com Tab. O que é janela (mover, redimensionar, cursor,
-relógio) passa por uma interface `InputHost`; o `run()` liga isso ao addon, e os testes (e o
-`interact()` de `@nodebuilderjs/core/testing`) usam um host sem janela.
+On the TypeScript side, `runtime/input.ts` turns raw events into interface events: hit
+testing (ignoring `culled` nodes), hover with enter and leave, cursor, resize edges, focus,
+click and double click, pointer capture while a button is held, scrolling (wheel, bars and
+keys; see "Scrolling") and keyboard with Tab. Whatever belongs to the window (move, resize,
+cursor, clock) goes through an `InputHost` interface; `run()` wires it to the addon, and the
+tests (and `interact()` from `@nodebuilderjs/core/testing`) use a windowless host.
 
-## Wayland e X11
+`createInput` registers focus on the root (`root.focusHost`); that is how a `ref`'s
+`focus()` and `blur()` reach the input. A `focus()` made while the widget is being created
+(still outside the tree) is repeated in a microtask, once the tree is mounted. `onResize` is
+collected during `layout()` and delivered in a batch after the whole tree has been
+positioned, so that the handler can change state (and the tree) without disrupting the layout
+in progress; the change lands in the next frame.
 
-O backend é escolhido em tempo de execução: Wayland se houver `WAYLAND_DISPLAY`, senão X11
-se houver `DISPLAY` (`NB_BACKEND=wayland|x11` força). Os dois implementam o mesmo vtable
-(`native/platform/linux/linux.h`), então qualquer recurso novo de janela entra nos dois.
+## Wayland and X11
 
-A janela sempre desenha a própria decoração (barra de título, botões, bordas de
-redimensionar). No X11, a decoração do gerenciador de janelas é desligada e mover/maximizar
-usam as mensagens EWMH; sem compositor, a janela perde a transparência e os cantos
-arredondados.
+The backend is chosen at runtime: Wayland if `WAYLAND_DISPLAY` is set, otherwise X11 if
+`DISPLAY` is set (`NB_BACKEND=wayland|x11` forces one). Both implement the same vtable
+(`native/platform/linux/linux.h`), so any new window feature goes into both.
 
-### Área de transferência
+The window always draws its own decoration (title bar, buttons, resize edges). On X11, the
+window manager's decoration is turned off and move/maximize use EWMH messages; without a
+compositor, the window loses transparency and rounded corners.
 
-Só texto, pelo contrato `nb_platform_clipboard_write/read`. Ler é assíncrono em todo SO (quem
-tem o conteúdo é outro programa): `readClipboard()` pede, e a resposta chega como um evento
-`clipboard`, que `runtime/clipboard.ts` entrega a todas as leituras pendentes. Quando o
-conteúdo é nosso, a resposta sai na hora, sem passar pelo servidor.
+### Clipboard
 
-- **Wayland:** copiar cria um `wl_data_source` (`text/plain;charset=utf-8`, `UTF8_STRING`...)
-  e chama `set_selection` com o serial da última tecla ou clique; cada colagem em outro app
-  manda um pipe, que escrevemos sem bloquear (POLLOUT na thread de bombeamento). Colar pede
-  ao dono da seleção que escreva num pipe nosso, lido aos pedaços até o EOF (até 64 MB). O
-  compositor só informa a seleção enquanto temos o foco do teclado. Escrever num pipe
-  fechado gera SIGPIPE: se ninguém o trata, o backend passa a ignorá-lo (o Node já faz isso).
-- **X11:** seleção `CLIPBOARD`. Copiar é virar dono e responder `SelectionRequest` (`TARGETS`,
-  `UTF8_STRING`, `TEXT`, `STRING`), com um handler de erro temporário porque o outro programa
-  pode sumir no meio (o handler padrão do Xlib encerra o processo). Colar é
-  `XConvertSelection` + `SelectionNotify`, com o protocolo INCR para textos grandes (pedaços
-  via `PropertyNotify`). Enviar com INCR não existe: textos acima do tamanho máximo de
-  requisição (~16 MB com BIG-REQUESTS) são recusados.
+Text only, through the `nb_platform_clipboard_write/read` contract. Reading is asynchronous on
+every OS (the content belongs to another program): `readClipboard()` requests it, and the
+answer arrives as a `clipboard` event, which `runtime/clipboard.ts` delivers to all pending
+reads. When the content is ours, the answer comes back immediately, without going through the
+server.
 
-## Portabilidade para outros sistemas
+- **Wayland:** copying creates a `wl_data_source` (`text/plain;charset=utf-8`, `UTF8_STRING`...)
+  and calls `set_selection` with the serial of the last key press or click; each paste in
+  another app sends a pipe, which we write to without blocking (POLLOUT on the pump thread).
+  Pasting asks the selection owner to write into a pipe of ours, read in chunks until EOF (up
+  to 64 MB). The compositor only reports the selection while we have keyboard focus. Writing
+  to a closed pipe raises SIGPIPE: if nobody handles it, the backend starts ignoring it (Node
+  already does this).
+- **X11:** `CLIPBOARD` selection. Copying means becoming the owner and answering
+  `SelectionRequest` (`TARGETS`, `UTF8_STRING`, `TEXT`, `STRING`), with a temporary error
+  handler because the other program may vanish midway (Xlib's default handler exits the
+  process). Pasting is `XConvertSelection` + `SelectionNotify`, with the INCR protocol for
+  large texts (chunks via `PropertyNotify`). Sending with INCR is not implemented: texts above
+  the maximum request size (~16 MB with BIG-REQUESTS) are refused.
 
-Tudo que é específico do SO fica atrás de `native/include/nb_platform.h`: abrir janela,
-bombear eventos, cursor, descoberta de fontes. O núcleo (`native/core/`) só inclui Node-API,
-GLES2, FreeType, HarfBuzz e a libc. Um novo SO é uma pasta `native/platform/<os>/` com a
-implementação desse contrato e um `build.sh`. No Windows e no macOS o caminho previsto é o
-ANGLE (GLES sobre Direct3D/Metal) ou um novo `render_<api>.c` com a mesma interface.
+## Porting to other systems
 
-## Carregando o núcleo nativo
+Everything OS-specific sits behind `native/include/nb_platform.h`: opening a window, pumping
+events, cursor, font discovery. The core (`native/core/`) only includes Node-API, GLES2,
+FreeType, HarfBuzz and libc. A new OS is a `native/platform/<os>/` folder with the
+implementation of this contract and a `build.sh`. On Windows and macOS the planned path is
+ANGLE (GLES on top of Direct3D/Metal) or a new `render_<api>.c` with the same interface.
 
-`src/runtime/native.ts` procura o addon nesta ordem:
+## Loading the native core
 
-1. `native/build/<plataforma>-<arch>/nodebuilder.node`, que só existe num checkout do
-   framework depois de `bun run build:native`;
-2. o pacote npm `@nodebuilderjs/<plataforma>-<arch>`, instalado como dependência opcional
-   de `@nodebuilderjs/core` (só o da sua plataforma é baixado).
+`src/runtime/native.ts` looks for the addon in this order:
 
-"Não encontrado" passa para o próximo; um addon encontrado que falha ao carregar (biblioteca
-do sistema faltando, glibc antiga) é o erro mostrado. Cada caminho é um `require("...")`
-literal, porque é isso que o `bun build --compile` reconhece e embute no executável.
+1. `native/build/<platform>-<arch>/nodebuilder.node`, which only exists in a checkout of the
+   framework after `bun run build:native`;
+2. the npm package `@nodebuilderjs/<platform>-<arch>`, installed as an optional dependency
+   of `@nodebuilderjs/core` (only the one for your platform is downloaded).
 
-## Distribuição
+"Not found" moves on to the next one; an addon that is found but fails to load (missing
+system library, old glibc) is the error shown. Each path is a literal `require("...")`,
+because that is what `bun build --compile` recognizes and embeds in the executable.
 
-### Pacotes npm
+## Distribution
 
-| Pacote | Conteúdo |
+### npm packages
+
+| Package | Contents |
 |---|---|
-| `@nodebuilderjs/core` | `src/` (o Bun lê TypeScript direto), `lib/` (JS e tipos para o Node), `cli/` (comando `nodebuilder`) |
-| `@nodebuilderjs/linux-x64` | só o `nodebuilder.node`, compilado contra glibc 2.34 |
-| `create-nodebuilderjs` | o `bun create nodebuilderjs` e o template de projeto |
+| `@nodebuilderjs/core` | `src/` (Bun reads TypeScript directly), `lib/` (JS and types for Node), `cli/` (`nodebuilder` command) |
+| `@nodebuilderjs/linux-x64` | only `nodebuilder.node`, built against glibc 2.34 |
+| `create-nodebuilderjs` | `bun create nodebuilderjs` and the project template |
 
-Os binários seguem o padrão do esbuild (um pacote por plataforma, com `os`/`cpu`), sem
-script de instalação, que o Bun bloqueia por padrão. `bun run npm:build` gera tudo em
+The binaries follow esbuild's pattern (one package per platform, with `os`/`cpu`), with no
+install script, which Bun blocks by default. `bun run npm:build` generates everything in
 `dist/npm/`.
 
-### Apps empacotados
+### Packaged apps
 
-`nodebuilder package` (em `cli/`):
+`nodebuilder package` (in `cli/`):
 
-1. pega o addon pré-compilado (ou, no repositório, compila um portável num container
-   Ubuntu 22.04, para rodar em glibc 2.34+);
-2. gera um **executável único** com `bun build --compile`: runtime do Bun, código do app e
-   addon embutidos (~91 MB, ~31 MB compactado);
-3. monta a árvore de instalação (`/usr/bin`, `.desktop`, ícone);
-4. escreve o `.deb` e o `.rpm` diretamente em TypeScript (sem `dpkg` nem `rpmbuild`), e o
-   AppImage com o `appimagetool`.
+1. takes the prebuilt addon (or, in the repository, builds a portable one in an Ubuntu 22.04
+   container, to run on glibc 2.34+);
+2. generates a **single executable** with `bun build --compile`: Bun runtime, app code and
+   addon embedded (~91 MB, ~31 MB compressed);
+3. assembles the install tree (`/usr/bin`, `.desktop`, icon);
+4. writes the `.deb` and the `.rpm` directly in TypeScript (no `dpkg` or `rpmbuild`), and the
+   AppImage with `appimagetool`.
 
-As bibliotecas do sistema (Wayland, X11, EGL, FreeType...) são declaradas como dependências
-dos pacotes e nunca embutidas: todo desktop Linux já as tem.
+The system libraries (Wayland, X11, EGL, FreeType...) are declared as package dependencies
+and never embedded: every Linux desktop already has them.
 
-## Medindo desempenho
+## Measuring performance
 
 ```sh
 NB_STATS=1 bun examples/bench.tsx        # N=1000 MODE=one|all|static
 NB_STATS=1 bun examples/dashboard.tsx    # TAB=overview|table|logs|settings ROWS=500 CYCLE=30
 ```
 
-`NB_STATS=1` imprime por segundo: fps, tempo por frame (estado, layout, pintura, nativo),
-número de nós, tamanho do command buffer, heap e RSS.
+`NB_STATS=1` prints every second: fps, time per frame (state, layout, paint, native), node
+count, command buffer size, heap and RSS.
 
-As comparações usam a mesma cena feita em HTML e JavaScript puros, rodando no Electron
-(`compare/electron/`) e numa casca Tauri 2 (`compare/tauri/`, que carrega os mesmos
-arquivos). `scripts/compare.sh` mede a árvore de processos inteira (o Electron abre 8
-processos e o Tauri 3):
+The comparisons use the same scene built in plain HTML and JavaScript, running in Electron
+(`compare/electron/`) and in a Tauri 2 shell (`compare/tauri/`, which loads the same files).
+`scripts/compare.sh` measures the whole process tree (Electron opens 8 processes and Tauri
+3):
 
 ```sh
 scripts/compare.sh "nodebuilder" 3 5 -- bun examples/dashboard.tsx
@@ -308,8 +473,8 @@ SCENE=dashboard scripts/compare.sh "electron" 3 5 -- \
 SCENE=dashboard scripts/compare.sh "tauri" 3 5 -- compare/tauri/target/release/nodebuilder-tauri-baseline
 ```
 
-Flutter (`compare/flutter/`) e egui (`compare/egui/`) têm ports das duas cenas, com os
-mesmos dados e as mesmas atualizações por frame:
+Flutter (`compare/flutter/`) and egui (`compare/egui/`) have ports of both scenes, with the
+same data and the same per-frame updates:
 
 ```sh
 (cd compare/flutter && /opt/flutter/bin/flutter build linux --release)
@@ -318,33 +483,34 @@ scripts/compare.sh "flutter" 3 5 -- compare/flutter/build/linux/x64/release/bund
 scripts/compare.sh "egui" 3 5 -- compare/egui/target/release/nodebuilder-egui-baseline
 ```
 
-No Linux, Tauri e Flutter não passam de 60 fps; para comparar o mesmo trabalho, rode os
-outros com `NB_MAX_FPS=60`. A tabela com teto 60 está no [README](README.md#benchmarks).
-Com teto 120, só Electron, egui e nodebuilder passam de 60 (2026-10-11, mesma sessão do
-README, antes do culling; fps · CPU · PSS em MB):
+On Linux, Tauri and Flutter do not go above 60 fps; to compare the same work, run the others
+with `NB_MAX_FPS=60`. The table with a 60 cap is in the [README](README.md#benchmarks).
+With a 120 cap, only Electron, egui and nodebuilder go above 60 (2026-10-11, same session as
+the README, before culling; fps · CPU · PSS in MB):
 
-| Cena (teto 120) | Electron | egui | nodebuilder |
+| Scene (120 cap) | Electron | egui | nodebuilder |
 |---|---|---|---|
-| Painel: visão geral | 117 · 84% · 365 | 119 · 21% · 105 | 111 · 39% · 90 |
-| Painel: tabela | 116 · 80% · 382 | 102 · 71% · 113 | 80 · 83% · 152 |
-| Painel: logs | 107 · 155% · 446 | 117 · 42% · 108 | 118 · 71% · 172 |
-| Painel: configurações | 116 · 67% · 311 | 118 · 23% · 105 | 104 · 22% · 89 |
-| Painel: `CYCLE=30` | 111 · 99% · 413 | 112 · 38% · 114 | 100 · 62% · 152 |
-| 1000 células, 1 texto muda | 117 · 71% · 312 | 117 · 47% · 107 | 103 · 44% · 109 |
-| 1000 células, todas mudam | 112 · 237% · 414 | 116 · 72% · 113 | 117 · 69% · 147 |
-| 3000 células, todas mudam | 50 · 173% · 427 | 45 · 81% · 128 | 51 · 96% · 190 |
+| Dashboard: overview | 117 · 84% · 365 | 119 · 21% · 105 | 111 · 39% · 90 |
+| Dashboard: table | 116 · 80% · 382 | 102 · 71% · 113 | 80 · 83% · 152 |
+| Dashboard: logs | 107 · 155% · 446 | 117 · 42% · 108 | 118 · 71% · 172 |
+| Dashboard: settings | 116 · 67% · 311 | 118 · 23% · 105 | 104 · 22% · 89 |
+| Dashboard: `CYCLE=30` | 111 · 99% · 413 | 112 · 38% · 114 | 100 · 62% · 152 |
+| 1000 cells, 1 text changes | 117 · 71% · 312 | 117 · 47% · 107 | 103 · 44% · 109 |
+| 1000 cells, all change | 112 · 237% · 414 | 116 · 72% · 113 | 117 · 69% · 147 |
+| 3000 cells, all change | 50 · 173% · 427 | 45 · 81% · 128 | 51 · 96% · 190 |
 
-Depois do culling, na mesma sessão: tabela de 78 para 104 fps (CPU 82% → 51%).
+After culling, in the same session: table from 78 to 104 fps (CPU 82% → 51%).
 
-Cuidados ao medir:
-- O Tauri levou mais de 3 s para ficar ocioso depois de abrir: use aquecimento ≥ 8 s em
-  cenas estáticas.
-- Por que o Tauri fica perto do Electron: o processo da página (WebKitWebProcess) custa quase
-  o mesmo que o renderer do Chromium, e o WebKitGTK rasteriza na CPU (threads
-  `SkiaCPUWorker`). `WEBKIT_SKIA_ENABLE_CPU_RENDERING=0` e `WEBKIT_SKIA_CPU_PAINTING_THREADS=0`
-  não mudaram isso no WebKitGTK 2.54.1.
-- Ainda sem explicação: com teto 60, o nodebuilder fica em 51–58 fps até em cenas leves (o
-  agendamento perde vblanks; item 4 do roadmap), e com teto 120 o fps oscila entre rodadas.
+Things to watch when measuring:
+- Tauri took more than 3 s to become idle after opening: use a warm-up of ≥ 8 s for static
+  scenes.
+- Why Tauri stays close to Electron: the page process (WebKitWebProcess) costs almost as much
+  as Chromium's renderer, and WebKitGTK rasterizes on the CPU (`SkiaCPUWorker` threads).
+  `WEBKIT_SKIA_ENABLE_CPU_RENDERING=0` and `WEBKIT_SKIA_CPU_PAINTING_THREADS=0` did not change
+  that in WebKitGTK 2.54.1.
+- Still unexplained: with a 60 cap, nodebuilder stays at 51–58 fps even in light scenes (the
+  scheduling misses vblanks; roadmap item 4), and with a 120 cap the fps fluctuates between
+  runs.
 
-Quebra da memória do nodebuilder: Bun vazio ~15 MB, texto (FreeType/HarfBuzz) ~26 MB, janela
-GL ~108 MB (quase tudo é driver de vídeo), framework ~15 MB.
+nodebuilder's memory breakdown: empty Bun ~15 MB, text (FreeType/HarfBuzz) ~26 MB, GL window
+~108 MB (almost all of it the graphics driver), framework ~15 MB.

@@ -6,12 +6,20 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 ## Já existe (0.2)
 
 - Reatividade estilo SolidJS (signals, memos, effects, ownership), JSX próprio, `<For>` e `<Show>`
+- Controle de fluxo completo (2026-10-12): `<Switch>`/`<Match>`, `<Index>` (lista por
+  posição) e `<ErrorBoundary>` (erros na criação e em effects, com `reset`); filho-função
+  `{(valor) => ...}` no `<Show>` e no `<Match>`; mudanças internas não recriam mais os
+  componentes em volta (ex.: `<For>` logo abaixo de um `Provider`)
 - Layout flexbox, rolagem, recorte com cantos arredondados, sombras
 - Widgets: `Window` com decoração própria, `Column`/`Row`/`Box`, `Scroll`, `Text`, `Image`
   (PNG, JPEG, WebP; AVIF/HEIC via libheif), `Icon` (SVG: Lucide, Phosphor), `Canvas`
   (desenho livre na GPU), `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`
 - Gráficos (`@nodebuilderjs/core/charts`) com API no formato do Recharts
 - `onPointerMove` e `interact()` para testar mouse e teclado sem janela
+- `createContext`/`useContext`, `ref` (foco, rolagem e caixa do layout) e `onResize`
+- `<Overlay>` (diálogos modais, menus ancorados, dicas), `opacity` e `translateX`/`translateY`
+- Rolagem completa: barras que se arrastam e paginam, `<Scroll horizontal>` e nos dois eixos,
+  Shift+roda, PageUp/PageDown/Home/End/setas, `scrollTo({ x, y })` e `scrollIntoView()`
 - Área de transferência do sistema (texto, Wayland e X11): `clipboard`, colar no `TextField`,
   `<Text selectable>` para selecionar e copiar texto fixo
 - `bun create nodebuilderjs` gera o app com `AGENTS.md` e skills para agentes (`.agents/skills`)
@@ -95,7 +103,9 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
 
 ## Texto e entrada
 
-- Quebra de linha e texto com várias linhas
+- ~~Quebra de linha e texto com várias linhas~~ **feito** (2026-10-12): quebra por padrão,
+  `wrap`, `maxLines` com "…", `textAlign`, `lineHeight`, seleção em várias linhas. Falta
+  hifenização e quebrar palavra longa no meio (opcional, como `overflow-wrap: anywhere`).
 - Fallback de fontes (emojis, CJK) e escolha de família de fonte
 - Seleção no `TextField` (com Ctrl+C/Ctrl+X); seleção primária (colar com o botão do meio);
   Shift+clique e setas para estender a seleção do `<Text selectable>`
@@ -144,12 +154,18 @@ Em andamento, nesta ordem:
 
 Depois:
 
-- Novos widgets no core: slider, seleção (dropdown), abas, tooltip, diálogo modal, menu de
-  contexto
+- Novos widgets no core: ~~slider, interruptor, rádio, progresso, `disabled` em todos,
+  seleção (dropdown), abas, tooltip, diálogo modal~~ **feito** (2026-10-12); falta menu de
+  contexto, campo de número, data, `Select` com busca e com vários valores
 - Imagens: decodificar fora da thread do JS, mipmaps para imagens muito reduzidas, versões
   @2x para HiDPI e animações (GIF, WebP animado)
-- Animações e transições
-- Tema escuro, seguindo a preferência do sistema
+- ~~Animações e transições~~ **feito** (2026-10-12): `animate`, `createTween`,
+  `createPresence`, `easing`, `mixColor`; `Dialog`, `Select`, `Tooltip` e `Toggle` animados.
+  Falta `transition` declarativo nas props de estilo, molas e `scale`/`rotate` (com
+  opacidade de grupo, pedem desenhar a subárvore numa textura)
+- ~~Tema escuro~~ **feito** (2026-10-12): `setTheme`, `darkTheme`, `colorScheme`. Falta
+  seguir a preferência do sistema (portal XDG `org.freedesktop.appearance` por D-Bus, com a
+  libdbus via `dlopen` e o fd no `poll()` da thread de bombeamento)
 - **Experimento:** `@nodebuilderjs/react`, um renderer React opcional (via
   `react-reconciler`, como o React Native e o Ink) mapeando para os mesmos widgets e para
   `<svg>`. Traria hooks, bibliotecas só de lógica (TanStack Query, Zustand) e ícones como
@@ -177,7 +193,7 @@ Depois:
 
 - Windows e macOS: implementar o contrato `native/include/nb_platform.h` em
   `native/platform/<os>/`, com ANGLE para o OpenGL ES (ver
-  [ARCHITECTURE.md](ARCHITECTURE.md#portabilidade-para-outros-sistemas))
+  [ARCHITECTURE.md](ARCHITECTURE.md#porting-to-other-systems))
 
 ## Ferramentas
 

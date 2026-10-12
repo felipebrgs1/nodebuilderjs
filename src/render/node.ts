@@ -4,6 +4,7 @@
 import type { ImageSource } from "../image/source.js";
 
 export type Color = string;
+export type Axis = "x" | "y";
 export type Edges = number | [vertical: number, horizontal: number] | [top: number, right: number, bottom: number, left: number];
 
 export interface Style {
@@ -40,6 +41,11 @@ export interface Style {
   bold?: boolean;
   // interaction
   cursor?: string;
+  /** 0..1, multiplies the alpha of everything the node and its children draw. */
+  opacity?: number;
+  /** Moves the node and its children after layout (siblings stay put), like CSS translate. */
+  translateX?: number;
+  translateY?: number;
 }
 
 export interface PointerEvent {
@@ -84,6 +90,8 @@ export interface Handlers {
   onKeyDown?: (e: KeyEvent) => void;
   onFocus?: () => void;
   onBlur?: () => void;
+  /** After a layout that gave the node a new size (and after the first one). */
+  onResize?: (size: Size) => void;
 }
 
 export interface Size {
@@ -93,6 +101,8 @@ export interface Size {
 
 /** What custom-painted nodes draw with (implemented by paint.ts). */
 export interface Painter {
+  /** 0..1, multiplies the alpha of everything drawn (set by paintTree from `opacity`). */
+  opacity: number;
   rect(x: number, y: number, w: number, h: number, color: Color, radius?: number, borderWidth?: number, borderColor?: Color): void;
   shadow(x: number, y: number, w: number, h: number, color: Color, radius: number, blur: number): void;
   text(x: number, y: number, text: string, size: number, color: Color, bold?: boolean): void;
@@ -154,7 +164,50 @@ export function invalidate() {
   scheduleFrame();
 }
 
-export class UINode {
+export type Placement = "bottom" | "top" | "right" | "left";
+
+/** Set on the top node of an <Overlay> layer. */
+export interface OverlayOptions {
+  /** Absent: the layer covers the window. Present: the layer is sized to its content next to the anchor. */
+  anchor?: () => ElementRef | undefined;
+  placement: Placement;
+  offset: number;
+  matchWidth: boolean;
+  /** Covers the window (ignoring `anchor`), blocks the pointer and keeps Tab inside. */
+  modal: boolean;
+  onDismiss?: () => void;
+}
+
+/** Every live overlay layer, in creation order (later ones draw above). Each root picks its own in layout(). */
+export const overlayLayers = new Set<UINode>();
+
+/** Nodes waiting for scrollIntoView(); the next layout of their root brings them into view. */
+export const revealRequests = new Set<UINode>();
+
+/** The element with the keyboard focus in `node`'s window (null outside a window or without focus). */
+export function focusedElement(node: UINode): UINode | null {
+  let n = node;
+  while (n.parent) n = n.parent;
+  return (n.isRoot && n.focusHost?.focused) || null;
+}
+
+/** What a `ref` receives: the box from the last layout (window coordinates) and imperative actions. */
+export interface ElementRef {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly scrollX: number;
+  readonly scrollY: number;
+  focus(): void;
+  blur(): void;
+  /** On a Scroll: moves its content to `y`, or to `{ x, y }` (either may be left out). */
+  scrollTo(to: number | { x?: number; y?: number }): void;
+  /** Scrolls the Scrolls around the element as little as needed to show it (on the next layout). */
+  scrollIntoView(): void;
+}
+
+export class UINode implements ElementRef {
   readonly style: Style = {};
   readonly handlers: Handlers = {};
   parent: UINode | null = null;
@@ -167,10 +220,14 @@ export class UINode {
   tabStop = true;
   /** Children may overflow vertically and are scrolled by `scrollY`. */
   scrollable = false;
+  /** Children may overflow horizontally and are scrolled by `scrollX`. */
+  scrollableX = false;
   /** Pressing here (outside clickable children) moves the window. */
   dragRegion = false;
-  /** Optional intrinsic size (text, custom widgets). */
+  /** Optional intrinsic size (text, custom widgets); `maxWidth` is Infinity for the natural size. */
   measure?: (maxWidth: number) => Size;
+  /** Content that wraps: the narrowest width it can take (its longest word). Its height then depends on the width given to measure(). */
+  minContentWidth?: () => number;
   /** Optional custom drawing, called after background and before children. */
   paint?: (p: Painter, node: UINode) => void;
   /** Debug label shown by `debugTree`. */
@@ -181,11 +238,15 @@ export class UINode {
   y = 0;
   width = 0;
   height = 0;
-  /** Content extent, used by scroll containers. */
+  /** Content extent (children plus padding), used by scroll containers. */
+  contentWidth = 0;
   contentHeight = 0;
+  scrollX = 0;
   scrollY = 0;
   /** Outside the visible area in the last layout: its box is set, its subtree is stale and skipped. */
   culled = false;
+  /** Scrollbar under the pointer or being dragged (set by input, drawn wider by paint). */
+  activeScrollbar: { axis: Axis; pressed: boolean } | null = null;
 
   constructor(label = "box") {
     this.label = label;
@@ -222,6 +283,58 @@ export class UINode {
   }
 
   isRoot = false;
+  /** On a root: overlay layers drawn above the tree, bottom to top (filled by layout). */
+  layers: UINode[] = [];
+  /** On an overlay layer: how it is placed and dismissed. Its `parent` is the <Overlay> placeholder. */
+  overlay?: OverlayOptions;
+  /** On a root: the input system's focus, set by createInput (what focus()/blur() go through). */
+  focusHost?: { readonly focused: UINode | null; setFocus(node: UINode | null): void };
+  /** Last size given to onResize. */
+  reportedSize: Size | null = null;
+
+  private host() {
+    let n: UINode = this;
+    while (n.parent) n = n.parent;
+    return n.isRoot ? n.focusHost : undefined;
+  }
+
+  /** Focuses the node if it is focusable. Called while the node is being created, it waits until it is in the tree. */
+  focus() {
+    const host = this.host();
+    if (host) {
+      if (this.focusable) host.setFocus(this);
+    } else {
+      // Still being created: widgets may set `focusable` after handing out the ref.
+      queueMicrotask(() => this.focusable && this.host()?.setFocus(this));
+    }
+  }
+
+  blur() {
+    const host = this.host();
+    if (host?.focused === this) host.setFocus(null);
+  }
+
+  /** Scrolls a scrollable node; layout clamps the position to the content. */
+  scrollTo(to: number | { x?: number; y?: number }) {
+    const { x, y } = typeof to === "number" ? { x: undefined, y: to } : to;
+    if (y !== undefined && this.scrollable) this.scrollY = Math.max(0, y);
+    if (x !== undefined && this.scrollableX) this.scrollX = Math.max(0, x);
+    invalidate();
+  }
+
+  /**
+   * Done by the next layout, where the boxes are current: even when the node is new, or was
+   * culled (outside the view, its own coordinates are stale).
+   */
+  scrollIntoView() {
+    revealRequests.add(this);
+    invalidate();
+  }
+}
+
+/** Scrolls on some axis (and so clips its children). */
+export function scrolls(n: UINode): boolean {
+  return n.scrollable || n.scrollableX;
 }
 
 export function debugTree(node: UINode, indent = ""): string {

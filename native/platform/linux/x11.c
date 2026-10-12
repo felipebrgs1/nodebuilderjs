@@ -374,7 +374,7 @@ static void handle_event(XEvent *ev) {
       XButtonEvent *b = &ev->xbutton;
       if (b->button >= 4 && b->button <= 7) {  // wheel: one notch ~ 15 px, like libinput on Wayland
         if (ev->type == ButtonRelease) break;
-        nb_event e = {.type = NB_EV_SCROLL, .x = (double)b->x / X.scale, .y = (double)b->y / X.scale};
+        nb_event e = {.type = NB_EV_SCROLL, .x = (double)b->x / X.scale, .y = (double)b->y / X.scale, .mods = mods_of(b->state)};
         if (b->button == 4) e.dy = -15;
         if (b->button == 5) e.dy = 15;
         if (b->button == 6) e.dx = -15;

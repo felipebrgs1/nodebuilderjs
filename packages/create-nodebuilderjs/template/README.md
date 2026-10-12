@@ -1,32 +1,32 @@
 # {{title}}
 
-App desktop nativo para Linux feito com [nodebuilder](https://www.npmjs.com/package/@nodebuilderjs/core):
-componentes TSX com reatividade estilo SolidJS, desenhados por um núcleo nativo (Wayland/X11 + GLES).
+Native Linux desktop app made with [nodebuilder](https://www.npmjs.com/package/@nodebuilderjs/core):
+TSX components with SolidJS-style reactivity, drawn by a native core (Wayland/X11 + GLES).
 
 ```sh
-bun run dev        # abre a janela e reinicia ao salvar
-bun start          # roda uma vez
-bun test           # testes sem janela (test/)
+bun run dev        # opens the window and restarts on save
+bun start          # runs once
+bun test           # tests without a window (test/)
 bun run typecheck  # TypeScript 7
-bun run package    # AppImage, .deb, .rpm e .tar.gz em dist/
+bun run package    # AppImage, .deb, .rpm and .tar.gz in dist/
 ```
 
-## Estrutura
+## Structure
 
 ```
 src/
-  main.tsx             abre a janela: run(() => <App />)
-  App.tsx              layout da tela; cria o estado e o passa aos componentes
-  estado.ts            signals e ações do app (contador, tarefas, histórico)
-  icones.ts            ícones SVG usados pelo app
-  componentes/
-    Contador.tsx       botões e texto reativo
-    Tarefas.tsx        campo de texto, lista com For/Checkbox, Show
-    Atividade.tsx      gráfico (@nodebuilderjs/core/charts) que acompanha o estado
+  main.tsx             opens the window: run(() => <App />)
+  App.tsx              screen layout and dark mode toggle; creates the state and passes it down
+  state.ts             app signals and actions (counter, tasks, history)
+  icons.ts             SVG icons used by the app
+  components/
+    Counter.tsx        buttons, reactive text and a tooltip
+    Tasks.tsx          text field, list with For/Checkbox, Show and a confirmation Dialog
+    Activity.tsx       chart (@nodebuilderjs/core/charts) that follows the state
 test/
-  App.test.tsx         testes sem janela: mount + interact (clicar, digitar)
+  App.test.tsx         tests without a window: mount + interact (click, type)
 ```
 
-Para apagar o exemplo e começar do zero, deixe só a `<Window>` em `App.tsx`.
+To remove the example and start from scratch, keep only the `<Window>` in `App.tsx`.
 
-Requisitos: Linux com Wayland ou X11, [Bun](https://bun.sh) 1.4+.
+Requirements: Linux with Wayland or X11, [Bun](https://bun.sh) 1.4+.

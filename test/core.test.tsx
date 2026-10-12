@@ -46,6 +46,24 @@ test("cleanups run when an effect re-runs", () => {
   expect(log).toEqual(["run 0", "cleanup 0", "run 1"]);
 });
 
+test("an effect finishes before the effects its writes trigger (no re-entrant runs)", () => {
+  const [a, setA] = createSignal(0);
+  const [b, setB] = createSignal(0);
+  const log: string[] = [];
+  createRoot(() => {
+    createEffect(() => {
+      log.push(`start ${a()}`);
+      setB(a());
+      if (a() === 1) setA(2); // writes what it reads: runs again, after this run
+      log.push(`end ${a()}`);
+    });
+    createEffect(() => log.push(`b ${b()}`));
+  });
+  log.length = 0;
+  setA(1);
+  expect(log).toEqual(["start 1", "end 2", "b 1", "start 2", "end 2", "b 2"]);
+});
+
 test("reactive text updates in place without recreating nodes", () => {
   const [n, setN] = createSignal(1);
   const { root } = mount(() => <Text>Cliques: {n}</Text>);

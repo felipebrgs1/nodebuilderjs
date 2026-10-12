@@ -1,19 +1,23 @@
 // Props shared by every widget: style keys, event handlers, inheritance and interaction state.
 
 import type { Child } from "../jsx-runtime.js";
-import { type Handlers, type Style, UINode } from "../render/node.js";
-import { type MaybeAccessor, createEffect, createSignal } from "../reactive/signals.js";
+import { type ElementRef, type Handlers, type Style, UINode } from "../render/node.js";
+import { type Accessor, type MaybeAccessor, createEffect, createSignal, read } from "../reactive/signals.js";
+import { theme } from "../theme.js";
 
-export type StyleProps = { [K in keyof Style]?: MaybeAccessor<NonNullable<Style[K]>> };
+export type StyleProps = { [K in keyof Style]?: MaybeAccessor<NonNullable<Style[K]>> } & {
+  /** Called with the widget's element when it is created: focus(), scrollTo(), its laid-out box. */
+  ref?: (el: ElementRef) => void;
+};
 export type BoxProps = StyleProps & Handlers & { children?: Child };
 
 const STYLE_KEYS: (keyof Style)[] = [
   "direction", "gap", "padding", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow",
   "align", "justify", "position", "left", "top", "clip", "background", "radius", "borderWidth", "borderColor",
-  "shadow", "color", "fontSize", "bold", "cursor",
+  "shadow", "color", "fontSize", "bold", "cursor", "opacity", "translateX", "translateY",
 ];
 const HANDLER_KEYS: (keyof Handlers)[] = [
-  "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur",
+  "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur", "onResize",
 ];
 
 /** Binds style props (static or reactive) and event handlers onto a node. */
@@ -25,6 +29,7 @@ export function applyProps(node: UINode, props: Record<string, any>) {
     else node.set(key, value);
   }
   for (const key of HANDLER_KEYS) if (props[key]) node.handlers[key] = props[key];
+  props.ref?.(node);
 }
 
 export function inherited<K extends "color" | "fontSize" | "bold">(node: UINode, key: K): Style[K] | undefined {
@@ -47,4 +52,20 @@ export function interaction(node: UINode) {
     onBlur: () => (setFocused(false), prev.onBlur?.()),
   } satisfies Handlers);
   return { hovered, pressed, focused };
+}
+
+/**
+ * `disabled` for a control: dimmed, out of focus and of the Tab order, default cursor
+ * (`cursor` when enabled). Returns the accessor; the control's own handlers check it.
+ */
+export function disableable(node: UINode, props: { disabled?: MaybeAccessor<boolean>; opacity?: unknown }, cursor = "pointer"): Accessor<boolean> {
+  const disabled = () => !!read(props.disabled ?? false);
+  createEffect(() => {
+    const off = disabled();
+    node.focusable = !off;
+    if (props.opacity === undefined) node.set("opacity", off ? theme.disabledOpacity : 1);
+    node.set("cursor", off ? "default" : cursor);
+    if (off) node.blur();
+  });
+  return disabled;
 }

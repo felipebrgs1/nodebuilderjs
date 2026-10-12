@@ -1,7 +1,7 @@
 {
   "name": "@nodebuilderjs/core",
-  "version": "0.2.1",
-  "description": "UI nativa para Linux em TypeScript: componentes TSX com reatividade estilo SolidJS, desenhados por um núcleo próprio (Wayland/X11 + GLES2 + FreeType/HarfBuzz). Sem DOM, sem Electron, sem GTK/Qt.",
+  "version": "0.2.5",
+  "description": "Native Linux UI in TypeScript: TSX components with SolidJS-style reactivity, drawn by its own native core (Wayland/X11 + GLES2 + FreeType/HarfBuzz). No DOM, no Electron, no GTK/Qt.",
   "keywords": [
     "gui",
     "desktop",
@@ -74,6 +74,10 @@
     "icons": "bun examples/icons.tsx",
     "drawing": "bun examples/drawing.tsx",
     "charts": "bun examples/charts.tsx",
+    "overlays": "bun examples/overlays.tsx",
+    "text": "bun examples/text.tsx",
+    "widgets": "bun examples/widgets.tsx",
+    "scroll": "bun examples/scroll.tsx",
     "dev": "bun --watch examples/todo.tsx",
     "bench": "NB_STATS=1 bun examples/bench.tsx",
     "bench:dashboard": "NB_STATS=1 bun examples/dashboard.tsx",

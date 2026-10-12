@@ -3,7 +3,7 @@ import { type Style, UINode, invalidate, measureText } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, createSignal, onCleanup, read, untrack } from "../reactive/signals.js";
 import { clipboard } from "../runtime/clipboard.js";
 import { theme } from "../theme.js";
-import { type StyleProps, applyProps, inherited, interaction } from "./props.js";
+import { type StyleProps, applyProps, disableable, inherited, interaction } from "./props.js";
 
 export function TextField(
   props: StyleProps & {
@@ -11,14 +11,16 @@ export function TextField(
     onInput: (value: string) => void;
     onSubmit?: () => void;
     placeholder?: MaybeAccessor<string>;
+    disabled?: MaybeAccessor<boolean>;
   },
 ) {
   const node = new UINode("TextField");
   Object.assign(node.style, {
-    padding: [9, 12], radius: theme.radius, background: theme.field.background, cursor: "text", minWidth: 80,
+    padding: [9, 12], radius: theme.radius, minWidth: 80,
   } satisfies Style);
-  node.focusable = true;
+  if (props.background === undefined) createEffect(() => node.set("background", theme.field.background));
   applyProps(node, props);
+  disableable(node, props, "text");
   const state = interaction(node);
 
   const chars = () => Array.from(props.value());

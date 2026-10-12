@@ -42,7 +42,7 @@ test("Text selectable: dragging backwards selects up to the start", async () => 
   expect(await copy()).toBe("hello ");
 });
 
-test("Text selectable: double click selects a word, triple click everything", async () => {
+test("Text selectable: double click selects a word, triple click the line (here, all of it)", async () => {
   const { text, ui, copy } = setup();
   ui.press(text);
   ui.release(text);

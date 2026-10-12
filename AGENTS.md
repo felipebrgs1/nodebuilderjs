@@ -1,486 +1,577 @@
 # AGENTS.md — nodebuilder
 
-Guia para agentes (e humanos) trabalhando neste repositório. Leia antes de mudar código.
+Guide for agents (and humans) working in this repository. Read it before changing code.
 
-## O que é
+## What it is
 
-Framework de UI **nativa para Linux** em TypeScript: componentes TSX com reatividade
-estilo **SolidJS**, renderizados por um **núcleo nativo próprio** (Wayland/X11 + GLES2 +
-FreeType/HarfBuzz, em C via N-API). Sem DOM, sem Electron, sem GTK/Qt.
+A **native Linux** UI framework in TypeScript: TSX components with **SolidJS**-style
+reactivity, rendered by **its own native core** (Wayland/X11 + GLES2 + FreeType/HarfBuzz,
+in C via N-API). No DOM, no Electron, no GTK/Qt.
 
-Motivação: um "Flutter para o ecossistema JS". TypeScript porque LLMs escrevem TS/JSX
-muito bem, então o máximo possível do framework fica em TS, e o C fica pequeno e estável.
+Motivation: a "Flutter for the JS ecosystem". TypeScript because LLMs write TS/JSX very
+well, so as much of the framework as possible lives in TS, and the C stays small and stable.
 
-| Documento | Para quem |
+| Document | Audience |
 |---|---|
-| `README.md` | quem usa o framework (também é o README do pacote no npm) e os benchmarks |
-| `ARCHITECTURE.md` | como funciona por dentro e como medir desempenho |
-| `ROADMAP.md` | prioridades e o que já foi feito |
-| `packages/create-nodebuilderjs/template/` | `AGENTS.md` e skills (`.agents/skills/`) que vão para os apps criados |
+| `README.md` | framework users (it is also the npm package README) and the benchmarks |
+| `ARCHITECTURE.md` | how it works inside and how to measure performance |
+| `ROADMAP.md` | priorities and what has been done (still in Portuguese) |
+| `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps |
 
-## Regras inegociáveis
+## Non-negotiable rules
 
-1. **Zero dependências de terceiros em runtime.** Só o próprio código + bibliotecas do
-   sistema (libwayland, X11, EGL/GLES, xkbcommon, FreeType, HarfBuzz, fontconfig; a libheif
-   é opcional, via `dlopen`). Dependências de desenvolvimento são aceitáveis (hoje:
-   `typescript`, `@types/bun`, `node-api-headers`). React, Solid, Yoga, Skia etc. servem só
-   de referência.
-2. **Bun é o runtime e o gerenciador de pacotes.** Use `bun`, `bun add`, `bun test`; nunca
-   npm/yarn/pnpm, `node:test` ou build com `tsc`. O código precisa **continuar rodando no
-   Node** (o addon é agnóstico): a publicação gera `lib/` (JS via `Bun.Transpiler`, `.d.ts`
-   via tsc) só para o Node; o Bun sempre lê `src/`.
-3. **Nunca usar libuv (`uv_*`) no addon.** O Bun não implementa libuv e aborta com
-   `unsupported_uv_function`. Trabalho assíncrono nativo (fds, timers) entra no `poll()` da
-   thread de bombeamento (veja "Modelo de threads" em C).
-4. **Linux primeiro, arquitetura pronta para outros SOs.** Núcleo portável
-   (`native/core/`) e backend por SO (`native/platform/<os>/`), ligados só pelo contrato
-   `native/include/nb_platform.h`. No Linux, **Wayland e X11**, escolhidos em runtime.
-5. **TypeScript 7** (compilador nativo em Go) só para checagem: `bun run typecheck`.
-6. **Teto de 120 fps** por padrão. Acima disso é desnecessário (decisão do projeto).
-7. **TDD:** comportamento novo e correção de bug começam por um teste que falha (veja
-   "Fluxo de trabalho").
+1. **Zero third-party runtime dependencies.** Only our own code + system libraries
+   (libwayland, X11, EGL/GLES, xkbcommon, FreeType, HarfBuzz, fontconfig; libheif is
+   optional, via `dlopen`). Development dependencies are acceptable (currently:
+   `typescript`, `@types/bun`, `node-api-headers`). React, Solid, Yoga, Skia etc. serve
+   only as reference.
+2. **Bun is the runtime and the package manager.** Use `bun`, `bun add`, `bun test`; never
+   npm/yarn/pnpm, `node:test` or building with `tsc`. The code must **keep running on
+   Node** (the addon is runtime-agnostic): publishing generates `lib/` (JS via
+   `Bun.Transpiler`, `.d.ts` via tsc) for Node only; Bun always reads `src/`.
+3. **Never use libuv (`uv_*`) in the addon.** Bun does not implement libuv and aborts with
+   `unsupported_uv_function`. Native async work (fds, timers) goes into the `poll()` of the
+   pump thread (see "Threading model" under C).
+4. **Linux first, architecture ready for other OSes.** Portable core (`native/core/`) and
+   one backend per OS (`native/platform/<os>/`), connected only through the
+   `native/include/nb_platform.h` contract. On Linux, **Wayland and X11**, chosen at runtime.
+5. **TypeScript 7** (native compiler in Go) for type checking only: `bun run typecheck`.
+6. **120 fps cap** by default. Anything above that is unnecessary (project decision).
+7. **TDD:** new behavior and bug fixes start with a failing test (see "Workflow").
 
-## Comandos
+## Commands
 
 ```sh
-bun install                 # deps de desenvolvimento
-bun run build:native        # compila native/build/<platform>-<arch>/nodebuilder.node
-bun run typecheck           # tsc 7 --noEmit (~0,1 s)
-bun test                    # todos os testes, sem janela (~0,1 s)
-bun test test/svg.test.tsx  # um arquivo; -t "padrão" filtra pelo nome do teste
-bun run counter | todo | images | icons | drawing | charts   # exemplos (Bun executa .tsx direto)
-bun run dev                 # todo com --watch
-bun run bench               # stress test com NB_STATS=1 (env: N=1000 MODE=one|all|static)
-bun run bench:dashboard     # app realista (env: TAB=overview|table|logs|settings ROWS=500
-                            #   LIVE=0 CYCLE=<frames por troca de aba>)
+bun install                 # development deps
+bun run build:native        # builds native/build/<platform>-<arch>/nodebuilder.node
+bun run typecheck           # tsc 7 --noEmit (~0.1 s)
+bun test                    # all tests, no window (~0.1 s)
+bun test test/svg.test.tsx  # one file; -t "pattern" filters by test name
+bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll | widgets   # examples
+bun run dev                 # todo with --watch
+bun run bench               # stress test with NB_STATS=1 (env: N=1000 MODE=one|all|static)
+bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settings ROWS=500
+                            #   LIVE=0 CYCLE=<frames per tab switch>)
 bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]
-bun run npm:build           # pacotes npm em dist/npm/ (não publica)
-scripts/compare.sh <rótulo> <aquecimento-s> <amostra-s> -- <comando...>  # CPU/RAM da árvore
+bun run npm:build           # npm packages in dist/npm/ (does not publish)
+scripts/compare.sh <label> <warmup-s> <sample-s> -- <command...>  # CPU/RAM of the process tree
 ```
 
-## Fluxo de trabalho (TDD)
+## Workflow (TDD)
 
-Todo comportamento novo e toda correção de bug seguem o ciclo:
+Every new behavior and every bug fix follows the cycle:
 
-1. **Vermelho:** escreva o teste que descreve o comportamento esperado e rode-o
-   (`bun test <arquivo> -t <nome>`). Ele precisa **falhar, e pelo motivo certo** (a
-   asserção, não um import quebrado ou um erro de digitação). Bug: primeiro um teste que
-   reproduz o bug.
-2. **Verde:** escreva o mínimo de código para o teste passar.
-3. **Refatore** com a suíte verde: nomes, duplicação, o lugar certo no módulo.
-4. **Feche:** `bun run typecheck && bun test` (e `bun run build:native` se mexeu em C).
+1. **Red:** write the test that describes the expected behavior and run it
+   (`bun test <file> -t <name>`). It must **fail, and for the right reason** (the
+   assertion, not a broken import or a typo). Bug: first a test that reproduces the bug.
+2. **Green:** write the minimum code to make the test pass.
+3. **Refactor** with the suite green: names, duplication, the right place in the module.
+4. **Close:** `bun run typecheck && bun test` (and `bun run build:native` if you touched C).
 
-Escreva os testes a partir do comportamento visível (API pública, árvore, layout, comandos
-de desenho, pixels), não dos detalhes internos, para que refatorar não quebre testes à toa.
+Write tests from visible behavior (public API, tree, layout, draw commands, pixels), not
+from internal details, so that refactoring does not break tests for no reason.
 
-### Onde e como testar cada camada
+### Where and how to test each layer
 
-| Camada | Como testar sem janela |
+| Layer | How to test without a window |
 |---|---|
-| Reatividade, `For`/`Show` | signals e effects direto; conte execuções e descartes |
-| Widgets e layout | monte com `mount` (`@nodebuilderjs/core/testing`) ou `insert` num `UINode` raiz, rode `layout()` e confira `x`/`y`/`width`/`height` ou `debugTree()`. Métricas falsas: 8 px por caractere, linha de 20 px |
-| Pintura e command buffer | `drawCommands(node)` / `decode(buffer)` de `test/helpers.ts` devolvem os comandos com nome (`{ op: "line", x0, ... }`). Primitiva de desenho nova começa aqui |
-| Eventos (mouse, teclado, foco) | `interact(root)` de `@nodebuilderjs/core/testing`, ou `createInput(root, host)` de `runtime/input.ts` com um host falso que registra mover/redimensionar/cursor e controla o relógio |
-| Imagens e texturas | `setImageBackend({ create, destroy })` registra criação e liberação de texturas |
-| Decodificadores e rasterizadores | testes "golden": a saída da referência (libjpeg-turbo, libwebp, librsvg, ImageMagick) fica em `test/fixtures/`, gerada uma vez; compare byte a byte ou com tolerância explícita. Depois, fuzzing com bytes trocados e arquivos truncados: todo erro é uma mensagem do formato (nunca um TypeError), e dimensões absurdas são recusadas antes de alocar (limite de 2^28 pixels) |
-| Addon (o que roda sem janela) | chame a função nativa pelo `loadNative()` num teste; use `test.skipIf` quando depender de algo opcional do sistema (ex.: libheif) |
+| Reactivity, control flow (`For`/`Index`/`Show`/`Switch`) | signals and effects directly; count runs and disposals (a `Probe` with a counter in the body and in `onCleanup`) |
+| Errors (`ErrorBoundary`, `catchError`) | a component or effect that throws; check the `fallback`, that the scope was disposed (the effect no longer runs, `onCleanup` ran) and that, without a boundary, the error reaches the caller and the queue keeps going |
+| Widgets and layout | mount with `mount` (`@nodebuilderjs/core/testing`) or `insert` into a root `UINode`, run `layout()` and check `x`/`y`/`width`/`height` or `debugTree()`. Fake metrics: 8 px per character, 20 px line |
+| Painting and command buffer | `drawCommands(node)` / `decode(buffer)` from `test/helpers.ts` return named commands (`{ op: "line", x0, ... }`). A new draw primitive starts here |
+| Events (mouse, keyboard, focus) | `interact(root)` from `@nodebuilderjs/core/testing`, or `createInput(root, host)` from `runtime/input.ts` with a fake host that records move/resize/cursor and controls the clock |
+| Images and textures | `setImageBackend({ create, destroy })` records texture creation and release |
+| Decoders and rasterizers | "golden" tests: the reference output (libjpeg-turbo, libwebp, librsvg, ImageMagick) lives in `test/fixtures/`, generated once; compare byte for byte or with an explicit tolerance. Then fuzzing with flipped bytes and truncated files: every error is a format message (never a TypeError), and absurd dimensions are rejected before allocating (2^28 pixel limit) |
+| Addon (what runs without a window) | call the native function through `loadNative()` in a test; use `test.skipIf` when it depends on something optional in the system (e.g. libheif) |
 
-O que não dá para testar automaticamente fica documentado no fechamento da tarefa:
+What cannot be tested automatically is documented when closing the task:
 
-- **Visual** (o C de desenho, shaders, cantos, AA): abra o exemplo em background e capture
-  a janela ativa com `spectacle -b -n -a -o <scratch>/x.png`; inspecione pixels com
-  `magick` (crop + `-filter point -resize 800%`). O teste automático cobre o lado TS
-  (os comandos emitidos); a captura cobre o C.
-- **Teclado do sistema** (acentos, teclas mortas, compose): o caminho xkb -> texto é do C e
-  só dá para testar digitando de verdade; peça ao usuário. Do evento de tecla em diante
-  (foco, Tab, TextField), use `interact().key/type`.
-- **Desempenho:** o "teste" é a medição. Meça antes de mudar (`NB_STATS=1` e
-  `scripts/compare.sh` na mesma cena), mude, meça de novo na mesma sessão e registre os dois
-  números. Otimização sem número de antes e depois não entra.
+- **Visual** (the drawing C code, shaders, corners, AA): open the example in the background
+  and capture the active window with `spectacle -b -n -a -o <scratch>/x.png`; inspect
+  pixels with `magick` (crop + `-filter point -resize 800%`). The automated test covers the
+  TS side (the emitted commands); the capture covers the C.
+- **System keyboard** (accents, dead keys, compose): the xkb -> text path is in C and can
+  only be tested by actually typing; ask the user. From the key event onward (focus, Tab,
+  TextField), use `interact().key/type`.
+- **Performance:** the "test" is the measurement. Measure before changing (`NB_STATS=1` and
+  `scripts/compare.sh` on the same scene), change, measure again in the same session and
+  record both numbers. No optimization goes in without before and after numbers.
 
-### Organização dos testes
+### Test organization
 
-- Um arquivo por assunto: `core` (reatividade, árvore, layout, culling), `input` (eventos),
-  `clipboard`, `text-selection`, `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
-  (triangulação), `draw` (primitivas e `shapes.ts`), `canvas` e `charts/`. Assunto novo ganha arquivo novo; quando o `core` crescer, divida-o.
-- Testes rápidos e determinísticos: sem rede, sem relógio, sem janela. A suíte toda roda em
-  ~0,1 s; um teste que precise de mais que isso deve ter um motivo.
-- Fixtures pequenas (poucos KB). Registre de onde vieram (ferramenta e versão, como em
-  `svg-LICENSES.md`) e a licença de arquivos de terceiros.
-- Trecho de código em skill ou README também é testado: precisa passar no typecheck.
+- One file per subject: `core` (reactivity, tree, layout, culling), `control-flow`
+  (`Show`, `Switch`/`Match`, `Index`, nesting without recreating components),
+  `error-boundary` (errors, effect queue), `context`, `ref`
+  (`ref`, programmatic focus and scrolling, `onResize`), `overlay`, `style` (`opacity`, `translate`),
+  `text` (line wrapping, alignment, `maxLines`, multi-line selection), `controls`
+  (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `popups`
+  (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets following the switch),
+  `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
+  (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
+  `input` (events),
+  `clipboard`, `text-selection`, `testing` (public helpers), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
+  (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
+- Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
+  ~0.1 s; a test that needs more than that must have a reason.
+- Small fixtures (a few KB). Record where they came from (tool and version, as in
+  `svg-LICENSES.md`) and the license of third-party files.
+- Code snippets in skills or the README are tested too: they must pass the typecheck.
 
-### Antes de concluir uma tarefa
+### Before finishing a task
 
-- `bun run typecheck && bun test` verdes; `bun run build:native` se mexeu em C.
-- Mudança visual: um exemplo aberto e capturado. Mudança de desempenho: números de antes e
-  depois.
-- Documentação junto: README (API pública, limitações), ARCHITECTURE (funcionamento),
-  ROADMAP (item feito), este arquivo (estrutura, convenções) e as skills do template
-  (API pública, widget novo, limitação resolvida, mais a tabela no `template/AGENTS.md`).
+- `bun run typecheck && bun test` green; `bun run build:native` if you touched C.
+- **When closing a block, reread the tests of every modified area** (not just the new ones)
+  and check that they are still correct and up to date: names and comments that describe
+  today's behavior, cases that became trivial or redundant, and what is missing in the
+  interaction with what changed (e.g. an old widget with the new prop). Fix in the same commit.
+- Visual change: an example opened and captured. Performance change: before and after
+  numbers.
+- Docs alongside, in English: README (public API, limitations), ARCHITECTURE (how it
+  works), ROADMAP (item done), this file (structure, conventions) and the template skills
+  (public API, new widget, resolved limitation, plus the table in `template/AGENTS.md`).
+  In the files still in Portuguese, translate the parts you touch.
 
-## Estrutura
+## Structure
 
 ```
-src/                   um módulo por pasta; imports relativos com `.js`
-  index.ts             API pública (reexporta os módulos)
-  jsx-runtime.ts       runtime JSX próprio; jsx() só cria descrições (ElementDesc)
+src/                   one module per folder; relative imports with `.js`
+  index.ts             public API (re-exports the modules)
+  jsx-runtime.ts       own JSX runtime; jsx() only creates descriptions (ElementDesc)
   testing.ts           @nodebuilderjs/core/testing: mount, findByText, click, interact
-  theme.ts             cores/tamanhos padrão (tema claro)
-  assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts referencia com preserve="true")
+  theme.ts             lightTheme/darkTheme, `theme` (reactive getters), setTheme, colorScheme
+  animation/index.ts   animate, createTween, createPresence, easing, mixColor
+  assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts references it with preserve="true")
   reactive/
-    signals.ts         createSignal/Effect/Memo/Root, onCleanup, batch, untrack, read
-    control.ts         <Show>, <For> (keyed por referência)
-  render/              árvore -> layout -> command buffer
-    node.ts            UINode (árvore retida), Style, handlers, invalidate(), measureText(), displayScale()
-    layout.ts          flexbox simplificado + culling
-    paint.ts           árvore -> CommandBuffer (Float32Array) + parseColor
-    shapes.ts          polyline (segmentos LINE) e fillPolygon (triangulação + franja de AA)
+    signals.ts         createSignal/Effect/Memo/Root, onCleanup, batch, untrack, read, catchError
+    control.ts         <Show>, <Switch>/<Match> (conditions)
+    list.ts            <For> (keyed by reference), <Index> (by position)
+    error-boundary.ts  <ErrorBoundary> (on top of catchError)
+    context.ts         createContext/useContext (value stored in the owner scope)
+  render/              tree -> layout -> command buffer
+    node.ts            UINode (retained tree), Style, handlers, invalidate(), measureText(), displayScale()
+    layout.ts          simplified flexbox + culling
+    paint.ts           tree -> CommandBuffer (Float32Array) + parseColor
+    shapes.ts          polyline (LINE segments) and fillPolygon (triangulation + AA fringe)
+    scrollbar.ts       clamped scroll position and scrollbar geometry (painting and input)
+    text-wrap.ts       <Text> line wrapping (greedy, at spaces) and maxLines with "…"
   runtime/
-    app.ts             run(): janela, agendamento de frames, NB_STATS; liga o input ao addon
-    input.ts           eventos -> UI: hit test, hover, cursor, foco, cliques, captura, rolagem, teclado
-    native.ts          carrega native/build/<plataforma>-<arch>/nodebuilder.node (require literais)
-    clipboard.ts       clipboard (texto): em memória sem janela, nativo com run(); leitura por evento
-  widgets/             um arquivo por widget; index.ts reexporta
+    app.ts             run(): window, frame scheduling, NB_STATS; wires input to the addon
+    input.ts           events -> UI: hit test, hover, cursor, focus, clicks, capture, scrolling, keyboard
+    native.ts          loads native/build/<platform>-<arch>/nodebuilder.node (literal requires)
+    frames.ts          frame clock: requestAnimationFrame queue, frameNow, animating()
+    clipboard.ts       clipboard (text): in memory without a window, native with run(); read via event
+  widgets/             one file per widget; index.ts re-exports
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps, inherited, interaction
     containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
     text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
-    text-selection.ts  posições de caracteres, palavra sob o clique (Text selectable; TextField)
+    toggle.ts radio.ts slider.ts progress.ts   controls (Toggle, RadioGroup, Slider, ProgressBar/Spinner)
+    select.ts tabs.ts tooltip.ts dialog.ts     on top of Overlay (Tabs opens nothing, but uses roving.ts)
+    roving.ts          group with a single Tab stop and arrow keys (RadioGroup, Tabs)
+    overlay.ts         <Overlay>: layer above the window (marker in the tree + root.layers)
+    text-selection.ts  character positions, word under the click (Text selectable; TextField)
   image/
-    source.ts          fontes de imagem: cache por caminho, contagem de uso, handle na GPU
-    decode.ts          decodeImage: escolhe o decodificador pela assinatura do arquivo
-    png.ts             PNG (todos os tipos de cor, tRNS, Adam7) via node:zlib
-    jpeg.ts            JPEG baseline/progressivo, CMYK/YCCK, EXIF; idêntico ao libjpeg-turbo
-    webp.ts            WebP VP8 (com perdas), VP8L, alfa, 1º quadro de animação; idêntico ao libwebp
-  svg/                 SVG para ícones (<Icon>)
-    parse.ts           XML, atributos de apresentação, style="", transform
-    render.ts          formas -> geometria -> bitmap
-  geometry/            sem dependências de SVG; base para as primitivas de desenho
-    path.ts            path data, curvas e arcos achatados em polilinhas
-    stroke.ts          contorno -> polígonos (pontas, junções, miter)
-    raster.ts          rasterização por linhas de varredura com AA (nonzero/evenodd)
-    triangulate.ts     ear clipping de polígonos simples (null se cruzar a si mesmo)
-  charts/              @nodebuilderjs/core/charts: gráficos no formato do Recharts, sobre o <Canvas>
-    scale.ts           passos dos eixos (algoritmo do d3)
-    components.ts      filhos de configuração (Line, XAxis...): não renderizam nada
+    source.ts          image sources: cache by path, usage count, GPU handle
+    decode.ts          decodeImage: picks the decoder by the file signature
+    png.ts             PNG (all color types, tRNS, Adam7) via node:zlib
+    jpeg.ts            baseline/progressive JPEG, CMYK/YCCK, EXIF; identical to libjpeg-turbo
+    webp.ts            WebP VP8 (lossy), VP8L, alpha, first animation frame; identical to libwebp
+  svg/                 SVG for icons (<Icon>)
+    parse.ts           XML, presentation attributes, style="", transform
+    render.ts          shapes -> geometry -> bitmap
+  geometry/            no SVG dependencies; base for the draw primitives
+    path.ts            path data, curves and arcs flattened into polylines
+    stroke.ts          stroke -> polygons (caps, joins, miter)
+    raster.ts          scanline rasterization with AA (nonzero/evenodd)
+    triangulate.ts     ear clipping of simple polygons (null if self-intersecting)
+  charts/              @nodebuilderjs/core/charts: Recharts-style charts, on top of <Canvas>
+    scale.ts           axis ticks (d3's algorithm)
+    components.ts      configuration children (Line, XAxis...): render nothing
     cartesian.ts pie.ts shared.ts
 native/
-  include/nb.h          API portável: eventos, texto, renderer, imagens, opcodes
-  include/nb_platform.h CONTRATO que cada SO implementa (janela, event pump, fontes, codecs)
-  core/                 portável, sem nada de SO
-    addon.c             superfície N-API, fila de eventos, threadsafe function
-    text.c              HarfBuzz + FreeType + atlas de glifos
-    render_gles2.c      renderer GLES2: um shader, um formato de vértice, batch único; texturas
-  platform/linux/       backend Linux
-    linux.h             vtable nb_linux_backend (interno ao Linux)
-    linux.c             implementa nb_platform_* escolhendo Wayland ou X11 em runtime
-    wayland.c           Wayland (xdg-shell), EGL, ponteiro, teclado (xkb + compose), cursor
-    x11.c               X11 (Xlib + EWMH), EGL, XIM (teclas mortas), Xcursor, XRandR
-    pump.c              thread de poll() sobre os fds do backend ativo + eventfd de saída
-    fonts.c             descoberta de fontes via fontconfig
-    codecs.c            AVIF/HEIC via libheif (dlopen; declarações próprias, sem header)
-    build.sh            compilação do backend (chamado por scripts/build-native.sh)
-    protocols/          xdg-shell.xml (vendorizado; wayland-protocols não está instalado)
-  build/<platform>-<arch>/  saída (nomes de process.platform/arch: linux-x64, ...)
-test/            um arquivo por módulo (bun:test; bunfig.toml limita o bun test a test/)
-  helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> comandos com nome
-  charts/        testes de src/charts (escalas e cada tipo de gráfico)
-  fixtures/      entradas e saídas de referência (.raw, .pnm do djpeg, PNG do librsvg...)
-examples/        counter, todo, images, icons, drawing, charts, bench, dashboard (.tsx) + assets/
-cli/             comando `nodebuilder` (bin do pacote): nodebuilder.ts, package.ts
+  include/nb.h          portable API: events, text, renderer, images, opcodes
+  include/nb_platform.h CONTRACT each OS implements (window, event pump, fonts, codecs)
+  core/                 portable, nothing OS-specific
+    addon.c             N-API surface, event queue, threadsafe function
+    text.c              HarfBuzz + FreeType + glyph atlas
+    render_gles2.c      GLES2 renderer: one shader, one vertex format, single batch; textures
+  platform/linux/       Linux backend
+    linux.h             nb_linux_backend vtable (internal to Linux)
+    linux.c             implements nb_platform_* choosing Wayland or X11 at runtime
+    wayland.c           Wayland (xdg-shell), EGL, pointer, keyboard (xkb + compose), cursor
+    x11.c               X11 (Xlib + EWMH), EGL, XIM (dead keys), Xcursor, XRandR
+    pump.c              poll() thread over the active backend's fds + exit eventfd
+    fonts.c             font discovery via fontconfig
+    codecs.c            AVIF/HEIC via libheif (dlopen; own declarations, no header)
+    build.sh            backend build (called by scripts/build-native.sh)
+    protocols/          xdg-shell.xml (vendored; wayland-protocols is not installed)
+  build/<platform>-<arch>/  output (names from process.platform/arch: linux-x64, ...)
+test/            one file per module (bun:test; bunfig.toml limits bun test to test/)
+  helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> named commands
+  charts/        tests for src/charts (scales and each chart type)
+  fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
+examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
+cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
-packages/        workspaces publicados junto com o core (veja "Publicação no npm")
-  linux-x64/     @nodebuilderjs/linux-x64: só o addon pré-compilado (gerado, fora do git)
-  create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/ (AGENTS.md e
-                         .agents/skills/; index.js cria os links em .claude/skills/)
-lib/             JS + .d.ts para o Node (gerado por scripts/npm.ts, fora do git)
-compare/         as mesmas cenas em Electron, Tauri, Flutter e egui (benchmarks)
+packages/        workspaces published together with core (see "Publishing to npm")
+  linux-x64/     @nodebuilderjs/linux-x64: only the prebuilt addon (generated, not in git)
+  create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/ (AGENTS.md and
+                         .agents/skills/; index.js creates the links in .claude/skills/)
+lib/             JS + .d.ts for Node (generated by scripts/npm.ts, not in git)
+compare/         the same scenes in Electron, Tauri, Flutter and egui (benchmarks)
 scripts/         build-native.sh, measure.sh, compare.sh, npm.ts
 ```
 
-## Modelo mental (fluxo de um frame)
+## Mental model (flow of a frame)
 
 ```
-signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
-  -> schedule(): respeita frame pendente e teto de fps
-  -> renderFrame(): callbacks de requestAnimationFrame -> layout() -> refreshHover()
-     -> paintTree() -> native.render(commands, texts) -> frame callback do compositor
+signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
+  -> schedule(): respects pending frame and fps cap
+  -> renderFrame(): requestAnimationFrame callbacks -> layout() -> refreshHover()
+     -> paintTree() -> native.render(commands, texts) -> compositor frame callback
 ```
 
-- **Componentes rodam uma vez.** Não há virtual DOM nem re-render. O corpo do componente
-  é `untrack`ed; só **funções** são reativas.
-- **Props reativas são funções:** `text={() => ...}`, `{count}` (accessor como filho),
-  `background={() => hovered() ? a : b}`. Valor estático = não reativo. Não existe
-  compilador estilo Solid; isso é intencional (só `tsc`/Bun transformam o JSX).
-- **`jsx()` é preguiçoso:** retorna `ElementDesc`; o componente executa quando inserido
-  (`insert`/`resolve`). Isso permite `<Show>`/`<For>` decidirem quando instanciar.
-- **Filhos ficam em slots** (`UINode.addSlot/setSlot`). Cada filho-função vira um slot
-  reativo com seu próprio effect; ao reexecutar, o dono descarta os filhos antigos.
-- **Ownership:** tudo criado dentro de um effect/root é descartado com ele (`onCleanup`).
-  `<For>` cria um `createRoot` por item e o descarta quando o item sai da lista.
+- **Components run once.** There is no virtual DOM and no re-render. The component body
+  is `untrack`ed; only **functions** are reactive.
+- **Reactive props are functions:** `text={() => ...}`, `{count}` (accessor as a child),
+  `background={() => hovered() ? a : b}`. Static value = not reactive. There is no
+  Solid-style compiler; this is intentional (only `tsc`/Bun transform the JSX).
+- **`jsx()` is lazy:** it returns `ElementDesc`; the component runs when inserted
+  (`insert`/`render`). This lets `<Show>`/`<Switch>`/`<For>` decide when to instantiate.
+- **Children live in slots** (`UINode.addSlot/setSlot`). Each function child becomes a
+  reactive slot with its own effect; on re-run, the owner disposes the old children.
+- **Build, then collect:** code that mounts children inside a computation uses
+  `render(child)` (`jsx-runtime.ts`), not `createMemo(() => resolve(child))`: `build` runs
+  the components once and turns each function child into its own memo, and `resolve` only
+  collects the nodes. Resolving descriptions inside a memo would make an inner change
+  recreate everything around it.
+- **Ownership:** everything created inside an effect/root is disposed with it (`onCleanup`).
+  `<For>` creates one `createRoot` per item and disposes it when the item leaves the list;
+  `<Index>`, one per position.
+- **Effect queue:** writes made during the queue (`flushPending`) are only enqueued; the
+  effect finishes before the ones it triggered. An unhandled error does not stall the queue
+  (the others run; the first error is rethrown at the end).
+- **Errors propagate up through owners:** `execute` catches the error of an effect/memo and
+  hands it to the `onError` of the nearest scope (`catchError`, used by `<ErrorBoundary>`);
+  without a handler, it rethrows. Event handlers do not go through this.
 
-## Convenções de código
+## Code conventions
 
 ### TypeScript
-- ESM, `strict`, imports relativos com sufixo `.js` (`./node.js`); Bun resolve para `.ts`.
-- `package.json#exports`: condição `bun` aponta para `src/*.ts`, `default` para `lib/*.js`
-  (gerado para o Node). As entradas públicas são `.`, `./jsx-runtime`, `./testing` e
-  `./charts`. Entrada nova também vai nos `paths` do `tsconfig.json`, antes do curinga.
-- Widgets são **funções** que criam `UINode`s; não há classe base de widget.
-- **Widget novo:** arquivo próprio em `src/widgets/`, exportado em `widgets/index.ts`.
-  Código reaproveitável por outros módulos (geometria, decodificação) fica no módulo do
-  assunto, fora de `widgets/`.
-- Props de estilo são planas (`padding`, `gap`, `background`...), tipadas como
-  `StyleProps` (`MaybeAccessor` de cada campo de `Style`).
-- **Ao adicionar um campo em `Style`**, inclua-o também em `STYLE_KEYS` (`widgets/props.ts`);
-  handlers novos vão em `Handlers` (`render/node.ts`) e `HANDLER_KEYS`.
-- Herdáveis via árvore: `color`, `fontSize`, `bold` (função `inherited`).
-- Foco só pelo clique (ex.: `<Text selectable>`, que precisa do foco para o Ctrl+C):
-  `focusable = true` e `tabStop = false`, para não entrar na ordem do Tab.
-- Defaults de cor/tamanho vêm de `theme.ts`, não hard-coded nos widgets.
-- Comentários e identificadores em **inglês**; textos de UI, README e este arquivo em
-  **português**. Comentários são curtos e explicam o porquê, não o quê.
-- Use `ReturnType<typeof setInterval>`, não `NodeJS.Timeout`.
+- ESM, `strict`, relative imports with the `.js` suffix (`./node.js`); Bun resolves to `.ts`.
+- `package.json#exports`: the `bun` condition points to `src/*.ts`, `default` to `lib/*.js`
+  (generated for Node). The public entry points are `.`, `./jsx-runtime`, `./testing` and
+  `./charts`. A new entry point also goes into the `paths` of `tsconfig.json`, before the
+  wildcard.
+- Widgets are **functions** that create `UINode`s; there is no widget base class.
+- **New widget:** its own file in `src/widgets/`, exported from `widgets/index.ts`.
+  Code reusable by other modules (geometry, decoding) lives in the subject's module,
+  outside `widgets/`.
+- Style props are flat (`padding`, `gap`, `background`...), typed as `StyleProps`
+  (`MaybeAccessor` of each `Style` field).
+- **When adding a field to `Style`**, also add it to `STYLE_KEYS` (`widgets/props.ts`);
+  new handlers go in `Handlers` (`render/node.ts`) and `HANDLER_KEYS`.
+- Inherited through the tree: `color`, `fontSize`, `bold` (the `inherited` function).
+- A widget that opens something on top returns `[node, <Show><Overlay>]` (the `Overlay` stays
+  outside the node, so the list's events do not bubble up through the trigger); the trigger
+  keeps focus and handles keys while it is open.
+- A new control accepts `disabled` via `disableable(node, props)` (`widgets/props.ts`): it
+  fades, leaves focus and the Tab order and changes the cursor; the control's handlers check
+  the returned accessor. Keys the control uses (arrows in `Slider`) call `e.stop()`,
+  otherwise they scroll the surrounding `Scroll`.
+- Every widget passes its props through `applyProps`: it is what wires style, handlers and
+  the `ref` (the `ref` receives the `UINode`, typed as `ElementRef`). New widgets too.
+- Focus by click only (e.g. `<Text selectable>`, which needs focus for Ctrl+C):
+  `focusable = true` and `tabStop = false`, so it stays out of the Tab order.
+- Color/size defaults come from `theme.ts`, not hard-coded in widgets. Theme colors go
+  in an effect (or in painting), never copied into the style at creation, otherwise they do
+  not follow `setTheme`; respect the color the app passed (`if (props.background === undefined) ...`).
+- Transitions use `createPresence`/`createTween` (`animation/`): without a window they
+  finish immediately.
+- Everything new is written in **English**: code comments, identifiers, docs (README,
+  ARCHITECTURE, this file), commit messages and user-facing strings in examples and
+  widgets. Some files are still in Portuguese pending translation: `ROADMAP.md` and the UI
+  strings in `examples/`; when editing them, translate the parts you touch instead of
+  adding more Portuguese. Comments are short and explain why, not what.
+- Use `ReturnType<typeof setInterval>`, not `NodeJS.Timeout`.
 
 ### C (native/)
-- `gnu11`, sem dependências além das libs do sistema.
-- **Fronteira núcleo/plataforma:** `core/` só pode incluir `nb.h` (que inclui
-  `nb_platform.h`), Node-API, GLES2, FreeType, HarfBuzz e a libc. Qualquer coisa de SO
-  (Wayland, poll/eventfd/pthread, fontconfig, dlopen...) vai em `platform/<os>/` e chega ao
-  núcleo só por funções `nb_platform_*`. Precisa de algo novo do SO? Adicione ao contrato
-  em `nb_platform.h`, documente a thread em que roda e implemente em cada backend.
-- **Linux tem dois backends de janela** atrás do vtable `nb_linux_backend` (`linux.h`):
-  `nb_wayland_backend` (wayland.c) e `nb_x11_backend` (x11.c). Funções dos backends são
-  `static`; só o vtable é exportado. `linux.c` escolhe: `NB_BACKEND=wayland|x11` força;
-  senão Wayland se `WAYLAND_DISPLAY`, depois X11 se `DISPLAY`. `open()` que falha não
-  pode deixar nada aberto (o seletor chama `close()` e tenta o próximo).
-- Funcionalidade nova de janela no Linux = implementar nos **dois** backends.
-- Cada backend usa `eglGetPlatformDisplay` com a plataforma explícita
-  (`EGL_PLATFORM_WAYLAND_KHR` / `EGL_PLATFORM_X11_KHR`); nunca `eglGetDisplay`, que
-  obriga o Mesa a adivinhar o tipo do ponteiro.
-- **Modelo de threads:** o backend pode ter uma thread que só espera (no Linux, `poll()` no
-  fd do display, no timerfd de repetição e num eventfd de saída) e chama `wake()`; o núcleo
-  acorda o JS via `napi_threadsafe_function` e chama `nb_platform_pump_process()`, onde
-  acontece toda a leitura/dispatch. O pump do Linux faz `poll()` nos fds que
-  `backend->fds()` devolve (`struct pollfd`, com POLLIN/POLLOUT) e chama
-  `backend->process(ready, n)` na thread do JS com os que ficaram prontos. A lista é pedida de
-  novo a cada volta, na thread do JS; mudou fora do `process` (ex.: começou uma colagem)?
-  Chame `nb_linux_pump_refresh()`. Um fd pronto pode ter sido fechado e o número reusado:
-  todo fd do backend é não bloqueante. `nb_wl_dispatch()` nunca bloqueia (prepare_read/read_events/cancel_read).
-- Eventos para o JS: preencher `nb_event` e chamar `nb_push_event()` **na thread do JS**.
-- Depois de chamadas que possam receber eventos (ex.: `eglSwapBuffers`), o núcleo chama
-  `nb_platform_flush()` e pede uma entrega (`request_delivery()`).
-- Coordenadas: o JS trabalha em **px lógicos**; o C multiplica pelo `scale` inteiro
-  (Wayland: `wl_surface.preferred_buffer_scale`; X11: `Xft.dpi / 96`, ou `NB_SCALE`).
-- X11 específicos: sem decoração do WM (`_MOTIF_WM_HINTS`), mover/redimensionar via
-  `_NET_WM_MOVERESIZE`, maximizar via `_NET_WM_STATE`, visual ARGB de 32 bits só quando
-  há compositor (`_NET_WM_CM_Sn`); sem compositor, `transparent=false` e a `Window` usa
-  raio 0. X11 não tem frame callback: o ritmo vem de um timerfd na taxa do XRandR.
-- Renderer em **alpha pré-multiplicado** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`). A borda é
-  composta *sobre* o fundo (semântica CSS). Misturar em alpha "reto" gera artefatos
-  escuros nos cantos (bug já corrigido; não regredir). Texturas de imagem são
-  pré-multiplicadas no upload.
-- **Novo SO:** criar `native/platform/<os>/` com a implementação completa de
-  `nb_platform.h` + `build.sh`, e adicionar o `case` em `scripts/build-native.sh`.
-  O renderer é GLES2 (no Windows/macOS: ANGLE, ou um novo `core/render_<api>.c` com a
-  mesma interface `nb_render_*`).
-- Mudou a API nativa? Atualize `core/addon.c` (export), `src/runtime/native.ts` (tipo) e, se
-  precisar de algo do SO, `nb_platform.h` + backends. Se for opcode, os três lugares
-  do formato abaixo.
+- `gnu11`, no dependencies beyond the system libs.
+- **Core/platform boundary:** `core/` may only include `nb.h` (which includes
+  `nb_platform.h`), Node-API, GLES2, FreeType, HarfBuzz and libc. Anything OS-specific
+  (Wayland, poll/eventfd/pthread, fontconfig, dlopen...) goes in `platform/<os>/` and
+  reaches the core only through `nb_platform_*` functions. Need something new from the OS?
+  Add it to the contract in `nb_platform.h`, document the thread it runs on and implement
+  it in every backend.
+- **Linux has two window backends** behind the `nb_linux_backend` vtable (`linux.h`):
+  `nb_wayland_backend` (wayland.c) and `nb_x11_backend` (x11.c). Backend functions are
+  `static`; only the vtable is exported. `linux.c` chooses: `NB_BACKEND=wayland|x11` forces;
+  otherwise Wayland if `WAYLAND_DISPLAY`, then X11 if `DISPLAY`. An `open()` that fails
+  must not leave anything open (the selector calls `close()` and tries the next one).
+- New window functionality on Linux = implement it in **both** backends.
+- Each backend uses `eglGetPlatformDisplay` with the explicit platform
+  (`EGL_PLATFORM_WAYLAND_KHR` / `EGL_PLATFORM_X11_KHR`); never `eglGetDisplay`, which
+  forces Mesa to guess the pointer type.
+- **Threading model:** the backend may have a thread that only waits (on Linux, `poll()` on
+  the display fd, the key-repeat timerfd and an exit eventfd) and calls `wake()`; the core
+  wakes JS via `napi_threadsafe_function` and calls `nb_platform_pump_process()`, where
+  all reading/dispatch happens. The Linux pump does `poll()` on the fds that
+  `backend->fds()` returns (`struct pollfd`, with POLLIN/POLLOUT) and calls
+  `backend->process(ready, n)` on the JS thread with the ones that became ready. The list is
+  requested again on every round, on the JS thread; did it change outside `process` (e.g. a
+  paste started)? Call `nb_linux_pump_refresh()`. A ready fd may have been closed and its
+  number reused: every backend fd is non-blocking. `nb_wl_dispatch()` never blocks
+  (prepare_read/read_events/cancel_read).
+- Events to JS: fill an `nb_event` and call `nb_push_event()` **on the JS thread**.
+- After calls that may receive events (e.g. `eglSwapBuffers`), the core calls
+  `nb_platform_flush()` and requests a delivery (`request_delivery()`).
+- Coordinates: JS works in **logical px**; C multiplies by the integer `scale`
+  (Wayland: `wl_surface.preferred_buffer_scale`; X11: `Xft.dpi / 96`, or `NB_SCALE`).
+- X11 specifics: no WM decoration (`_MOTIF_WM_HINTS`), move/resize via
+  `_NET_WM_MOVERESIZE`, maximize via `_NET_WM_STATE`, 32-bit ARGB visual only when
+  there is a compositor (`_NET_WM_CM_Sn`); without a compositor, `transparent=false` and the
+  `Window` uses radius 0. X11 has no frame callback: pacing comes from a timerfd at the
+  XRandR rate.
+- Renderer in **premultiplied alpha** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`). The border is
+  composited *over* the background (CSS semantics). Blending in "straight" alpha produces
+  dark artifacts in the corners (bug already fixed; do not regress). Image textures are
+  premultiplied on upload.
+- **New OS:** create `native/platform/<os>/` with the full implementation of
+  `nb_platform.h` + `build.sh`, and add the `case` in `scripts/build-native.sh`.
+  The renderer is GLES2 (on Windows/macOS: ANGLE, or a new `core/render_<api>.c` with the
+  same `nb_render_*` interface).
+- Changed the native API? Update `core/addon.c` (export), `src/runtime/native.ts` (type) and,
+  if it needs something from the OS, `nb_platform.h` + backends. If it is an opcode, the
+  three places of the format below.
 
-### Formato do command buffer (render/paint.ts -> render_gles2.c)
-Mantenha **`native/include/nb.h`, `src/render/paint.ts` e `native/core/render_gles2.c` em sincronia**.
+### Command buffer format (render/paint.ts -> render_gles2.c)
+Keep **`native/include/nb.h`, `src/render/paint.ts` and `native/core/render_gles2.c` in sync**.
 
-| Op | Código | Floats seguintes |
+| Op | Code | Following floats |
 |---|---|---|
 | RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
-| TEXT | 2 | x y(topo da linha) size font(0/1 bold) · r g b a · índice em `texts[]` |
-| CLIP | 3 | x y w h radius (scissor + máscara arredondada mais interna) |
-| UNCLIP | 4 | (nenhum) |
+| TEXT | 2 | x y(line top) size font(0/1 bold) · r g b a · index into `texts[]` |
+| CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
+| UNCLIP | 4 | (none) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
-| IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tinta; a = opacidade) · radius · id (de `createImage`) |
+| IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tint; a = opacity) · radius · id (from `createImage`) |
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · capStart capEnd (0 butt, 1 round) |
-| TRIANGLES | 8 | n · r g b a · n × (x y cobertura) |
-| ARC | 9 | cx cy · outer inner · start sweep (radianos; 0 = cima, horário) · r g b a |
+| TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
+| ARC | 9 | cx cy · outer inner · start sweep (radians; 0 = up, clockwise) · r g b a |
 
-Cores em 0..1, não pré-multiplicadas (o shader pré-multiplica). Op novo também entra no
-`decode()` de `test/helpers.ts`, que os testes usam para ler o buffer.
+Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes into
+`decode()` in `test/helpers.ts`, which the tests use to read the buffer.
 
 ### Layout (render/layout.ts)
-- Flex: `direction` (padrão column em `Column`/`Box`), `gap`, `padding`, `grow`,
-  `align` (padrão **stretch**), `justify`, `min/max`, `position: "absolute"` (`left/top`).
-- **Encolhimento segue o CSS `min-size: auto`:** um filho não encolhe abaixo do próprio
-  conteúdo, exceto se for `scrollable`/`clip` ou tiver `minWidth/minHeight` explícito.
-- `Scroll` = coluna com `scrollable = true` e `minHeight: 0`.
-- **Culling:** `place()` recebe a região visível (estreitada por cada nó com clip/scroll). Filho
-  fora dela ganha a caixa mas fica `culled`: subárvore não é posicionada, pintada (`paintTree`)
-  nem testada no clique (`hitTest`). Coordenadas de descendentes de um nó `culled` são velhas;
-  nunca as use sem checar a marca.
-- Clip (`clip`/scroll) recorta por dentro da borda, com raio `radius - borderWidth`.
+- Flex: `direction` (column by default in `Column`/`Box`), `gap`, `padding`, `grow`,
+  `align` (**stretch** by default), `justify`, `min/max`, `position: "absolute"` (`left/top`).
+- **Shrinking follows CSS `min-size: auto`:** a child does not shrink below its own
+  content, unless it is `scrollable`/`clip` or has an explicit `minWidth/minHeight`.
+  Wrapping text shrinks down to its longest word. Children with `grow` shrink first.
+- **Height depends on width** (wrapping text): `intrinsic()` is the natural size and
+  `heightAt(node, width)` the height at a given width. A column computes its children's
+  widths before their heights; a row, the opposite. A widget with its own measurement whose
+  height changes with width defines `minContentWidth` (without it, layout assumes a fixed
+  height and takes the shortcut).
+- `Scroll` = column with `scrollable = true` (vertical); `horizontal` = row with
+  `scrollableX = true`; both = column with both flags. On the scrolling axis, it does not
+  shrink its children; on the cross axis, each child gets at least the visible space without
+  being squeezed below its content (`floor` in `crossSize`).
+- **The content of a scroller does not count toward the minimum of its container**
+  (`shrinks()`, asked only when something needs to shrink): a column with a `Scroll grow={1}`
+  inside shrinks without `minHeight={0}`. In height, only what scrolls vertically (or clips)
+  gives way.
+- Scrollbars: drawn over the content, in a 14 px strip that only takes the pointer when
+  there is something to scroll; the hit test returns the scrollable node in that strip.
+  Geometry in `render/scrollbar.ts`, hover/drag state in `UINode.activeScrollbar`.
+- `scrollIntoView()` is resolved in the next `layout()` (`revealRequests`): it repositions
+  `culled` ancestors before using the node's box, scrolls and positions everything again.
+- **Culling:** `place()` receives the visible region (narrowed by each node with clip/scroll).
+  A child outside it gets its box but is marked `culled`: its subtree is not positioned,
+  painted (`paintTree`) or hit-tested on click (`hitTest`). Coordinates of descendants of a
+  `culled` node are stale; never use them without checking the flag.
+- Clip (`clip`/scroll) clips inside the border, with radius `radius - borderWidth`.
 
-## Desempenho
+- `translateX/Y` add to the position in `place()` (after flex); everything else sees the
+  shifted position. Overlays: `root.layers` is recomputed on every `layout()`; a test that
+  opens or closes an overlay needs `relayout()` before looking at `root.layers` or the commands.
 
-- `NB_STATS=1` imprime por segundo: fps, ms/frame (state, layout, paint, native), nós,
-  tamanho do command buffer, heap e RSS.
-- Teto de fps: `run(app, { maxFps })` ou `NB_MAX_FPS`; padrão 120. No Wayland o frame
-  continua alinhado ao vsync: pulamos vblanks com `native.requestFrame()` (commit sem
-  desenho). No X11 o ritmo é por timer (não alinhado ao vsync). Tolerância de 1,5 ms para
-  144 Hz não cair para 72.
-- `requestAnimationFrame(cb)` existe (`runtime/app.ts`) e é ritmado pelo compositor.
-- Números e método: tabelas no README, teto 120 e cuidados de medição no ARCHITECTURE
-  ("Medindo desempenho"). Use `scripts/compare.sh` com aquecimento e amostra iguais nos
-  dois lados da comparação.
-- Quebra da RAM: Bun vazio 15 MB, + texto 26 MB, + janela GL 108 MB (quase tudo driver);
-  o framework em si ~15 MB.
-- **Gargalos conhecidos (ordem de prioridade):**
-  1. layout completo a cada frame: o tamanho natural de todos os filhos de um `Scroll` é
-     calculado todo frame (~2,5 ms na tabela de 500 linhas), sem dirty flags;
-  2. HarfBuzz refaz o shaping de todo texto *visível* a cada frame (sem cache no C);
-  3. agendamento: com teto 60 o fps fica em 51–58 até em cenas leves (perde vblanks);
-     latência frame callback -> thread -> `setImmediate` antes de renderizar;
-  4. GPU híbrida: o glvnd carrega libs da NVIDIA sem usá-las (+38 MB). Forçar só Mesa
-     precisa detectar a GPU do compositor, senão quebra máquinas só-NVIDIA;
-  5. redesenho da janela inteira (sem `EGL_KHR_partial_update`/dano);
-  6. `CommandBuffer.push(...values)` aloca por chamada.
+## Performance
 
-## Empacotamento
+- `NB_STATS=1` prints every second: fps, ms/frame (state, layout, paint, native), nodes,
+  command buffer size, heap and RSS.
+- fps cap: `run(app, { maxFps })` or `NB_MAX_FPS`; default 120. On Wayland the frame stays
+  aligned to vsync: we skip vblanks with `native.requestFrame()` (commit without drawing).
+  On X11 pacing is timer-based (not aligned to vsync). 1.5 ms tolerance so 144 Hz does not
+  drop to 72.
+- `requestAnimationFrame(cb)` exists (`runtime/app.ts`) and is paced by the compositor.
+- Numbers and method: tables in the README, the 120 cap and measurement caveats in
+  ARCHITECTURE ("Measuring performance"). Use `scripts/compare.sh` with the same warmup and
+  sample on both sides of the comparison.
+- RAM breakdown: empty Bun 15 MB, + text 26 MB, + GL window 108 MB (almost all driver);
+  the framework itself ~15 MB.
+- **Known bottlenecks (in priority order):**
+  1. full layout every frame: the natural size of all children of a `Scroll` is computed
+     every frame (~2.5 ms in the 500-row table), with no dirty flags;
+  2. HarfBuzz reshapes all *visible* text every frame (no cache in C);
+  3. scheduling: with a 60 cap, fps sits at 51–58 even in light scenes (misses vblanks);
+     latency frame callback -> thread -> `setImmediate` before rendering;
+  4. hybrid GPU: glvnd loads NVIDIA libs without using them (+38 MB). Forcing Mesa only
+     requires detecting the compositor's GPU, otherwise it breaks NVIDIA-only machines;
+  5. redrawing the whole window (no `EGL_KHR_partial_update`/damage);
+  6. `CommandBuffer.push(...values)` allocates per call.
 
-`nodebuilder package <app.tsx>` (no repo: `bun run package`) gera em `dist/` um AppImage,
-`.deb`, `.rpm` e `.tar.gz` (`--targets` escolhe; `--help` lista as opções). Etapas:
+## Packaging
 
-1. **Addon** (`--native`): num app, `prebuilt` embute o binário de `@nodebuilderjs/<plataforma>`
-   (já portável, nada a compilar). No repositório do framework, `docker` compila num
-   Ubuntu 22.04 (`cli/package/Dockerfile`), exigindo só glibc ≥ 2.34 e libwayland ≥ 1.20, e
-   substitui o build local em `native/build/` (funciona igual para desenvolvimento);
-   `local` compila aqui e só roda com a glibc desta máquina ou mais nova. Um plugin do
-   `Bun.build` embute só o addon escolhido e deixa os outros candidatos como externos.
-2. **Executável único:** `Bun.build({ compile })` embute runtime, código, arquivos
-   importados com `with { type: "file" | "text" }` e o addon (~91 MB, ~31 MB compactado).
-   `process.env.NB_APP_ID` é definido em tempo de build e vira o app id Wayland /
-   WM_CLASS, que casa com o `.desktop` (`StartupWMClass`).
-3. **Árvore de instalação:** `/usr/bin/<nome>`, `.desktop` e ícone (hicolor) em
-   `/usr/share`. As bibliotecas do sistema são **dependências declaradas, nunca embutidas**
-   (`DEB_DEPENDS`/`RPM_SONAMES` em `cli/package/common.ts`; mantenha em sincronia com `PKGS`
-   do `native/platform/linux/build.sh`). A libheif é só sugerida (`DEB_SUGGESTS`/`RPM_SUGGESTS`).
-4. **Formatos**, todos sem ferramentas da distro (só `tar`/`xz`):
-   - `.deb`: `ar` escrito à mão (control.tar.xz + data.tar.xz);
-   - `.rpm`: RPM v4 escrito à mão (`cli/package/rpm.ts`), com região imutável e digests SHA-256;
-     requires por soname, então serve Fedora, RHEL e openSUSE;
-   - AppImage: `appimagetool` baixado em `~/.cache/nodebuilder` (só no build).
+`nodebuilder package <app.tsx>` (in the repo: `bun run package`) generates in `dist/` an
+AppImage, `.deb`, `.rpm` and `.tar.gz` (`--targets` chooses; `--help` lists the options).
+Steps:
 
-Verificado (2026-10-11) com instalação real em container e janela no Wayland do host
-(`--device /dev/dri`, socket em `XDG_RUNTIME_DIR`): `.deb` em Ubuntu 22.04/24.04 e
-Debian 12; `.rpm` em Fedora 43 (rpm 6.0, `rpm -K` OK) e AlmaLinux 9; AppImage no host e
-em Ubuntu 22.04 sem FUSE. Containers mínimos precisam de `libgl1-mesa-dri` /
-`mesa-dri-drivers` e de alguma fonte; desktops já têm. Para testar um executável,
-rode-o fora do repositório (`cd /`): assim aparece o que só existia no disco.
+1. **Addon** (`--native`): in an app, `prebuilt` embeds the binary from
+   `@nodebuilderjs/<platform>` (already portable, nothing to compile). In the framework
+   repository, `docker` compiles in an Ubuntu 22.04 (`cli/package/Dockerfile`), requiring
+   only glibc ≥ 2.34 and libwayland ≥ 1.20, and replaces the local build in `native/build/`
+   (works the same for development); `local` compiles here and only runs with this
+   machine's glibc or newer. A `Bun.build` plugin embeds only the chosen addon and leaves
+   the other candidates as externals.
+2. **Single executable:** `Bun.build({ compile })` embeds the runtime, code, files
+   imported with `with { type: "file" | "text" }` and the addon (~91 MB, ~31 MB compressed).
+   `process.env.NB_APP_ID` is defined at build time and becomes the Wayland app id /
+   WM_CLASS, which matches the `.desktop` (`StartupWMClass`).
+3. **Install tree:** `/usr/bin/<name>`, `.desktop` and icon (hicolor) in `/usr/share`.
+   System libraries are **declared dependencies, never bundled** (`DEB_DEPENDS`/`RPM_SONAMES`
+   in `cli/package/common.ts`; keep in sync with `PKGS` in `native/platform/linux/build.sh`).
+   libheif is only suggested (`DEB_SUGGESTS`/`RPM_SUGGESTS`).
+4. **Formats**, all without distro tools (only `tar`/`xz`):
+   - `.deb`: hand-written `ar` (control.tar.xz + data.tar.xz);
+   - `.rpm`: hand-written RPM v4 (`cli/package/rpm.ts`), with immutable region and SHA-256
+     digests; requires by soname, so it works for Fedora, RHEL and openSUSE;
+   - AppImage: `appimagetool` downloaded into `~/.cache/nodebuilder` (build time only).
 
-## Publicação no npm
+Verified (2026-10-11) with a real install in a container and a window on the host's Wayland
+(`--device /dev/dri`, socket in `XDG_RUNTIME_DIR`): `.deb` on Ubuntu 22.04/24.04 and
+Debian 12; `.rpm` on Fedora 43 (rpm 6.0, `rpm -K` OK) and AlmaLinux 9; AppImage on the host
+and on Ubuntu 22.04 without FUSE. Minimal containers need `libgl1-mesa-dri` /
+`mesa-dri-drivers` and some font; desktops already have them. To test an executable, run
+it outside the repository (`cd /`): that exposes anything that only existed on disk.
 
-Escopo `@nodebuilderjs` (o nome `nodebuilder` no npm é de outro projeto). Três pacotes,
-todos com a versão do `package.json` da raiz:
+## Publishing to npm
 
-| Pacote | Conteúdo |
+Scope `@nodebuilderjs` (the `nodebuilder` name on npm belongs to another project). Three
+packages, all with the version from the root `package.json`:
+
+| Package | Contents |
 |---|---|
-| `@nodebuilderjs/core` | este repo: `src/` (Bun, condição `bun`), `lib/` (Node + tipos), `cli/` (bin `nodebuilder`) |
-| `@nodebuilderjs/linux-x64` | só `nodebuilder.node` portável, com `os`/`cpu`/`libc` |
-| `create-nodebuilderjs` | `bun create nodebuilderjs meu-app` (`npm create` também funciona) |
+| `@nodebuilderjs/core` | this repo: `src/` (Bun, `bun` condition), `lib/` (Node + types), `cli/` (`nodebuilder` bin) |
+| `@nodebuilderjs/linux-x64` | only the portable `nodebuilder.node`, with `os`/`cpu`/`libc` |
+| `create-nodebuilderjs` | `bun create nodebuilderjs my-app` (`npm create` also works) |
 
-- O binário vai como `optionalDependencies` do core (`workspace:*` no repo; o pack troca
-  pela versão), padrão esbuild: **sem script de instalação**, que o Bun bloqueia.
-- `src/runtime/native.ts` tenta, nesta ordem: build local (`../../native/build/...`, só
-  existe no repo) e o pacote `@nodebuilderjs/<plataforma>`. "Não encontrado" passa para o
-  próximo; um addon encontrado que falha ao carregar (lib do sistema, glibc) é o erro.
-- `bun run npm:build`: sincroniza versões, gera `lib/` (espelhando as pastas de `src/`),
-  compila o addon portável (Docker) em `packages/linux-x64/` e empacota em `dist/npm/`.
-  `bun run npm:publish` faz o mesmo e roda `bun publish` em cada tarball (binário antes do
-  core). Precisa de login no npm e da org `@nodebuilderjs` criada.
-- Antes de publicar, teste ponta a ponta sem registro: crie um app com
-  `node dist/npm/…create…/index.js` (extraído do tarball), aponte `@nodebuilderjs/core` para
-  `file:<tarball>` e use `overrides` para `@nodebuilderjs/linux-x64`; rode `bun test`,
-  `bun start`, `nodebuilder package` e instale o `.deb` num container (sem `node_modules`).
-- arm64: o loader e o empacotador já conhecem `linux-arm64`, mas ainda não há pacote
-  (precisa de build em máquina/CI arm64).
+- The binary ships as an `optionalDependencies` of core (`workspace:*` in the repo; pack
+  replaces it with the version), esbuild pattern: **no install script**, which Bun blocks.
+- `src/runtime/native.ts` tries, in this order: the local build (`../../native/build/...`,
+  only exists in the repo) and the `@nodebuilderjs/<platform>` package. "Not found" moves
+  on to the next; an addon that is found but fails to load (system lib, glibc) is the error.
+- `bun run npm:build`: syncs versions, generates `lib/` (mirroring the folders of `src/`),
+  compiles the portable addon (Docker) into `packages/linux-x64/` and packs into `dist/npm/`.
+  `bun run npm:publish` does the same and runs `bun publish` on each tarball (binary before
+  core). Requires an npm login and the `@nodebuilderjs` org to exist.
+- Before publishing, test end to end without the registry: create an app with
+  `node dist/npm/…create…/index.js` (extracted from the tarball), point `@nodebuilderjs/core`
+  at `file:<tarball>` and use `overrides` for `@nodebuilderjs/linux-x64`; run `bun test`,
+  `bun start`, `nodebuilder package` and install the `.deb` in a container (no `node_modules`).
+- arm64: the loader and the packager already know `linux-arm64`, but there is no package yet
+  (needs a build on an arm64 machine/CI).
 
-## Limitações atuais
+## Current limitations
 
-- TextField: sem seleção, cópia, undo (colar existe); Text: sem quebra de linha (seleção só
-  com `selectable`, sem Shift+clique nem teclado); uma fonte só
-  (sem fallback: emojis não aparecem).
-- `<Canvas>`: polígono que cruza a si mesmo não é desenhado; linhas translúcidas escurecem
-  nas junções (cada segmento é desenhado à parte); fatias vizinhas de pizza mostram uma
-  emenda clara fina (as duas bordas antialiasadas, como em navegadores); triangular formas
-  radiais com milhares de pontos é lento (~80 ms para 2000 pontos).
-- SVG só para ícones: sem gradientes, padrões, texto, filtros, máscaras, `<use>`, tracejado
-  e CSS em `<style>`; opacidade de grupo aplicada por forma.
-- Imagens: AVIF/HEIC só com a `libheif` do sistema; decodificação síncrona na thread do JS
-  (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms, WebP 105–180 ms); sem mipmaps (reduzir
-  muito uma imagem serrilha) e sem versão @2x.
-- Sem acessibilidade (AT-SPI), animações/transições, tema escuro, multi-janela, IME
-  (text-input-v3), DnD, escala fracionária real (KDE 125% renderiza em 2x e reduz).
-- Janela sempre com decoração própria (CSD): barra de título, mover, maximizar,
-  redimensionar pelas bordas (6 px). `xdg-decoration` (SSD no KDE) ainda não.
-- X11: frames por timer (sem extensão Present, então pode haver tearing sem compositor
-  e ~5–10% menos fps que no Wayland); escala só inteira; testado apenas via XWayland
-  (KDE). Sessão X11 pura e o caminho sem compositor ainda não foram testados.
+- TextField: no selection, copy, undo (paste exists); Text: a word longer than the line
+  overflows (selection only with `selectable`, no Shift+click or keyboard); a single font
+  (no fallback: emojis do not show up).
+- `<Canvas>`: a self-intersecting polygon is not drawn; translucent lines get darker at the
+  joins (each segment is drawn separately); adjacent pie slices show a thin light seam
+  (both edges antialiased, as in browsers); triangulating radial shapes with thousands of
+  points is slow (~80 ms for 2000 points).
+- SVG for icons only: no gradients, patterns, text, filters, masks, `<use>`, dashing
+  or CSS in `<style>`; group opacity applied per shape.
+- Images: AVIF/HEIC only with the system `libheif`; synchronous decoding on the JS thread
+  (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms, WebP 105–180 ms); no mipmaps (downscaling
+  an image a lot makes it jagged) and no @2x variant.
+- `opacity` multiplies the alpha of each command (it is not group opacity); no `scale`/`rotate`.
+- `<ErrorBoundary>` does not cover the event handler's own code (only the effects its
+  writes trigger); `<Switch>` does not accept a function child that returns `<Match>`
+  (the `Match`es must be in the JSX, so they can be read without running anything).
+- Scrolling without inertia or animation; no auto-scroll when dragging a selection to the
+  edge; holding a click on the scrollbar track advances only one page (no repeat).
+  Shift+wheel depends on the event's modifiers: on Wayland they only apply while the window
+  has keyboard focus.
+- Dark theme does not follow the system (missing the XDG portal over D-Bus); a theme color
+  copied as a fixed value (`color={theme.x}`) does not follow the switch. Animations without
+  `scale`/`rotate` or declarative `transition`.
+- No accessibility (AT-SPI), multi-window, IME
+  (text-input-v3), DnD, real fractional scaling (KDE 125% renders at 2x and downscales).
+- Window always uses its own decoration (CSD): title bar, move, maximize,
+  resize from the edges (6 px). `xdg-decoration` (SSD on KDE) not yet.
+- X11: timer-based frames (no Present extension, so there may be tearing without a
+  compositor and ~5–10% lower fps than on Wayland); integer scale only; tested only via
+  XWayland (KDE). A pure X11 session and the no-compositor path have not been tested yet.
 
-## Armadilhas já encontradas
+## Pitfalls found so far
 
-### Ambiente
-- O shell do usuário é **zsh**: `set -- $var` não divide palavras, e globs sem
-  correspondência (`--include=*.md`) viram erro; em scripts use `#!/usr/bin/env sh|bash`
-  ou aspas. `ls` tem alias com cores: em scripts use `command ls`.
-- Com `set -o pipefail`, `grep` sem resultado derruba o script (use `|| true`).
-- O `bun` do PATH é um shim (vite-plus); para medir o processo real use
+### Environment
+- The user's shell is **zsh**: `set -- $var` does not split words, and globs with no
+  match (`--include=*.md`) become an error; in scripts use `#!/usr/bin/env sh|bash`
+  or quotes. `ls` is aliased with colors: in scripts use `command ls`.
+- With `set -o pipefail`, a `grep` with no result kills the script (use `|| true`).
+- The `bun` in PATH is a shim (vite-plus); to measure the real process use
   `bun -e 'console.log(process.execPath)'`.
-- Bun bloqueia scripts de instalação: o binário do Electron em `compare/electron` foi
-  baixado com `node node_modules/electron/install.js`.
-- O KWin às vezes perde vblanks mesmo em cenas triviais (p90 ~7,6 ms a 240 Hz); fps um
-  pouco abaixo do teto não é necessariamente bug nosso.
-- Para testar o X11 numa sessão Wayland: `NB_BACKEND=x11` (usa o XWayland, `DISPLAY=:0`);
-  `NB_SCALE=2` simula HiDPI. `NB_DEBUG=1` mostra o backend, escala, Hz, visual e o
+- Bun blocks install scripts: the Electron binary in `compare/electron` was
+  downloaded with `node node_modules/electron/install.js`.
+- KWin sometimes misses vblanks even in trivial scenes (p90 ~7.6 ms at 240 Hz); fps
+  slightly below the cap is not necessarily our bug.
+- To test X11 in a Wayland session: `NB_BACKEND=x11` (uses XWayland, `DISPLAY=:0`);
+  `NB_SCALE=2` simulates HiDPI. `NB_DEBUG=1` shows the backend, scale, Hz, visual and the
   `GL_RENDERER`.
-- Captura de tela com o mouse sobre a janela pode pegar uma rolagem perdida: se o
-  resultado parecer estranho, capture de novo antes de investigar.
+- A screenshot taken with the mouse over the window may catch a stray scroll: if the
+  result looks odd, capture again before investigating.
 
-### Bun, empacotamento e publicação
-- `bun build --compile` só embute `.node` carregado por `require("literal")`. Com
-  `createRequire(...)(path)` o binário procura o arquivo em disco (e parece funcionar na
-  máquina de build). Por isso `src/runtime/native.ts` tem um `require` literal por
-  plataforma, relativo à pasta dele: mover o arquivo exige ajustar os `../`.
-- Arquivos de um app só entram no executável se forem importados com
-  `with { type: "file" }` (o import vira o caminho, `/$bunfs/...` no executável) ou
-  `with { type: "text" }`. `new URL("./x.png", import.meta.url)` funciona no
-  desenvolvimento e quebra no pacote.
-- O `Bun.Transpiler` (e o bundler) troca `typeof require === "function"` por `true`. Para
-  saber se está no Bun use `process.versions.bun`, que não é avaliado em tempo de build.
-- O tsc 5.5+ descarta `/// <reference path>` dos `.d.ts` gerados; sem `preserve="true"`, o
-  `declare module "*.png"` não chegaria a quem usa o pacote pelo `lib/`.
-- O npm remove `.gitignore` de pacotes publicados: o template guarda `_gitignore` e o
-  `create-nodebuilderjs` renomeia ao copiar. Links simbólicos relativos também não
-  sobrevivem ao pack/`cpSync`: por isso os links de `.claude/skills/` são criados pelo
-  `index.js`.
-- `Object.keys(native)` retorna `[]` (propriedades não enumeráveis); não é erro.
+### Bun, packaging and publishing
+- `bun build --compile` only embeds a `.node` loaded by `require("literal")`. With
+  `createRequire(...)(path)` the binary looks for the file on disk (and appears to work on
+  the build machine). That is why `src/runtime/native.ts` has one literal `require` per
+  platform, relative to its folder: moving the file requires adjusting the `../`.
+- An app's files only get into the executable if they are imported with
+  `with { type: "file" }` (the import becomes the path, `/$bunfs/...` in the executable) or
+  `with { type: "text" }`. `new URL("./x.png", import.meta.url)` works in
+  development and breaks in the package.
+- `Bun.Transpiler` (and the bundler) replaces `typeof require === "function"` with `true`.
+  To know whether you are on Bun use `process.versions.bun`, which is not evaluated at build time.
+- tsc 5.5+ drops `/// <reference path>` from generated `.d.ts` files; without
+  `preserve="true"`, the `declare module "*.png"` would not reach users of the package via `lib/`.
+- npm removes `.gitignore` from published packages: the template keeps `_gitignore` and
+  `create-nodebuilderjs` renames it when copying. Relative symlinks also do not survive
+  pack/`cpSync`: that is why the `.claude/skills/` links are created by `index.js`.
+- `Object.keys(native)` returns `[]` (non-enumerable properties); it is not an error.
 
-### Nativo
-- Headers da libwayland < 1.22 não têm os campos v6 do `wl_surface_listener`, e uma
-  libwayland antiga em runtime aborta se o compositor mandar eventos v6. O bind do
-  `wl_compositor` é limitado por `wl_surface_interface.version` (da lib carregada) e o
-  listener é uma tabela.
-- Bibliotecas opcionais (libheif) são carregadas com `dlopen` e declarações próprias das
-  poucas funções usadas: assim não viram dependência de build nem de instalação. Só vale
-  para APIs de handles e funções; se a API expõe structs que mudam entre versões, o layout
-  quebra entre distros.
+### Native
+- libwayland headers < 1.22 lack the v6 fields of `wl_surface_listener`, and an old
+  libwayland at runtime aborts if the compositor sends v6 events. The `wl_compositor` bind
+  is capped by `wl_surface_interface.version` (from the loaded lib) and the listener is a
+  table.
+- Optional libraries (libheif) are loaded with `dlopen` and our own declarations of the
+  few functions used: that way they do not become a build or install dependency. This only
+  works for handle-and-function APIs; if the API exposes structs that change between
+  versions, the layout breaks across distros.
 
-- Um workspace com peer dependency obrigatória no core faz o `bun install` baixar o core
-  publicado do npm, criando uma segunda cópia no repositório (aconteceu com o charts quando
-  era um pacote separado). Funcionalidade nova entra no core, como subcaminho se precisar
-  de nomes próprios (`@nodebuilderjs/core/charts`), e o tree-shaking tira o que não é usado.
-- No teste ponta a ponta com o Node, instale cópias dos pacotes em `node_modules`, não
-  links simbólicos: o Node segue o link até o caminho real e não acha as dependências.
+- A workspace with a required peer dependency on core makes `bun install` download the
+  published core from npm, creating a second copy in the repository (this happened with
+  charts when it was a separate package). New functionality goes into core, as a subpath
+  if it needs its own names (`@nodebuilderjs/core/charts`), and tree-shaking removes what
+  is not used.
+- In the end-to-end test with Node, install copies of the packages in `node_modules`, not
+  symlinks: Node follows the link to the real path and does not find the dependencies.
 
 ### Fixtures
-- O `PNG8:` do ImageMagick reduz o alfa da paleta a 0/255; por isso as fixtures de paleta
-  com alfa parcial são escritas à mão (e conferidas com o próprio `magick`).
-- Quando a ferramenta de referência não gera um caso (partições do VP8, transformações do
-  VP8L), escreva o arquivo à mão ou com um programa pequeno no scratch, e confira que a
-  biblioteca de referência o lê igual.
+- ImageMagick's `PNG8:` reduces palette alpha to 0/255; that is why the palette fixtures
+  with partial alpha are hand-written (and checked with `magick` itself).
+- When the reference tool does not produce a case (VP8 partitions, VP8L transforms),
+  write the file by hand or with a small program in the scratch dir, and check that the
+  reference library reads it the same way.
