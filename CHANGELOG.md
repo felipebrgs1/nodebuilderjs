@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### New
+- **Font fallback and color emoji:** characters the UI font lacks (`▲`, `↑`, CJK...) come from
+  the system's fallback fonts (fontconfig order), and emoji are drawn in color (Noto Color
+  Emoji and other CBDT/sbix/COLRv0 fonts), including ZWJ sequences, skin tones and flags.
+  `color` does not tint an emoji; `opacity` does fade it. Works in screenshots too.
 - **Screenshots without a window:** `nodebuilder screenshot <app.tsx> <out.png>` (`--width`,
   `--height`, `--scale`, `--theme`, `--wait-frames`) renders the app to a PNG with the GPU and
   no display server (EGL surfaceless), after its animations finish; `screenshot(root | view)`,

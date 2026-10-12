@@ -68,7 +68,8 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
   shape shows (a soft glow), and a translucent background lets it show through.
 - Text (inherited by children): `color`, `fontSize`, `bold`, `underline` (a line under each
   line of text, in its color; `underline={false}` turns it off below; `TextField` ignores it).
-  Cursor: `cursor="pointer"`. A link that underlines on hover:
+  Symbols, CJK and emoji the UI font lacks come from the system's fallback fonts; emoji are in
+  color (`color` does not tint them, `opacity` fades them). Cursor: `cursor="pointer"`. A link that underlines on hover:
 
   ```tsx
   import { Text, createSignal, theme } from "@nodebuilderjs/core";

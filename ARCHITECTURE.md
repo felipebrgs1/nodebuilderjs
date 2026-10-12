@@ -21,7 +21,7 @@ for the rules and conventions for anyone changing the code, see [AGENTS.md](AGEN
 ┌────▼──────────────────────────── portable core (native/core/) ───────────────┐
 │ addon.c         N-API surface, event queue, threadsafe function              │
 │ render_gles2.c  one shader, one vertex format, one batch per frame           │
-│ text.c          HarfBuzz (shaping) + FreeType (glyphs) + texture atlas       │
+│ text.c          HarfBuzz + FreeType, font fallback, alpha and color atlases  │
 └────┬─────────────────────────────────────────────────────────────────────────┘
      │  nb_platform.h contract (window, events, fonts)
 ┌────▼──────────────────────── OS backend (native/platform/linux/) ────────────┐
@@ -29,7 +29,7 @@ for the rules and conventions for anyone changing the code, see [AGENTS.md](AGEN
 │ wayland.c    xdg-shell, EGL, pointer, keyboard (xkb + compose), cursor       │
 │ x11.c        Xlib + EWMH, EGL, XIM, Xcursor, XRandR                          │
 │ pump.c       poll() thread that signals when there are events                │
-│ fonts.c      fontconfig                                                      │
+│ fonts.c      fontconfig: UI font, fallback order per codepoint               │
 │ codecs.c     AVIF/HEIC via libheif (dlopen, optional)                        │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -312,6 +312,33 @@ artifacts at the corners.
 Text: HarfBuzz does the shaping (accents, ligatures, kerning), FreeType rasterizes each glyph
 once and stores it in a texture atlas. The measurements the layout asks of the C are cached
 on the TypeScript side.
+
+**Font fallback.** A string the UI font cannot fully draw is cut into clusters (a base
+codepoint plus its combining marks, variation selectors, skin-tone modifiers, ZWJ-joined
+parts, tag sequences; regional indicators in pairs), so an emoji sequence never splits across
+fonts. Each cluster picks a face by its base: one with emoji presentation (emoji planes, the
+BMP `Emoji_Presentation` list, or a U+FE0F, ZWJ or skin tone in the cluster; U+FE0E forces
+text) asks for a color font first; otherwise the UI font if it has the glyph
+(`FT_Get_Char_Index`), then the platform's fallback, `nb_platform_font_fallback`. On Linux
+that is fontconfig's `FcFontSort` of the UI font's pattern (or of `emoji` with `color=true`),
+computed once and walked for the first font whose charset has the codepoint. The answer is
+cached per codepoint, so fontconfig is asked once per character the UI font lacks, and up to
+32 faces stay loaded (UI fonts included; past that, the UI font's tofu). Consecutive clusters
+with the same face become a run, each run is shaped with its own font and the pens
+concatenate. `measure` and `draw` walk the same runs, so layout and painting agree. Strings
+that are pure ASCII skip all of it (one run, no decoding). Ascent and descent always come from
+the UI font, so a fallback glyph never changes the line height.
+
+**Color emoji.** Noto Color Emoji is a CBDT font: bitmaps at fixed strikes (109 px), no
+outlines. For such a face the closest strike is selected with `FT_Select_Size`, HarfBuzz scales
+the advances from the font's own tables (`hb_font_set_scale` to the requested size) and each
+glyph is loaded with `FT_LOAD_COLOR` as premultiplied BGRA, box-filtered down to its final
+pixel size once, and stored in a second atlas, RGBA, allocated on the first color glyph.
+COLRv0 and sbix fonts go through the same path (FreeType renders them to BGRA); COLRv1
+(gradients) is not rendered by FreeType, so such fonts show their monochrome fallback glyphs.
+The renderer draws those quads with their own mode: the shader samples the color atlas
+(texture unit 2) and multiplies by the text color's alpha only, so `color` does not tint an
+emoji but `opacity` fades it. Both atlases are reset together when either fills up.
 
 Images: PNG, JPEG and WebP are decoded in TypeScript to RGBA (`src/image/png.ts` with the
 runtime's zlib, `jpeg.ts`, `webp.ts`). All three reproduce the output of the reference

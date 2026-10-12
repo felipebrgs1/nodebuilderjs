@@ -1,5 +1,5 @@
 // GLES2 renderer: executes the command buffer produced by src/render/paint.ts.
-// Everything (rounded rects, borders, shadows, glyphs) goes through one shader
+// Everything (rounded rects, borders, shadows, glyphs, color emoji) goes through one shader
 // and one vertex format, so draw order is preserved with a single batch that is
 // only flushed when the clip changes. Clips are a scissor rectangle plus an
 // optional rounded mask (the innermost rounded clip) evaluated per fragment.
@@ -11,7 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { MODE_RECT = 0, MODE_GLYPH = 1, MODE_SHADOW = 2, MODE_IMAGE = 3, MODE_LINE = 4, MODE_SOLID = 5, MODE_ARC = 6 };
+enum { MODE_RECT = 0, MODE_GLYPH = 1, MODE_SHADOW = 2, MODE_IMAGE = 3, MODE_LINE = 4, MODE_SOLID = 5, MODE_ARC = 6,
+       MODE_COLOR_GLYPH = 7 };
 
 // pos(2) local(2) half(2) color(4) border_color(4) params(3: radius, border|blur, mode) uv(2)
 #define VERTEX_FLOATS 19
@@ -34,7 +35,7 @@ static const char *fragment_src =
     "#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n"
     "varying vec2 v_local; varying vec2 v_half; varying vec4 v_color; varying vec4 v_bcolor;\n"
     "varying vec3 v_params; varying vec2 v_uv;\n"
-    "uniform sampler2D u_atlas; uniform sampler2D u_image;\n"
+    "uniform sampler2D u_atlas; uniform sampler2D u_image; uniform sampler2D u_color_atlas;\n"
     "uniform vec4 u_clip; uniform float u_clip_radius; uniform float u_fb_height;\n"
     "float sd_round_box(vec2 p, vec2 b, float r) {\n"
     "  vec2 q = abs(p) - b + vec2(r);\n"
@@ -43,7 +44,9 @@ static const char *fragment_src =
     "void main() {\n"
     "  vec4 c;\n"
     "  vec4 pm = vec4(v_color.rgb * v_color.a, v_color.a);\n"
-    "  if (v_params.z > 5.5) {\n"  // ring sector, centered on +y: half aperture (sin, cos) in v_half
+    "  if (v_params.z > 6.5) {\n"  // color glyph (premultiplied texels): only the alpha applies
+    "    c = texture2D(u_color_atlas, v_uv) * v_color.a;\n"
+    "  } else if (v_params.z > 5.5) {\n"  // ring sector, centered on +y: half aperture (sin, cos) in v_half
     "    vec2 q = vec2(abs(v_local.x), v_local.y);\n"
     "    float d = length(q) - v_params.x;\n"
     "    if (v_half.y > -0.9999) {\n"
@@ -86,8 +89,8 @@ static const char *fragment_src =
     "  gl_FragColor = c;\n"
     "}\n";
 
-static GLuint program, vbo, atlas_tex;
-static GLint u_viewport, u_atlas, u_image, u_clip, u_clip_radius, u_fb_height;
+static GLuint program, vbo, atlas_tex, color_atlas_tex;
+static GLint u_viewport, u_atlas, u_image, u_color_atlas, u_clip, u_clip_radius, u_fb_height;
 static float *verts;
 static size_t vert_count, vert_cap;
 static int fb_w, fb_h;
@@ -123,6 +126,7 @@ bool nb_render_init(void) {
   u_viewport = glGetUniformLocation(program, "u_viewport");
   u_atlas = glGetUniformLocation(program, "u_atlas");
   u_image = glGetUniformLocation(program, "u_image");
+  u_color_atlas = glGetUniformLocation(program, "u_color_atlas");
   u_clip = glGetUniformLocation(program, "u_clip");
   u_clip_radius = glGetUniformLocation(program, "u_clip_radius");
   u_fb_height = glGetUniformLocation(program, "u_fb_height");
@@ -132,6 +136,14 @@ bool nb_render_init(void) {
   glBindTexture(GL_TEXTURE_2D, atlas_tex);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  // Color glyphs are resampled to their final size when rasterised, so NEAREST would do; LINEAR
+  // keeps them smooth if a quad ever lands between pixels.
+  glGenTextures(1, &color_atlas_tex);
+  glBindTexture(GL_TEXTURE_2D, color_atlas_tex);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   return true;
@@ -171,9 +183,23 @@ static void upload_atlas(void) {
   nb_text_atlas_uploaded();
 }
 
+static void upload_color_atlas(void) {
+  int size;
+  bool dirty;
+  const uint8_t *pixels = nb_text_color_atlas(&size, &dirty);
+  if (!dirty) return;
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, color_atlas_tex);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+  glActiveTexture(GL_TEXTURE0);
+  nb_text_color_atlas_uploaded();
+}
+
 static void flush(void) {
   if (!vert_count) return;
   upload_atlas();
+  upload_color_atlas();
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
   glBufferData(GL_ARRAY_BUFFER, vert_count * VERTEX_FLOATS * sizeof(float), verts, GL_STREAM_DRAW);
   size_t offset = 0;
@@ -310,10 +336,11 @@ static void push_local_quad(float ox, float oy, float uxx, float uxy, float uyx,
 
 typedef struct { const float *color; } glyph_ctx;
 
-static void emit_glyph(void *ud, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1) {
+static void emit_glyph(void *ud, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1,
+                       bool color) {
   static const float none[4] = {0, 0, 0, 0};
   glyph_ctx *ctx = ud;
-  push_quad(x0, y0, x1, y1, 0, 0, 0, 0, ctx->color, none, 0, 0, MODE_GLYPH, u0, v0, u1, v1);
+  push_quad(x0, y0, x1, y1, 0, 0, 0, 0, ctx->color, none, 0, 0, color ? MODE_COLOR_GLYPH : MODE_GLYPH, u0, v0, u1, v1);
 }
 
 void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count, const char **texts,
@@ -335,8 +362,11 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
   glUniform2f(u_viewport, (float)bw, (float)bh);
   glUniform1i(u_atlas, 0);
   glUniform1i(u_image, 1);
+  glUniform1i(u_color_atlas, 2);
   glUniform1f(u_fb_height, (float)bh);
   glUniform1f(u_clip_radius, 0);
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, color_atlas_tex);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, atlas_tex);
 

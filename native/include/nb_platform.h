@@ -80,6 +80,14 @@ void nb_platform_flush(void);
 
 /** Path of the system UI font file for NB_FONT_REGULAR / NB_FONT_BOLD (malloc'd), or NULL. */
 char *nb_platform_font_path(int font);
+/**
+ * JS thread. A font file with a glyph for `codepoint`, to draw what the UI font lacks: the
+ * system's fallback order for `font` (NB_FONT_REGULAR / NB_FONT_BOLD), or, when `emoji`, only
+ * color fonts (emoji presentation). Returns the path (malloc'd) and the face index inside it
+ * (font collections) in *face_index, or NULL when no font has it. May be slow (the core
+ * caches the answer per codepoint); the first call may build the fallback list.
+ */
+char *nb_platform_font_fallback(uint32_t codepoint, int font, bool emoji, int *face_index);
 
 // ---- image codecs -----------------------------------------------------------
 

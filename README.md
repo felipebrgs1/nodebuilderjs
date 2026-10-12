@@ -757,8 +757,11 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
 - Linux x64 only (arm64, Windows and macOS are on the roadmap).
 - Screenshots (`nodebuilder screenshot`, `screenshot()`) need a GPU driver with EGL
   (Mesa or NVIDIA); a process that took one can't open a window afterwards.
-- Text with a single font (emojis don't show up), in regular and bold only (no other weights,
-  italics or letter spacing); a word longer than the line overflows.
+- Text in regular and bold only (no other weights, italics or letter spacing); a word longer
+  than the line overflows. Characters the UI font lacks (symbols, CJK, emoji) come from the
+  system's fallback fonts and color emoji are drawn in color (Noto Color Emoji and other
+  CBDT, sbix or COLRv0 fonts; COLRv1-only fonts are not rendered in color). No bidi: a
+  right-to-left run is shaped, but lines are not reordered.
 - Text field without selection, copy or undo (paste works).
 - SVG only in the icon subset (no gradients, text, filters); AVIF/HEIC depend on the system
   `libheif`.

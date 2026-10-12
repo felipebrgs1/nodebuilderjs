@@ -111,7 +111,8 @@ What cannot be tested automatically is documented when closing the task:
   (`Show`, `Switch`/`Match`, `Index`, nesting without recreating components),
   `error-boundary` (errors, effect queue), `context`, `ref`
   (`ref`, programmatic focus and scrolling, `onResize`), `overlay`, `style` (`opacity`, `translate`),
-  `text` (line wrapping, alignment, `maxLines`, multi-line selection), `controls`
+  `text` (line wrapping, alignment, `maxLines`, multi-line selection), `font-fallback`
+  (fallback fonts and color emoji with real fonts, `skipIf` they are missing), `controls`
   (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `popups`
   (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets following the switch),
   `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
@@ -211,7 +212,7 @@ native/
   include/nb_platform.h CONTRACT each OS implements (window, event pump, fonts, codecs)
   core/                 portable, nothing OS-specific
     addon.c             N-API surface, event queue, threadsafe function
-    text.c              HarfBuzz + FreeType + glyph atlas
+    text.c              HarfBuzz + FreeType; font fallback by cluster, alpha atlas + RGBA color-emoji atlas
     render_gles2.c      GLES2 renderer: one shader, one vertex format, single batch; textures
   platform/linux/       Linux backend
     linux.h             nb_linux_backend vtable (internal to Linux)
@@ -219,7 +220,7 @@ native/
     wayland.c           Wayland (xdg-shell), EGL, pointer, keyboard (xkb + compose), cursor
     x11.c               X11 (Xlib + EWMH), EGL, XIM (dead keys), Xcursor, XRandR
     pump.c              poll() thread over the active backend's fds + exit eventfd
-    fonts.c             font discovery via fontconfig
+    fonts.c             font discovery via fontconfig: UI font + fallback (FcFontSort, per codepoint)
     codecs.c            AVIF/HEIC via libheif (dlopen; own declarations, no header)
     offscreen.c         EGL context with no display server (surfaceless/device) + FBO, for screenshots
     build.sh            backend build (called by scripts/build-native.sh)
@@ -361,6 +362,12 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   `nb_render_frame`, and `nb_render_read_pixels` returns straight alpha, top row first. The
   renderer's GL objects belong to one context, so `addon.c` refuses a window after a shot and
   a shot while a window is open.
+- **Fonts:** `nb_platform_font_path(font)` gives the UI font, `nb_platform_font_fallback(cp,
+  font, emoji, &index)` a file (and face index) that has `cp`, color fonts only when `emoji`
+  (JS thread, may be slow: `text.c` caches the answer per codepoint and never calls it for
+  ASCII-only strings). `text.c` keeps `measure` and `draw` on the same run itemization; color
+  glyphs go to the RGBA atlas and are drawn with `MODE_COLOR_GLYPH` (texture unit 2, only the
+  alpha of the text color applies).
 - After calls that may receive events (e.g. `eglSwapBuffers`), the core calls
   `nb_platform_flush()` and requests a delivery (`request_delivery()`).
 - Coordinates: JS works in **logical px**; C multiplies by the integer `scale`
@@ -529,9 +536,10 @@ packages, all with the version from the root `package.json`:
 ## Current limitations
 
 - TextField: no selection, copy, undo (paste exists); Text: a word longer than the line
-  overflows (selection only with `selectable`, no Shift+click or keyboard); a single font
-  (no fallback: emojis do not show up), regular and bold only (no other weights, italics or
-  letter spacing); `underline` is painted in TS and `TextField` ignores it.
+  overflows (selection only with `selectable`, no Shift+click or keyboard); regular and bold
+  only (no other weights, italics or letter spacing); `underline` is painted in TS and
+  `TextField` ignores it. Font fallback and color emoji work (CBDT/sbix/COLRv0), but COLRv1
+  fonts are not drawn in color and there is no bidi reordering.
 - `<Canvas>`: a self-intersecting polygon is not drawn; translucent lines get darker at the
   joins (each segment is drawn separately); adjacent pie slices show a thin light seam
   (both edges antialiased, as in browsers); triangulating radial shapes with thousands of

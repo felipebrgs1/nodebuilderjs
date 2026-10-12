@@ -111,7 +111,9 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
 - ~~Underline~~ **done** (2026-10-12): `underline` on `Text` (inherited like `bold`), and
   `<Canvas>` text cut to a `maxWidth` with "…". Still missing: font weights beyond bold,
   italics and letter spacing.
-- Fallback de fontes (emojis, CJK) e escolha de família de fonte
+- ~~Font fallback (emoji, CJK)~~ **done** (2026-10-12): fontconfig's fallback order per
+  codepoint, clusters kept whole, color emoji in an RGBA atlas. Still missing: choosing the
+  font family, COLRv1 and bidi.
 - Seleção no `TextField` (com Ctrl+C/Ctrl+X); seleção primária (colar com o botão do meio);
   Shift+clique e setas para estender a seleção do `<Text selectable>`
 - `TextField`: desfazer/refazer, campo de várias linhas

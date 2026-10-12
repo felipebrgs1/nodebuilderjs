@@ -50,8 +50,10 @@ void nb_push_event(const nb_event *e);
 
 enum { NB_FONT_REGULAR = 0, NB_FONT_BOLD = 1, NB_FONT_COUNT };
 
+// `color`: the quad samples the color atlas (emoji: premultiplied RGBA, not tinted) instead of
+// the alpha atlas (tinted by the text color).
 typedef void (*nb_glyph_emit)(void *ud, float x0, float y0, float x1, float y1,
-                              float u0, float v0, float u1, float v1);
+                              float u0, float v0, float u1, float v1, bool color);
 
 bool nb_text_init(void);
 // All values in physical pixels.
@@ -59,6 +61,9 @@ float nb_text_measure(int font, const char *utf8, int px, float *ascent, float *
 void nb_text_draw(int font, const char *utf8, int px, float x, float top, nb_glyph_emit emit, void *ud);
 const uint8_t *nb_text_atlas(int *size, bool *dirty);
 void nb_text_atlas_uploaded(void);
+/** Premultiplied RGBA color-glyph atlas; NULL (and not dirty) until a color glyph is drawn. */
+const uint8_t *nb_text_color_atlas(int *size, bool *dirty);
+void nb_text_color_atlas_uploaded(void);
 
 // ---- core/render_gles2.c ----------------------------------------------------
 
