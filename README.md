@@ -82,10 +82,14 @@ or grid:
 ### Images
 
 ```tsx
+import { Column, Image } from "@nodebuilderjs/core";
 import logo from "./logo.png" with { type: "file" };
+import photo from "./photo.jpg" with { type: "file" };
 
-<Image src={logo} width={64} />                                   // height follows the aspect ratio
-<Image src={photo} width={200} height={120} fit="cover" radius={12} opacity={0.8} />
+<Column gap={8}>
+  <Image src={logo} width={64} />                                 {/* height follows the aspect ratio */}
+  <Image src={photo} width={200} height={120} fit="cover" radius={12} opacity={0.8} />
+</Column>
 ```
 
 `fit` can be `contain` (default: the whole image, centered), `cover` (fills and crops)
@@ -106,11 +110,14 @@ drawn by `<Icon>` (below).
 import camera from "lucide-static/icons/camera.svg" with { type: "text" };  // bun add lucide-static
 import heart from "@phosphor-icons/core/assets/duotone/heart-duotone.svg" with { type: "text" };
 import { Star } from "lucide";                                              // or the lucide data
+import { Button, Icon, Row, Text } from "@nodebuilderjs/core";
 
-<Icon svg={camera} />                          // 20 px, color inherited like text
-<Icon svg={heart} size={32} color="#e01b24" />
-<Button variant="primary"><Icon svg={Star} size={16} /><Text>Favorite</Text></Button>
-<Icon svg={Star} fill />                       // solid: outline icons filled with their color
+<Row gap={8}>
+  <Icon svg={camera} />                        {/* 20 px, color inherited like text */}
+  <Icon svg={heart} size={32} color="#e01b24" />
+  <Button variant="primary"><Icon svg={Star} size={16} /><Text>Favorite</Text></Button>
+  <Icon svg={Star} fill />                     {/* solid: outline icons filled with their color */}
+</Row>
 ```
 
 `<Icon>` draws SVG with its own renderer, written in TypeScript and built for icons: paths
@@ -153,6 +160,8 @@ at the joins.
 ```tsx
 import { LineChart, Line, Area, AreaChart, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Legend } from "@nodebuilderjs/core/charts";
+
+const sales = [{ month: "Jan", revenue: 120, target: 100 }, { month: "Feb", revenue: 150, target: 110 }];
 
 <LineChart data={sales} height={240}>         {/* data can be a signal: the chart follows it */}
   <CartesianGrid vertical={false} />
@@ -462,11 +471,13 @@ pushing its siblings, like CSS `transform`.
 ### Clipboard
 
 ```tsx
-import { Button, clipboard, createSignal } from "@nodebuilderjs/core";
+import { Button, Row, clipboard, createSignal } from "@nodebuilderjs/core";
 
 const [text, setText] = createSignal("");
-<Button label="Copy" onClick={() => clipboard.writeText(text())} />
-<Button label="Paste" onClick={async () => setText(await clipboard.readText())} /> // "" if there is no text
+<Row gap={8}>
+  <Button label="Copy" onClick={() => clipboard.writeText(text())} />
+  <Button label="Paste" onClick={async () => setText(await clipboard.readText())} /> {/* "" if there is no text */}
+</Row>
 ```
 
 Static text can be selected and copied with `<Text selectable>`: dragging selects,

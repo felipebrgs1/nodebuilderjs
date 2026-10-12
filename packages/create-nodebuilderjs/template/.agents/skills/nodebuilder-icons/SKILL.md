@@ -12,7 +12,7 @@ bun add @phosphor-icons/core       # Phosphor: assets/<weight>/<name>.svg
 ```
 
 ```tsx
-import { Button, Icon, Row, Text, createSignal, theme } from "@nodebuilderjs/core";
+import { Button, Column, Icon, Row, Text, createSignal, theme } from "@nodebuilderjs/core";
 import camera from "lucide-static/icons/camera.svg" with { type: "text" };
 import heart from "@phosphor-icons/core/assets/duotone/heart-duotone.svg" with { type: "text" };
 import { Heart, Play, Star } from "lucide";
@@ -21,16 +21,18 @@ import starFill from "@phosphor-icons/core/assets/fill/star-fill.svg" with { typ
 const [active] = createSignal(false);
 const [liked, setLiked] = createSignal(false);
 
-<Icon svg={camera} />                                  // 20 px, color of the surrounding text
-<Icon svg={heart} size={32} color="#e01b24" />
-<Icon svg={Star} size={16} strokeWidth={1.5} />        // stroke width (outline icons)
-<Button variant="primary"><Icon svg={Star} size={16} /><Text>Favorite</Text></Button>
-<Icon svg={Play} fill />                               // solid Lucide icon (icon color)
-<Icon svg={Heart} fill={() => liked() && "#e01b24"} onClick={() => setLiked(!liked())} />
-<Icon svg={starFill} />                                // Phosphor ships solid icons as "fill"
-<Row color={() => (active() ? theme.accent.base : theme.text.secondary)}>
-  <Icon svg={camera} /><Text>Camera</Text>              {/* icon and text change color together */}
-</Row>
+<Column gap={8}>
+  <Icon svg={camera} />                                {/* 20 px, color of the surrounding text */}
+  <Icon svg={heart} size={32} color="#e01b24" />
+  <Icon svg={Star} size={16} strokeWidth={1.5} />      {/* stroke width (outline icons) */}
+  <Button variant="primary"><Icon svg={Star} size={16} /><Text>Favorite</Text></Button>
+  <Icon svg={Play} fill />                             {/* solid Lucide icon (icon color) */}
+  <Icon svg={Heart} fill={() => liked() && "#e01b24"} onClick={() => setLiked(!liked())} />
+  <Icon svg={starFill} />                              {/* Phosphor ships solid icons as "fill" */}
+  <Row color={() => (active() ? theme.accent.base : theme.text.secondary)}>
+    <Icon svg={camera} /><Text>Camera</Text>            {/* icon and text change color together */}
+  </Row>
+</Column>
 ```
 
 ## Rules
