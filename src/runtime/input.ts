@@ -2,7 +2,7 @@
 // cursor, focus, clicks, scrolling and keyboard. Window side effects go through `InputHost`,
 // so this runs (and is tested) without a window.
 
-import { type Axis, type KeyEvent, type PointerEvent, type UINode, scrolls } from "../render/node.js";
+import { type Axis, type KeyEvent, type PointerEvent, type UINode, scrolls, stacked } from "../render/node.js";
 import { batch } from "../reactive/signals.js";
 import { LINE_STEP, type Scrollbar, overflows, pageStep, scrollBy, scrollPosition, scrollRange, scrollTo, scrollbarAt } from "../render/scrollbar.js";
 
@@ -72,21 +72,22 @@ export function createInput(root: UINode, host: InputHost) {
     return !node.culled && x >= node.x && y >= node.y && x < node.x + node.width && y < node.y + node.height;
   }
 
+  /**
+   * The topmost node at (x, y) in `node`'s subtree, siblings in paint order (zIndex). Like
+   * CSS, what sticks out of a node that does not clip (an absolute badge) is still hit there.
+   */
   function hitTest(node: UINode, x: number, y: number): UINode | null {
-    return contains(node, x, y) ? hitInside(node, x, y) : null;
-  }
-
-  /** The innermost node at (x, y) inside `node`, which contains the point. */
-  function hitInside(node: UINode, x: number, y: number): UINode {
+    if (node.culled) return null;
+    const inside = contains(node, x, y);
+    if (!inside && (node.style.clip || scrolls(node))) return null;
     // A scrollbar is above the content it scrolls.
-    if (scrolls(node) && scrollbarAt(node, x, y)) return node;
-    // Only the child that has the point is entered (a long list has many rows, mostly culled).
-    const kids = node.children;
+    if (inside && scrolls(node) && scrollbarAt(node, x, y)) return node;
+    const kids = stacked(node);
     for (let i = kids.length - 1; i >= 0; i--) {
-      const c = kids[i]!;
-      if (contains(c, x, y)) return hitInside(c, x, y);
+      const hit = hitTest(kids[i]!, x, y);
+      if (hit) return hit;
     }
-    return node;
+    return inside ? node : null;
   }
 
   /**

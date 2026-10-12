@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### New
+- **`zIndex`:** paint and hit-test order among siblings (default 0; ties keep child order).
+  Siblings only, no global stacking contexts; overlays stay above everything. The part of a
+  child that sticks out of a parent that does not `clip` (an absolute badge) is now clickable.
 - **Font fallback and color emoji:** characters the UI font lacks (`▲`, `↑`, CJK...) come from
   the system's fallback fonts (fontconfig order), and emoji are drawn in color (Noto Color
   Emoji and other CBDT/sbix/COLRv0 fonts), including ZWJ sequences, skin tones and flags.

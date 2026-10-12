@@ -412,6 +412,12 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
   `align` (**stretch** by default; `alignSelf` overrides it per child, read through `alignOf()`),
   `justify`, `min/max`, `position: "absolute"` (`left/top/right/bottom` from the content box;
   both edges without a size stretch, as in CSS; it scrolls with a `Scroll`'s content).
+- **Stacking:** `zIndex` orders siblings only (no global stacking contexts): `stacked(node)`
+  (`render/node.ts`) gives the children by zIndex, then child order (stable sort, and the
+  children array itself when none has a zIndex, so no allocation per frame). `paintTree`
+  and `hitTest` (`runtime/input.ts`) both use it; overlays stay above the tree. The hit test
+  descends into children outside the parent's box unless the parent clips or scrolls (CSS
+  overflow: an absolute badge sticking out is clickable there).
 - **Shrinking follows CSS `min-size: auto`:** a child does not shrink below its own
   content, unless it is `scrollable`/`clip` or has an explicit `minWidth/minHeight`.
   Wrapping text shrinks down to its longest word. Children with `grow` shrink first.
@@ -436,7 +442,9 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
 - **Culling:** `place()` receives the visible region (narrowed by each node with clip/scroll).
   A child outside it gets its box but is marked `culled`: its subtree is not positioned,
   painted (`paintTree`) or hit-tested on click (`hitTest`). Coordinates of descendants of a
-  `culled` node are stale; never use them without checking the flag.
+  `culled` node are stale; never use them without checking the flag. A non-clipping parent
+  does not narrow the region, so a child sticking out of it is not culled; but a child
+  sticking out of a culled parent disappears with it.
 - Clip (`clip`/scroll) clips inside the border, with radius `radius - borderWidth`.
 
 - `translateX/Y` add to the position in `place()` (after flex); everything else sees the

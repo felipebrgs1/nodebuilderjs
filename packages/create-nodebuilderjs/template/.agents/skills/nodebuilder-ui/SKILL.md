@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: nodebuilder widgets, style props and layout (Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking, clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
+description: nodebuilder widgets, style props and layout (Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking (zIndex), clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
 ---
 
 # UI with nodebuilder
@@ -57,7 +57,7 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
 - Layout: `direction` (`"row"`/`"column"`), `gap`, `padding` (`8`, `[v, h]` or
   `[top, right, bottom, left]`), `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
   `maxHeight`, `grow`, `align`, `alignSelf`, `justify`, `position: "absolute"` +
-  `left`/`top`/`right`/`bottom`, `clip`.
+  `left`/`top`/`right`/`bottom`, `zIndex`, `clip`.
 - Visual: `background`, `radius`, `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}`,
   `opacity` (0 to 1, applies to children), `translateX`/`translateY` (shifts after
   layout, without pushing siblings; for animation).
@@ -278,8 +278,8 @@ For the common cases use the ready-made widgets (`Dialog`, `Select`, `Tooltip`),
 focus, keyboard and closing. `<Overlay>` is for what they do not cover (options menu, toast,
 custom popover):
 
-No `zIndex` and no `position: fixed`: whatever must stay on top of everything (outside the
-clipping of a `Scroll` or `Card`) goes in an `<Overlay>`, almost always inside a `<Show>`.
+No `position: fixed`, and `zIndex` only orders siblings: whatever must stay on top of everything
+(outside the clipping of a `Scroll` or `Card`) goes in an `<Overlay>`, almost always inside a `<Show>`.
 
 ```tsx
 import { Button, Card, Overlay, Row, Show, Text, createSignal, theme } from "@nodebuilderjs/core";
@@ -355,9 +355,11 @@ let button: ElementRef | undefined;
   It keeps its natural size, unless both `left` and `right` (or `top` and `bottom`) are set and
   no `width` (`height`): then it stretches between them, within `min`/`max`. `right` (or
   `bottom`) alone places it from that edge. It does not take space or change the parent's size.
-  No `zIndex`: nodes are drawn and hit in child order, so declare it **after** the siblings it
-  must cover. It is drawn outside its parent's box (unless the parent clips), but only clicked
-  inside it.
+  Siblings are drawn and hit in child order (a later one covers an earlier one) unless they
+  have a **`zIndex`** (default 0; higher is above, ties keep child order). It only orders
+  siblings: a raised node stays inside its parent's place in the order (no global stacking
+  context; for that, an `<Overlay>`). What sticks out of the parent's box is drawn and clicked
+  there too, unless the parent clips (`clip`, `Scroll`).
 - Inside a `Scroll`, an absolute child **scrolls with the content** (like CSS). For something
   pinned to the visible area, put it next to the `Scroll` in a parent that does not scroll.
 
@@ -377,6 +379,13 @@ import { Box, Column, Row, Text } from "@nodebuilderjs/core";
   <Box position="absolute" left={0} top={0} right={0} bottom={0} background="#00000066" />
   <Text position="absolute" left={8} top={8} padding={[2, 6]} radius={8} background="#e01b24" color="#ffffff">NEW</Text>
   <Text position="absolute" right={8} bottom={8} color="#ffffff">3:45</Text>
+</Box>;
+
+// A count badge sticking out of a card's corner (no `clip`, so it is drawn and clicked
+// outside too); `zIndex` keeps it above the content even though it is declared first.
+<Box width={160} padding={12} radius={10} background="#e8eaf2">
+  <Text position="absolute" right={-22} top={-22} zIndex={1} padding={[2, 8]} radius={10} background="#e5484d" color="#ffffff">3</Text>
+  <Box padding={8} radius={6} background="#3e63dd"><Text color="#ffffff">Inbox</Text></Box>
 </Box>;
 ```
 

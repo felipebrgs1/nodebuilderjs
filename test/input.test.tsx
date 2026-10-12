@@ -4,6 +4,7 @@ import {
 } from "@nodebuilderjs/core";
 import type { PointerEvent } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
+import { interact, mount } from "@nodebuilderjs/core/testing";
 import { createInput } from "../src/runtime/input.js";
 
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
@@ -457,5 +458,79 @@ describe("pointer move", () => {
     input.pointerDown(55, 70, 0);
     input.pointerUp(58, 71, 0);
     expect(seen).toEqual(["down 5,10", "up 8,11", "click 8,11"]);
+  });
+});
+
+describe("stacking (zIndex) and overflow", () => {
+  // An absolute box declared first, (0,0) 60x60, overlapping an in-flow sibling (0,0) 100x40.
+  const stacked = (z?: number) => () => (
+    <Box width={100} height={100} align="start">
+      <Box position="absolute" left={0} top={0} width={60} height={60} zIndex={z} {...track("abs")} onPointerDown={() => log.push("down abs")} />
+      <Box width={100} height={40} {...track("flow")} onPointerDown={() => log.push("down flow")} />
+    </Box>
+  );
+
+  test("with equal zIndex, the later sibling is on top", () => {
+    const { input } = setup(stacked());
+    input.pointerDown(10, 10, 0);
+    expect(log).toEqual(["down flow"]);
+  });
+
+  test("a higher zIndex is hit first, where it is painted above its siblings", () => {
+    const { input } = setup(stacked(1));
+    input.pointerDown(10, 10, 0);
+    input.pointerDown(80, 10, 0); // only the in-flow box is there
+    expect(log).toEqual(["down abs", "down flow"]);
+  });
+
+  test("hover enters and leaves the topmost sibling", () => {
+    const { input } = setup(stacked(1));
+    input.pointerMove(10, 10);
+    input.pointerMove(80, 10);
+    input.pointerMove(10, 50); // below the in-flow box, on the raised one
+    expect(log).toEqual(["enter abs", "leave abs", "enter flow", "leave flow", "enter abs"]);
+  });
+
+  // A card at (20,20) 100x50 with a badge at (110,10) 20x20: its top right part sticks out.
+  const card = (clip: boolean) => () => (
+    <Column padding={20} align="start">
+      <Box width={100} height={50} clip={clip} {...track("card")} onPointerDown={() => log.push("down card")}>
+        <Box position="absolute" left={90} top={-10} width={20} height={20} {...track("badge")} onPointerDown={() => log.push("down badge")} />
+      </Box>
+    </Column>
+  );
+
+  test("the part of an absolute child outside a parent that does not clip is clickable", () => {
+    const { input } = setup(card(false));
+    input.pointerMove(125, 15); // outside the card, on the badge
+    expect(log).toEqual(["enter card", "enter badge"]); // the card contains the badge, as in CSS
+    log = [];
+    input.pointerDown(125, 15, 0);
+    expect(log).toEqual(["down badge", "down card"]); // bubbling still follows the tree
+    log = [];
+    input.pointerMove(30, 30);
+    expect(log).toEqual(["leave badge"]);
+  });
+
+  test("with clip, the part outside the parent is not clickable", () => {
+    const { input } = setup(card(true));
+    input.pointerDown(125, 15, 0);
+    expect(log).toEqual([]);
+    input.pointerDown(115, 25, 0); // inside the card, on the badge
+    expect(log).toEqual(["down badge", "down card"]);
+  });
+
+  test("the testing helpers reach a node shown outside a parent that does not clip", () => {
+    let badge!: UINode;
+    const { root } = mount(() => (
+      <Column padding={20} align="start">
+        <Box width={100} height={50}>
+          <Box ref={(n) => (badge = n as UINode)} position="absolute" left={95} top={-20} width={10} height={10}
+            onPointerDown={() => log.push("down badge")} />
+        </Box>
+      </Column>
+    ));
+    interact(root).press(badge); // its center (120,5) is outside the card
+    expect(log).toEqual(["down badge"]);
   });
 });
