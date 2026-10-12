@@ -1,11 +1,11 @@
 # nodebuilder
 
-Apps desktop **nativos para Linux** escritos em TypeScript e TSX.
+**Native Linux** desktop apps written in TypeScript and TSX.
 
-Sem DOM, sem Electron, sem GTK/Qt: seus componentes são desenhados por um núcleo nativo
-pequeno (Wayland/X11 + OpenGL ES), com reatividade no estilo SolidJS. O resultado abre
-rápido, usa **entre um quarto e metade da memória** de um app Electron equivalente e vira um
-AppImage, `.deb` ou `.rpm` com um comando.
+No DOM, no Electron, no GTK/Qt: your components are drawn by a small native core
+(Wayland/X11 + OpenGL ES), with SolidJS-style reactivity. The result starts fast, uses
+**between a quarter and half the memory** of an equivalent Electron app, and becomes an
+AppImage, `.deb` or `.rpm` with one command.
 
 ```tsx
 import { Button, Column, Text, Window, createSignal, run } from "@nodebuilderjs/core";
@@ -13,7 +13,7 @@ import { Button, Column, Text, Window, createSignal, run } from "@nodebuilderjs/
 function App() {
   const [count, setCount] = createSignal(0);
   return (
-    <Window title="Contador" width={400} height={300}>
+    <Window title="Counter" width={400} height={300}>
       <Column grow={1} align="center" justify="center" gap={16}>
         <Text fontSize={40} bold>{count}</Text>
         <Button label="+1" variant="primary" onClick={() => setCount((c) => c + 1)} />
@@ -25,560 +25,566 @@ function App() {
 run(() => <App />);
 ```
 
-> **Estado:** versão 0.1, experimental. A API ainda pode mudar. Veja o [roadmap](ROADMAP.md).
+> **Status:** version 0.2, experimental. The API may still change. See the [roadmap](ROADMAP.md).
 
-## Começar
+## Getting started
 
-Requisitos: Linux com Wayland ou X11 e [Bun](https://bun.sh) 1.4+.
+Requirements: Linux with Wayland or X11 and [Bun](https://bun.sh) 1.4+.
 
 ```sh
-bun create nodebuilderjs meu-app
-cd meu-app
-bun run dev        # abre a janela e reinicia ao salvar
+bun create nodebuilderjs my-app
+cd my-app
+bun run dev        # opens the window and restarts on save
 ```
 
-O projeto já vem com um teste de exemplo (`bun test`, sem abrir janela), TypeScript
-configurado (`bun run typecheck`) e um `AGENTS.md` que explica o framework para agentes de
-código como o Claude Code.
+The project comes with an example test (`bun test`, no window), TypeScript already
+configured (`bun run typecheck`) and an `AGENTS.md` that explains the framework to coding
+agents such as Claude Code.
 
-## Como funciona, em 30 segundos
+## How it works, in 30 seconds
 
-- **Componentes rodam uma vez.** Não há re-render nem virtual DOM. Estado é `createSignal`,
-  valores derivados são `createMemo`.
-- **Só funções são reativas.** `<Text>{count}</Text>` atualiza sozinho;
-  `<Text>{count()}</Text>` lê o valor uma vez. Vale para estilo também:
-  `background={() => (ativo() ? "#3584e4" : "#ffffff")}`.
-- **Estilo são props, não CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
-  `radius`, `color`, `fontSize`... O layout é flexbox.
-- **Widgets prontos:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
+- **Components run once.** There is no re-render and no virtual DOM. State is `createSignal`,
+  derived values are `createMemo`.
+- **Only functions are reactive.** `<Text>{count}</Text>` updates on its own;
+  `<Text>{count()}</Text>` reads the value once. The same goes for styles:
+  `background={() => (active() ? "#3584e4" : "#ffffff")}`.
+- **Styles are props, not CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
+  `radius`, `color`, `fontSize`... The layout is flexbox.
+- **Built-in widgets:** `Window`, `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
   `Button`, `TextField`, `Checkbox`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`,
-  `Tooltip`, `Dialog`, `ProgressBar`, `Spinner`, `Card`, `Divider`, `Spacer`, além de `<For>`/`<Index>`,
-  `<Show>`/`<Switch>` e `<ErrorBoundary>` para listas, condições e erros, e de
-  `createContext` para valores compartilhados pela árvore.
+  `Tooltip`, `Dialog`, `ProgressBar`, `Spinner`, `Card`, `Divider`, `Spacer`, plus `<For>`/`<Index>`,
+  `<Show>`/`<Switch>` and `<ErrorBoundary>` for lists, conditions and errors, and
+  `createContext` for values shared down the tree.
 
-Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens, ícones,
-desenho livre, gráficos, overlays (menu, diálogo e dica), texto (parágrafos, alinhamento,
-reticências), rolagem (horizontal, nos dois eixos, `scrollIntoView`) e um painel
-com abas, tabela e gráfico.
+Complete examples in [`examples/`](examples): counter, to-do list, images, icons,
+freehand drawing, charts, overlays (menu, dialog and tooltip), text (paragraphs, alignment,
+ellipsis), scrolling (horizontal, both axes, `scrollIntoView`) and a dashboard
+with tabs, a table and a chart.
 
-### Imagens
+### Images
 
 ```tsx
 import logo from "./logo.png" with { type: "file" };
 
-<Image src={logo} width={64} />                                   // altura segue a proporção
-<Image src={foto} width={200} height={120} fit="cover" radius={12} opacity={0.8} />
+<Image src={logo} width={64} />                                   // height follows the aspect ratio
+<Image src={photo} width={200} height={120} fit="cover" radius={12} opacity={0.8} />
 ```
 
-`fit` pode ser `contain` (padrão: a imagem inteira, centralizada), `cover` (preenche e corta)
-ou `fill` (estica). Sem `width`/`height`, a imagem usa o próprio tamanho em pixels. O
-`with { type: "file" }` faz o `nodebuilder package` embutir o arquivo no executável; `src`
-também aceita um caminho, uma `URL` `file:`, os bytes do arquivo (`Uint8Array`) ou pixels
-já decodificados (`{ width, height, data }` em RGBA).
+`fit` can be `contain` (default: the whole image, centered), `cover` (fills and crops)
+or `fill` (stretches). Without `width`/`height`, the image uses its own size in pixels. The
+`with { type: "file" }` makes `nodebuilder package` embed the file in the executable; `src`
+also accepts a path, a `file:` `URL`, the file's bytes (`Uint8Array`) or already decoded
+pixels (`{ width, height, data }` in RGBA).
 
-Formatos: **PNG, JPEG e WebP** são decodificados em TypeScript (o JPEG respeita a orientação
-do EXIF, e todos dão o mesmo resultado, byte a byte, que libpng, libjpeg-turbo e libwebp).
-**AVIF e HEIC** usam a `libheif` do sistema, carregada só quando necessário: sem ela, apenas
-esses formatos dão erro, e os pacotes gerados a sugerem sem obrigar. SVG é desenhado pelo
-`<Icon>` (abaixo).
+Formats: **PNG, JPEG and WebP** are decoded in TypeScript (JPEG honors the EXIF
+orientation, and all of them produce the same result, byte for byte, as libpng, libjpeg-turbo
+and libwebp). **AVIF and HEIC** use the system `libheif`, loaded only when needed: without it,
+only those formats fail, and the generated packages suggest it without requiring it. SVG is
+drawn by `<Icon>` (below).
 
-### Ícones
+### Icons
 
 ```tsx
 import camera from "lucide-static/icons/camera.svg" with { type: "text" };  // bun add lucide-static
 import heart from "@phosphor-icons/core/assets/duotone/heart-duotone.svg" with { type: "text" };
-import { Star } from "lucide";                                              // ou os dados do lucide
+import { Star } from "lucide";                                              // or the lucide data
 
-<Icon svg={camera} />                          // 20 px, cor herdada como a do texto
+<Icon svg={camera} />                          // 20 px, color inherited like text
 <Icon svg={heart} size={32} color="#e01b24" />
-<Button variant="primary"><Icon svg={Star} size={16} /><Text>Favoritar</Text></Button>
+<Button variant="primary"><Icon svg={Star} size={16} /><Text>Favorite</Text></Button>
 ```
 
-`<Icon>` desenha SVG com um renderizador próprio, em TypeScript, feito para ícones: caminhos
-(com arcos e curvas), formas, contorno com pontas e junções, `transform`, opacidade e
-`currentColor`. Lucide e Phosphor saem praticamente iguais ao librsvg (diferença média de 0,8
-em 255 na borda dos traços). Um ícone de uma cor só é rasterizado uma vez, no tamanho exato
-da tela (nítido também em HiDPI), e a cor é aplicada na GPU: trocar a cor, num hover por
-exemplo, não custa nada. `strokeWidth` muda a espessura dos ícones de contorno, como no
-Lucide. Gradientes, texto, filtros, máscaras e `<use>` ainda não são suportados, então
-ilustrações complexas devem virar PNG. Pacotes para React (`lucide-react`,
-`@phosphor-icons/react`) não funcionam: use `lucide-static`, `lucide` ou `@phosphor-icons/core`.
+`<Icon>` draws SVG with its own renderer, written in TypeScript and built for icons: paths
+(with arcs and curves), shapes, strokes with caps and joins, `transform`, opacity and
+`currentColor`. Lucide and Phosphor come out practically identical to librsvg (mean difference
+of 0.8 out of 255 on stroke edges). A single-color icon is rasterized once, at the exact
+screen size (sharp on HiDPI too), and the color is applied on the GPU: changing the color, on
+hover for example, costs nothing. `strokeWidth` changes the thickness of outline icons, as in
+Lucide. Gradients, text, filters, masks and `<use>` are not supported yet, so complex
+illustrations should be turned into PNG. React packages (`lucide-react`,
+`@phosphor-icons/react`) don't work: use `lucide-static`, `lucide` or `@phosphor-icons/core`.
 
-### Desenho livre
+### Freehand drawing
 
 ```tsx
 <Canvas height={160} draw={(g) => {
-  const pts = dados().flatMap((v, i) => [i * 10, g.height - v]);   // signals lidos aqui redesenham
-  g.polygon([0, g.height, ...pts, g.width, g.height], "#3584e433"); // área
-  g.polyline(pts, theme.accent.base, 2);                            // linha
-  g.arc(80, 80, 60, 40, 0, Math.PI, "#26a269");                     // rosca: raios, início, varredura
+  const pts = data().flatMap((v, i) => [i * 10, g.height - v]);    // signals read here trigger a redraw
+  g.polygon([0, g.height, ...pts, g.width, g.height], "#3584e433"); // area
+  g.polyline(pts, theme.accent.base, 2);                            // line
+  g.arc(80, 80, 60, 40, 0, Math.PI, "#26a269");                     // donut: radii, start, sweep
 }} />
 ```
 
-`<Canvas>` desenha com primitivas da GPU com antialiasing: linhas grossas com pontas
-redondas, retas ou quadradas, polígonos preenchidos (côncavos inclusive), círculos e arcos
-(pizza, rosca, medidores) e texto. As coordenadas são locais ao canvas; `g.width` e `g.height`
-dão o tamanho. Os signals lidos em `draw` são rastreados: mudar um deles redesenha. A
-geometria é calculada quando os dados mudam, não a cada frame. Limites: polígono que cruza a
-si mesmo não é desenhado, e em linhas com cor translúcida as junções ficam mais escuras.
+`<Canvas>` draws with antialiased GPU primitives: thick lines with round, butt or square
+caps, filled polygons (concave ones included), circles and arcs (pie, donut, gauges) and
+text. Coordinates are local to the canvas; `g.width` and `g.height` give its size. Signals read
+in `draw` are tracked: changing one of them redraws. Geometry is computed when the data
+changes, not every frame. Limits: a self-intersecting polygon is not drawn, and lines with a
+translucent color get darker at the joins.
 
-### Gráficos
+### Charts
 
 ```tsx
 import { LineChart, Line, Area, AreaChart, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Legend } from "@nodebuilderjs/core/charts";
 
-<LineChart data={vendas} height={240}>        {/* data pode ser um signal: o gráfico acompanha */}
+<LineChart data={sales} height={240}>         {/* data can be a signal: the chart follows it */}
   <CartesianGrid vertical={false} />
-  <XAxis dataKey="mes" />
-  <YAxis tickFormatter={(v) => `R$ ${v}`} />
-  <Line dataKey="receita" name="Receita" />
-  <Line dataKey="meta" stroke="#e5a50a" type="monotone" dot={false} />
+  <XAxis dataKey="month" />
+  <YAxis tickFormatter={(v) => `$${v}`} />
+  <Line dataKey="revenue" name="Revenue" />
+  <Line dataKey="target" stroke="#e5a50a" type="monotone" dot={false} />
   <Legend />
 </LineChart>
 ```
 
-A API segue o formato do Recharts: `LineChart`, `AreaChart`, `BarChart`, `ComposedChart` e
-`PieChart`, com `Line`, `Area`, `Bar`, `Pie`/`Cell`, `XAxis`, `YAxis`, `CartesianGrid` e
-`Legend` como filhos. Os eixos têm passos redondos (como o d3), o eixo y inclui o zero, e
-`type="monotone"` suaviza a curva. Também há `<Tooltip>` (linha-guia e valores da categoria
-sob o mouse; na pizza, a fatia), empilhamento com `stackId`, `strokeDasharray` em linhas e
-grade, `label` em fatias e barras, e o eixo x omite rótulos que se sobrepõem. Tudo é
-desenhado com o `<Canvas>`, pela GPU, e vem no próprio core: quem não importa
-`@nodebuilderjs/core/charts` não leva nada no executável (quem usa, ~15 KB). Ainda não
-existem gráficos de dispersão e radar, `ReferenceLine`, `Brush` nem eixos secundários.
+The API follows Recharts: `LineChart`, `AreaChart`, `BarChart`, `ComposedChart` and
+`PieChart`, with `Line`, `Area`, `Bar`, `Pie`/`Cell`, `XAxis`, `YAxis`, `CartesianGrid` and
+`Legend` as children. Axes use round steps (like d3), the y axis includes zero, and
+`type="monotone"` smooths the curve. There is also `<Tooltip>` (guide line and the values of
+the category under the mouse; on a pie, the slice), stacking with `stackId`, `strokeDasharray`
+on lines and grid, `label` on slices and bars, and the x axis drops labels that overlap.
+Everything is drawn with `<Canvas>`, on the GPU, and ships in the core itself: if you don't
+import `@nodebuilderjs/core/charts`, none of it ends up in the executable (if you do, ~15 KB).
+Scatter and radar charts, `ReferenceLine`, `Brush` and secondary axes don't exist yet.
 
-### Condições, listas e erros
+### Conditions, lists and errors
 
-Como no SolidJS: componentes que decidem quando criar (e descartar) os filhos.
+As in SolidJS: components that decide when to create (and dispose of) their children.
 
 ```tsx
 import { Button, Column, ErrorBoundary, For, Index, Match, Show, Switch, Text, createSignal } from "@nodebuilderjs/core";
 
-const [usuario, setUsuario] = createSignal<{ nome: string } | null>(null);
-const [status, setStatus] = createSignal<"carregando" | "erro" | "ok">("carregando");
-const [tarefas] = createSignal([{ titulo: "Comprar pão" }]);
-const [notas] = createSignal([7, 9, 10]);
+const [user, setUser] = createSignal<{ name: string } | null>(null);
+const [status, setStatus] = createSignal<"loading" | "error" | "ok">("loading");
+const [tasks] = createSignal([{ title: "Buy bread" }]);
+const [scores] = createSignal([7, 9, 10]);
 
-// Show: com filho-função, recebe o valor (verdadeiro) como accessor.
-<Show when={usuario} fallback={<Text>Entre na sua conta</Text>}>
-  {(u) => <Text>{() => `Olá, ${u().nome}`}</Text>}
+// Show: with a function child, it receives the (truthy) value as an accessor.
+<Show when={user} fallback={<Text>Sign in to your account</Text>}>
+  {(u) => <Text>{() => `Hello, ${u().name}`}</Text>}
 </Show>;
 
-// Switch: o primeiro Match verdadeiro; o conteúdo só é recriado quando muda o Match escolhido.
-<Switch fallback={<Text>Tudo certo</Text>}>
-  <Match when={() => status() === "carregando"}><Text>Carregando...</Text></Match>
-  <Match when={() => status() === "erro"}><Text color="#c01c28">Falhou</Text></Match>
+// Switch: the first truthy Match; the content is only recreated when the chosen Match changes.
+<Switch fallback={<Text>All good</Text>}>
+  <Match when={() => status() === "loading"}><Text>Loading...</Text></Match>
+  <Match when={() => status() === "error"}><Text color="#c01c28">Failed</Text></Match>
 </Switch>;
 
-// For: keyed por referência (a linha acompanha o objeto); i é um accessor.
-<For each={tarefas} fallback={<Text>Nada a fazer</Text>}>
-  {(t, i) => <Text>{() => `${i() + 1}. ${t.titulo}`}</Text>}
+// For: keyed by reference (the row follows the object); i is an accessor.
+<For each={tasks} fallback={<Text>Nothing to do</Text>}>
+  {(t, i) => <Text>{() => `${i() + 1}. ${t.title}`}</Text>}
 </For>;
 
-// Index: por posição (bom para primitivos); item é um accessor, i é um número fixo.
-<Index each={notas}>{(nota, i) => <Text>{() => `Prova ${i + 1}: ${nota()}`}</Text>}</Index>;
+// Index: by position (good for primitives); item is an accessor, i is a fixed number.
+<Index each={scores}>{(score, i) => <Text>{() => `Test ${i + 1}: ${score()}`}</Text>}</Index>;
 
-// ErrorBoundary: um erro ao criar os filhos ou num effect deles mostra o fallback.
+// ErrorBoundary: an error while creating the children or in one of their effects shows the fallback.
 <ErrorBoundary
-  fallback={(erro, tentarDeNovo) => (
+  fallback={(error, retry) => (
     <Column gap={8}>
-      <Text>{`Algo deu errado: ${erro instanceof Error ? erro.message : String(erro)}`}</Text>
-      <Button label="Tentar de novo" onClick={tentarDeNovo} />
+      <Text>{`Something went wrong: ${error instanceof Error ? error.message : String(error)}`}</Text>
+      <Button label="Try again" onClick={retry} />
     </Column>
   )}
 >
-  <Text>{() => usuario()!.nome}</Text>
+  <Text>{() => user()!.name}</Text>
 </ErrorBoundary>;
 ```
 
-- `when` aceita valor ou accessor. O filho-função precisa declarar o parâmetro
-  (`{(u) => ...}`); uma função sem parâmetros (`{() => ...}`) continua sendo um filho
-  reativo comum. O accessor guarda o último valor verdadeiro, então um effect da linha que
-  rode antes de ela ser descartada não vê `null`.
-- `<Switch>` só aceita `<Match>` como filho (ou `false`/`null`, para `{cond && <Match>}`);
-  `<Match>` fora de um `<Switch>` é erro.
-- `<ErrorBoundary>` captura o que é lançado ao criar os componentes filhos e, depois, pelos
-  effects e memos deles (inclusive quando um clique muda um signal e um effect falha). O que
-  os filhos criaram é descartado (effects, `onCleanup`, overlays). O `fallback` pode ser
-  conteúdo ou uma função `(erro, reset)`; `reset()` cria os filhos de novo. Não captura o
-  que o próprio handler (`onClick`...) lança: esse erro chega a quem chamou o handler, como
-  no React e no Solid. Erros sem boundary continuam aparecendo como antes.
+- `when` accepts a value or an accessor. The function child must declare its parameter
+  (`{(u) => ...}`); a function without parameters (`{() => ...}`) is still a plain reactive
+  child. The accessor keeps the last truthy value, so an effect in the row that runs before
+  the row is disposed doesn't see `null`.
+- `<Switch>` only accepts `<Match>` as a child (or `false`/`null`, for `{cond && <Match>}`);
+  `<Match>` outside a `<Switch>` is an error.
+- `<ErrorBoundary>` catches what is thrown while creating the child components and, after
+  that, by their effects and memos (including when a click changes a signal and an effect
+  fails). Whatever the children created is disposed of (effects, `onCleanup`, overlays). The
+  `fallback` can be content or a function `(error, reset)`; `reset()` creates the children
+  again. It doesn't catch what the handler itself (`onClick`...) throws: that error reaches
+  whoever called the handler, as in React and Solid. Errors without a boundary still show up
+  as before.
 
-### Contexto, `ref` e tamanho
+### Context, `ref` and size
 
 ```tsx
 import { Box, Column, TextField, Text, createContext, createSignal, useContext } from "@nodebuilderjs/core";
 
-// Contexto: um valor que qualquer descendente lê, sem passar por props em cada nível.
-const Idioma = createContext("pt");
-function Saudacao() {
-  return <Text>{useContext(Idioma) === "pt" ? "Olá" : "Hello"}</Text>;
+// Context: a value any descendant can read, without passing props through every level.
+const Language = createContext("en");
+function Greeting() {
+  return <Text>{useContext(Language) === "en" ? "Hello" : "Olá"}</Text>;
 }
-<Idioma.Provider value="en"><Saudacao /></Idioma.Provider>;
+<Language.Provider value="pt"><Greeting /></Language.Provider>;
 
-// ref: o elemento do widget, para focar, rolar e ler a caixa do último layout.
-const [nome, setNome] = createSignal("");
-<TextField ref={(el) => el.focus()} value={nome} onInput={setNome} />;
+// ref: the widget's element, to focus, scroll and read the box from the last layout.
+const [name, setName] = createSignal("");
+<TextField ref={(el) => el.focus()} value={name} onInput={setName} />;
 
-// onResize: o tamanho do nó depois do layout (na primeira vez e quando muda).
-const [largura, setLargura] = createSignal(0);
-<Box grow={1} onResize={(s) => setLargura(s.width)}>
-  <Column>{() => (largura() > 600 ? "largo" : "estreito")}</Column>
+// onResize: the node's size after layout (the first time and whenever it changes).
+const [width, setWidth] = createSignal(0);
+<Box grow={1} onResize={(s) => setWidth(s.width)}>
+  <Column>{() => (width() > 600 ? "wide" : "narrow")}</Column>
 </Box>;
 ```
 
-- Para um valor que muda, passe um accessor no contexto (`value={tema}`, com `tema` um
-  signal) e chame-o onde usa (`useContext(Tema)()`).
-- O `ref` recebe um `ElementRef`: `x`, `y`, `width` e `height` do último layout (coordenadas
-  da janela), `focus()`, `blur()`, `scrollIntoView()` e, num `Scroll`, `scrollTo(y)` ou
-  `scrollTo({ x, y })`, `scrollX` e `scrollY`. O `ref` é chamado quando o widget é criado,
-  antes do layout; um `focus()` ou `scrollIntoView()` nessa hora vale assim que o widget
-  entra na árvore.
+- For a value that changes, pass an accessor in the context (`value={mode}`, with `mode` a
+  signal) and call it where you use it (`useContext(Mode)()`).
+- `ref` receives an `ElementRef`: `x`, `y`, `width` and `height` from the last layout (window
+  coordinates), `focus()`, `blur()`, `scrollIntoView()` and, on a `Scroll`, `scrollTo(y)` or
+  `scrollTo({ x, y })`, `scrollX` and `scrollY`. `ref` is called when the widget is created,
+  before layout; a `focus()` or `scrollIntoView()` at that point takes effect as soon as the
+  widget enters the tree.
 
-### Rolagem
+### Scrolling
 
 ```tsx
 import { Button, Card, For, Row, Scroll, Text } from "@nodebuilderjs/core";
 import type { ElementRef } from "@nodebuilderjs/core";
 
-const itens = Array.from({ length: 200 }, (_, i) => `Item ${i}`);
-const linhas: ElementRef[] = [];
+const items = Array.from({ length: 200 }, (_, i) => `Item ${i}`);
+const rows: ElementRef[] = [];
 <>
-  <Scroll horizontal gap={12}>                    {/* faixa que rola para o lado */}
-    <For each={itens}>{(t) => <Card width={160}><Text>{t}</Text></Card>}</For>
+  <Scroll horizontal gap={12}>                    {/* strip that scrolls sideways */}
+    <For each={items}>{(t) => <Card width={160}><Text>{t}</Text></Card>}</For>
   </Scroll>
-  <Button label="Ir para o 150" onClick={() => linhas[150]?.scrollIntoView()} />
+  <Button label="Go to 150" onClick={() => rows[150]?.scrollIntoView()} />
   <Scroll grow={1}>
-    <For each={itens}>{(t, i) => <Row ref={(el) => (linhas[i()] = el)} padding={8}><Text>{t}</Text></Row>}</For>
+    <For each={items}>{(t, i) => <Row ref={(el) => (rows[i()] = el)} padding={8}><Text>{t}</Text></Row>}</For>
   </Scroll>
-  <Scroll horizontal vertical height={300}>{/* tabela larga e longa */}</Scroll>
+  <Scroll horizontal vertical height={300}>{/* wide, long table */}</Scroll>
 </>;
 ```
 
-- `<Scroll>` rola na vertical; `horizontal` faz uma linha cujos filhos mantêm a largura
-  (texto dentro não quebra, a não ser com `width`/`maxWidth`); `horizontal vertical` rola
-  nos dois eixos, numa coluna em que cada filho tem pelo menos a largura visível.
-- Roda do mouse e touchpad nos dois eixos; Shift+roda rola para o lado. As barras são finas,
-  por cima do conteúdo (como no GTK e no macOS), e engrossam sob o mouse: arrastar o polegar
-  rola junto, clicar na trilha avança uma página. Elas só pegam o clique (numa faixa de 14 px
-  na borda) quando há o que rolar.
-- Teclado: PageUp/PageDown, Home/End e as setas rolam o `Scroll` em volta do elemento
-  focado (sem foco, o que está sob o mouse), se nenhum `onKeyDown` chamar `e.stop()`. O
-  `TextField` continua com Home/End e ←/→ para o cursor.
-- `scrollIntoView()` rola cada `Scroll` em volta do elemento o mínimo necessário, no próximo
-  frame (também para um elemento que acabou de ser criado ou que está longe, fora da tela).
-- O conteúdo de um `Scroll` não segura o tamanho de quem o contém: uma coluna com um
-  `Scroll grow={1}` dentro encolhe sem `minHeight={0}`.
-- Um `<Overlay modal>` aberto bloqueia roda, teclas e barras do que está atrás.
+- `<Scroll>` scrolls vertically; `horizontal` makes a row whose children keep their width
+  (text inside doesn't wrap, unless it has `width`/`maxWidth`); `horizontal vertical` scrolls
+  on both axes, in a column where each child is at least as wide as the visible area.
+- Mouse wheel and touchpad on both axes; Shift+wheel scrolls sideways. The scrollbars are thin,
+  drawn over the content (as in GTK and macOS), and widen under the mouse: dragging the thumb
+  scrolls along, clicking the track moves one page. They only take the click (in a 14 px strip
+  along the edge) when there is something to scroll.
+- Keyboard: PageUp/PageDown, Home/End and the arrow keys scroll the `Scroll` around the
+  focused element (with no focus, the one under the mouse), unless an `onKeyDown` calls
+  `e.stop()`. `TextField` keeps Home/End and ←/→ for the cursor.
+- `scrollIntoView()` scrolls each `Scroll` around the element by the minimum needed, on the
+  next frame (also for an element that was just created or that is far away, off screen).
+- The content of a `Scroll` doesn't hold up the size of its container: a column with a
+  `Scroll grow={1}` inside shrinks without `minHeight={0}`.
+- An open `<Overlay modal>` blocks the wheel, keys and scrollbars of what is behind it.
 
-### Controles
+### Controls
 
 ```tsx
 import { ProgressBar, RadioGroup, Slider, Toggle, createSignal } from "@nodebuilderjs/core";
 
 const [wifi, setWifi] = createSignal(true);
-const [tamanho, setTamanho] = createSignal("m");
+const [size, setSize] = createSignal("m");
 const [volume, setVolume] = createSignal(40);
 <Toggle checked={wifi} onChange={setWifi} label="Wi-Fi" />;
-<RadioGroup value={tamanho} onChange={setTamanho} options={[
-  { value: "p", label: "Pequeno" },
-  { value: "m", label: "Médio" },
-  { value: "g", label: "Grande", disabled: true },
+<RadioGroup value={size} onChange={setSize} options={[
+  { value: "s", label: "Small" },
+  { value: "m", label: "Medium" },
+  { value: "l", label: "Large", disabled: true },
 ]} />;
 <Slider value={volume} onChange={setVolume} min={0} max={100} step={5} />;
-<ProgressBar value={() => volume() / 100} />; // sem value: indeterminada
+<ProgressBar value={() => volume() / 100} />; // without value: indeterminate
 ```
 
-- Todo controle aceita `disabled` (valor ou função): fica esmaecido
-  (`theme.disabledOpacity`), sai da ordem do Tab, perde o foco e não responde.
-- Teclado: `Toggle`/`Checkbox`/`Button` com Espaço ou Enter; `RadioGroup` é uma parada só do
-  Tab e as setas trocam a opção (pulando as desabilitadas); `Slider` com setas (um `step`),
-  PageUp/PageDown (um décimo), Home/End.
-- `Toggle` é o interruptor liga/desliga: o nome `Switch` já é do controle de fluxo.
-- `Spinner` gira enquanto está na tela (`size`, `color`).
+- Every control accepts `disabled` (value or function): it is dimmed
+  (`theme.disabledOpacity`), leaves the Tab order, loses focus and doesn't respond.
+- Keyboard: `Toggle`/`Checkbox`/`Button` with Space or Enter; `RadioGroup` is a single Tab
+  stop and the arrow keys change the option (skipping disabled ones); `Slider` with the arrow
+  keys (one `step`), PageUp/PageDown (one tenth), Home/End.
+- `Toggle` is the on/off switch: the name `Switch` is already taken by the control flow
+  component.
+- `Spinner` spins while it is on screen (`size`, `color`).
 
 ```tsx
 import { Button, Dialog, Match, Select, Switch, Tabs, Text, Tooltip, createSignal } from "@nodebuilderjs/core";
 
-const [cidade, setCidade] = createSignal<string | undefined>(undefined);
-const [aba, setAba] = createSignal("geral");
-const [confirmar, setConfirmar] = createSignal(false);
-<Select value={cidade} onChange={setCidade} placeholder="Cidade" options={[
+const [city, setCity] = createSignal<string | undefined>(undefined);
+const [tab, setTab] = createSignal("general");
+const [confirming, setConfirming] = createSignal(false);
+<Select value={city} onChange={setCity} placeholder="City" options={[
   { value: "poa", label: "Porto Alegre" },
   { value: "sp", label: "São Paulo" },
 ]} />;
-<Tabs value={aba} onChange={setAba} tabs={[{ value: "geral", label: "Geral" }, { value: "conta", label: "Conta" }]} />;
+<Tabs value={tab} onChange={setTab} tabs={[{ value: "general", label: "General" }, { value: "account", label: "Account" }]} />;
 <Switch>
-  <Match when={() => aba() === "geral"}><Text>Geral</Text></Match>
-  <Match when={() => aba() === "conta"}><Text>Conta</Text></Match>
+  <Match when={() => tab() === "general"}><Text>General</Text></Match>
+  <Match when={() => tab() === "account"}><Text>Account</Text></Match>
 </Switch>;
-<Tooltip text="Apaga para sempre"><Button label="Excluir" onClick={() => setConfirmar(true)} /></Tooltip>;
-<Dialog open={confirmar} onClose={() => setConfirmar(false)} title="Excluir arquivo?"
-  actions={<Button label="Excluir" variant="danger" onClick={() => setConfirmar(false)} />}>
-  <Text>Esta ação não pode ser desfeita.</Text>
+<Tooltip text="Deletes permanently"><Button label="Delete" onClick={() => setConfirming(true)} /></Tooltip>;
+<Dialog open={confirming} onClose={() => setConfirming(false)} title="Delete file?"
+  actions={<Button label="Delete" variant="danger" onClick={() => setConfirming(false)} />}>
+  <Text>This action cannot be undone.</Text>
 </Dialog>;
 ```
 
-- `Select`: a lista abre embaixo (ou em cima, se não couber) com a largura do campo; setas
-  movem o destaque, Enter escolhe, Esc fecha. O foco fica no campo.
-- `Tabs` é só a barra (uma parada do Tab, setas trocam); o conteúdo de cada aba é seu, com
-  `<Switch>`/`<Show>`.
-- `Tooltip` aparece depois de `delay` ms (500) com o ponteiro parado, do lado `placement`
-  (`"top"`); some ao sair ou clicar.
-- `Dialog` é um `<Overlay modal>` pronto: foca o primeiro controle ao abrir e devolve o foco
-  ao fechar; Esc e o fundo chamam `onClose` (`dismissible={false}` desliga).
+- `Select`: the list opens below (or above, if it doesn't fit) with the width of the field;
+  the arrow keys move the highlight, Enter picks, Esc closes. Focus stays on the field.
+- `Tabs` is only the bar (one Tab stop, the arrow keys switch tabs); the content of each tab
+  is up to you, with `<Switch>`/`<Show>`.
+- `Tooltip` appears after `delay` ms (500) with the pointer still, on the `placement` side
+  (`"top"`); it hides on leave or click.
+- `Dialog` is a ready-made `<Overlay modal>`: it focuses the first control when it opens and
+  gives focus back when it closes; Esc and the backdrop call `onClose` (`dismissible={false}`
+  turns that off).
 
-### Tema escuro e animações
+### Dark theme and animations
 
 ```tsx
 import { Box, Text, Toggle, colorScheme, createPresence, createSignal, createTween, setTheme, theme } from "@nodebuilderjs/core";
 
-// Tema: troca tudo na hora; cores lidas dentro de funções acompanham.
-<Toggle checked={() => colorScheme() === "dark"} onChange={(on) => setTheme(on ? "dark" : "light")} label="Tema escuro" />;
-<Text color={() => theme.text.secondary}>legenda</Text>;
+// Theme: switches everything at once; colors read inside functions follow it.
+<Toggle checked={() => colorScheme() === "dark"} onChange={(on) => setTheme(on ? "dark" : "light")} label="Dark theme" />;
+<Text color={() => theme.text.secondary}>caption</Text>;
 
-// Um número que anda suave até o alvo; e algo que some com fade antes de sair da árvore.
-const [aberto, setAberto] = createSignal(false);
-const largura = createTween(() => (aberto() ? 240 : 64), { duration: 200 });
-const painel = createPresence(aberto, { enter: 180, exit: 120 });
-<Box width={largura} opacity={painel.progress} />;
+// A number that moves smoothly to its target; and something that fades out before leaving the tree.
+const [open, setOpen] = createSignal(false);
+const width = createTween(() => (open() ? 240 : 64), { duration: 200 });
+const panel = createPresence(open, { enter: 180, exit: 120 });
+<Box width={width} opacity={panel.progress} />;
 ```
 
-- `setTheme("dark" | "light")` ou um tema próprio (`{ ...darkTheme, accent: { ...darkTheme.accent,
-  base: "#9141ac" } }`); `colorScheme()` diz qual está em uso. `theme.x = ...` também atualiza.
-- **Cores do tema dentro de funções:** `color={() => theme.text.secondary}` acompanha a troca;
-  `color={theme.text.secondary}` guarda a cor daquele momento. Os widgets prontos já seguem.
-- `animate(de, para, aoAtualizar, { duration, easing, onDone })` devolve uma função que para;
-  `createTween(fonte)` segue um valor; `createPresence(quando)` dá `mounted` (fica `true` até
-  a saída terminar, para usar no `<Show>`) e `progress` (0 a 1). Curvas em `easing`
-  (`linear`, `easeIn`, `easeOut`, `easeInOut`); `mixColor(a, b, t)` mistura cores.
-- `Dialog`, `Select`, `Tooltip` e `Toggle` já animam. Sem janela (nos testes) toda animação
-  termina na hora; `frames()` de `@nodebuilderjs/core/testing` controla o tempo.
+- `setTheme("dark" | "light")` or a custom theme (`{ ...darkTheme, accent: { ...darkTheme.accent,
+  base: "#9141ac" } }`); `colorScheme()` tells which one is in use. `theme.x = ...` also updates.
+- **Theme colors inside functions:** `color={() => theme.text.secondary}` follows the switch;
+  `color={theme.text.secondary}` keeps the color from that moment. The built-in widgets
+  already follow it.
+- `animate(from, to, onUpdate, { duration, easing, onDone })` returns a function that stops it;
+  `createTween(source)` follows a value; `createPresence(when)` gives `mounted` (stays `true`
+  until the exit finishes, for use in `<Show>`) and `progress` (0 to 1). Curves in `easing`
+  (`linear`, `easeIn`, `easeOut`, `easeInOut`); `mixColor(a, b, t)` blends colors.
+- `Dialog`, `Select`, `Tooltip` and `Toggle` already animate. Without a window (in tests) every
+  animation finishes immediately; `frames()` from `@nodebuilderjs/core/testing` controls time.
 
-### Texto
+### Text
 
-`<Text>` quebra linha nos espaços para caber na largura que recebe, como na web; `\n` sempre
-quebra. Palavra maior que a linha transborda (não é cortada no meio).
+`<Text>` wraps at spaces to fit the width it gets, as on the web; `\n` always breaks the
+line. A word longer than the line overflows (it isn't cut in the middle).
 
 ```tsx
 import { Row, Text, theme } from "@nodebuilderjs/core";
 
-<Text textAlign="center" lineHeight={1.4}>Um parágrafo longo que quebra em várias linhas.</Text>;
+<Text textAlign="center" lineHeight={1.4}>A long paragraph that wraps across several lines.</Text>;
 <Row gap={8}>
-  <Text grow={1} maxLines={1}>nome-de-arquivo-muito-comprido.pdf</Text>
+  <Text grow={1} maxLines={1}>a-very-long-file-name.pdf</Text>
   <Text color={theme.text.secondary}>12 MB</Text>
 </Row>;
 ```
 
-- `wrap={false}`: uma linha só (fora as quebras com `\n`), mesmo que transborde.
-- `maxLines`: corta e termina a última linha em "…"; `maxLines={1}` encurta uma linha só.
-- `textAlign` (`"start"`, `"center"`, `"end"`) e `lineHeight` (múltiplo do espaçamento da
-  fonte, padrão 1).
-- Numa `Row` sem espaço, quem tem `grow` encolhe primeiro (como o `Expanded` do Flutter); um
-  texto que quebra pode encolher até a palavra mais longa, e com `maxLines` até o "…".
+- `wrap={false}`: a single line (apart from `\n` breaks), even if it overflows.
+- `maxLines`: truncates and ends the last line with "…"; `maxLines={1}` shortens a single line.
+- `textAlign` (`"start"`, `"center"`, `"end"`) and `lineHeight` (a multiple of the font's line
+  spacing, default 1).
+- In a `Row` without room, children with `grow` shrink first (like Flutter's `Expanded`); text
+  that wraps can shrink down to its longest word, and with `maxLines` down to the "…".
 
-### Overlays: diálogos, menus e dicas
+### Overlays: dialogs, menus and tooltips
 
-`<Overlay>` desenha o conteúdo numa camada acima da janela inteira, fora do recorte de quem
-o contém, e continua enxergando o contexto e a cor de texto do lugar onde foi declarado.
+`<Overlay>` draws its content on a layer above the whole window, outside the clipping of its
+container, and still sees the context and text color of the place where it was declared.
 
 ```tsx
 import { Button, Card, Overlay, Show, Text, createSignal } from "@nodebuilderjs/core";
 import type { ElementRef } from "@nodebuilderjs/core";
 
-// Menu ancorado num botão: abaixo dele (acima, se não couber), da mesma largura.
-const [aberto, setAberto] = createSignal(false);
-let botao: ElementRef | undefined;
+// Menu anchored to a button: below it (above, if it doesn't fit), with the same width.
+const [open, setOpen] = createSignal(false);
+let button: ElementRef | undefined;
 <>
-  <Button ref={(el) => (botao = el)} label="Opções" onClick={() => setAberto((a) => !a)} />
-  <Show when={aberto}>
-    <Overlay anchor={() => botao} matchWidth onDismiss={() => setAberto(false)}>
-      <Card padding={4}><Text>Renomear</Text></Card>
+  <Button ref={(el) => (button = el)} label="Options" onClick={() => setOpen((o) => !o)} />
+  <Show when={open}>
+    <Overlay anchor={() => button} matchWidth onDismiss={() => setOpen(false)}>
+      <Card padding={4}><Text>Rename</Text></Card>
     </Overlay>
   </Show>
 </>;
 
-// Diálogo modal: cobre a janela, escurece o fundo e bloqueia o clique e o Tab de trás.
-<Overlay modal background="#00000059" align="center" justify="center" onDismiss={() => setAberto(false)}>
-  <Card width={320}><Text>Excluir arquivo?</Text></Card>
+// Modal dialog: covers the window, dims the background and blocks clicks and Tab behind it.
+<Overlay modal background="#00000059" align="center" justify="center" onDismiss={() => setOpen(false)}>
+  <Card width={320}><Text>Delete file?</Text></Card>
 </Overlay>;
 ```
 
-- Sem `anchor`, a camada cobre a janela e posiciona os filhos com as props de flex
-  (`align`, `justify`, `padding`) ou com `position="absolute"`. O espaço vazio deixa o clique
-  passar, a não ser com `modal`.
-- Com `anchor`: `placement` (`"bottom"`, `"top"`, `"right"`, `"left"`), `offset` (4) e
-  `matchWidth`. Passe a âncora como função (`() => botao`), porque o `ref` só é preenchido
-  quando o botão é criado.
-- `onDismiss` é chamado num clique fora (no modal, no fundo; nunca na âncora) e no Esc.
-- Um overlay aberto depois fica por cima dos anteriores.
+- Without `anchor`, the layer covers the window and positions its children with the flex
+  props (`align`, `justify`, `padding`) or with `position="absolute"`. Empty space lets clicks
+  through, unless it is `modal`.
+- With `anchor`: `placement` (`"bottom"`, `"top"`, `"right"`, `"left"`), `offset` (4) and
+  `matchWidth`. Pass the anchor as a function (`() => button`), because `ref` is only filled
+  in when the button is created.
+- `onDismiss` is called on a click outside (for a modal, on the backdrop; never on the anchor)
+  and on Esc.
+- An overlay opened later stays on top of the earlier ones.
 
-`opacity` (0 a 1) e `translateX`/`translateY` valem em qualquer widget e servem para
-transições, como no exemplo `bun run overlays`. Eles atualizam com um signal e
-`requestAnimationFrame`. `translate` desloca o nó e os filhos depois do layout, sem
-empurrar os irmãos, como o `transform` do CSS.
+`opacity` (0 to 1) and `translateX`/`translateY` work on any widget and are meant for
+transitions, as in the `bun run overlays` example. They update with a signal and
+`requestAnimationFrame`. `translate` moves the node and its children after layout, without
+pushing its siblings, like CSS `transform`.
 
-### Área de transferência
+### Clipboard
 
 ```tsx
 import { Button, clipboard, createSignal } from "@nodebuilderjs/core";
 
-const [texto, setTexto] = createSignal("");
-<Button label="Copiar" onClick={() => clipboard.writeText(texto())} />
-<Button label="Colar" onClick={async () => setTexto(await clipboard.readText())} /> // "" se não houver texto
+const [text, setText] = createSignal("");
+<Button label="Copy" onClick={() => clipboard.writeText(text())} />
+<Button label="Paste" onClick={async () => setText(await clipboard.readText())} /> // "" if there is no text
 ```
 
-Texto fixo pode ser selecionado e copiado com `<Text selectable>`: arrastar seleciona,
-clique duplo pega a palavra, clique triplo a linha, Ctrl+A tudo e Ctrl+C copia. Fica
-desligado por padrão, para rótulos e botões não selecionarem sem querer.
+Static text can be selected and copied with `<Text selectable>`: dragging selects,
+double-click picks the word, triple-click the line, Ctrl+A everything and Ctrl+C copies. It is
+off by default, so labels and buttons don't get selected by accident.
 
-É a área de transferência do sistema (Wayland e X11), só texto. O `TextField` cola com
-Ctrl+V ou Shift+Insert (quebras de linha viram espaços). Sem janela, como nos testes, é uma
-área de transferência em memória. No Wayland, o compositor só aceita a cópia logo depois de
-uma tecla ou clique (o normal: Ctrl+C, botão "Copiar").
+It is the system clipboard (Wayland and X11), text only. `TextField` pastes with Ctrl+V or
+Shift+Insert (line breaks become spaces). Without a window, as in tests, it is an in-memory
+clipboard. On Wayland, the compositor only accepts a copy right after a key press or click
+(the usual case: Ctrl+C, a "Copy" button).
 
-## Distribuir
+## Distributing
 
 ```sh
 bun run package
 ```
 
-Gera em `dist/` um **AppImage**, um **`.deb`**, um **`.rpm`** e um **`.tar.gz`**, cada um com
-um executável único (Bun + seu app + núcleo nativo), atalho no menu e ícone. Funciona em
-Ubuntu 22.04+, Debian 12+, Fedora, RHEL 9+ e derivados.
+Generates in `dist/` an **AppImage**, a **`.deb`**, an **`.rpm`** and a **`.tar.gz`**, each with
+a single executable (Bun + your app + native core), a menu entry and an icon. Works on
+Ubuntu 22.04+, Debian 12+, Fedora, RHEL 9+ and derivatives.
 
 ## Benchmarks
 
-As mesmas duas cenas feitas em cinco tecnologias, medidas na mesma sessão:
+The same two scenes built with five technologies, measured in the same session:
 
-| | Linguagem | Como desenha |
+| | Language | How it draws |
 |---|---|---|
-| **Electron 44** | JS + HTML/CSS | Chromium embutido |
-| **Tauri 2** | JS + HTML/CSS (Rust só na casca) | WebKitGTK do sistema |
-| **Flutter 3.47** | Dart | motor próprio (OpenGL ES) |
+| **Electron 44** | JS + HTML/CSS | bundled Chromium |
+| **Tauri 2** | JS + HTML/CSS (Rust only in the shell) | system WebKitGTK |
+| **Flutter 3.47** | Dart | own engine (OpenGL ES) |
 | **egui 0.36** | Rust | immediate mode, wgpu (Vulkan) |
-| **nodebuilder** | TypeScript | núcleo próprio (OpenGL ES) |
+| **nodebuilder** | TypeScript | own core (OpenGL ES) |
 
-Electron e Tauri rodam exatamente o mesmo HTML/JS, sem framework. Máquina: i7-12700H,
-Intel Iris Xe, KDE Plasma (Wayland), monitor de 240 Hz.
+Electron and Tauri run exactly the same HTML/JS, with no framework. Machine: i7-12700H,
+Intel Iris Xe, KDE Plasma (Wayland), 240 Hz monitor.
 
-**Tauri e Flutter não passam de 60 fps no Linux**, mesmo em monitor de 240 Hz. Para
-comparar o mesmo trabalho, a tabela limita todos a 60 fps. Cada célula: **fps · CPU ·
-memória**; CPU de 100% é um núcleo inteiro, memória é a PSS somada de todos os processos.
+**Tauri and Flutter don't go above 60 fps on Linux**, even on a 240 Hz monitor. To compare
+the same work, the table caps everyone at 60 fps. Each cell: **fps · CPU · memory**; 100% CPU
+is one full core, memory is the summed PSS of all processes.
 
-| Cena | Electron | Tauri | Flutter | egui | nodebuilder |
+| Scene | Electron | Tauri | Flutter | egui | nodebuilder |
 |---|---|---|---|---|---|
-| **Painel** ([dashboard.tsx](examples/dashboard.tsx)): visão geral | 59 · 58% · 337 MB | 60 · 66% · 267 MB | 59 · 45% · 126 MB | 59 · 27% · 105 MB | 59 · 33% · 91 MB |
-| Painel: tabela com 500 linhas | 59 · 64% · 383 MB | 59 · 62% · 292 MB | 59 · 41% · 133 MB¹ | 54 · 72% · 112 MB | 49 · 54% · 161 MB |
-| Painel: logs ao vivo | 59 · 94% · 408 MB | 59 · 142% · 298 MB | 59 · 47% · 135 MB¹ | 59 · 42% · 108 MB | 56 · 45% · 157 MB |
-| Painel: configurações | 59 · 44% · 308 MB | 60 · 51% · 267 MB | 60 · 38% · 123 MB | 60 · 23% · 105 MB | 59 · 24% · 83 MB |
-| Painel: troca de aba a cada 30 frames | 58 · 70% · 384 MB | 59 · 85% · 321 MB | 59 · 45% · 141 MB | 58 · 45% · 114 MB | 55 · 43% · 166 MB |
-| **Grade** ([bench.tsx](examples/bench.tsx)): 1000 células paradas | 0% · 310 MB | 0% · 216 MB | 0% · 147 MB | 0% · 106 MB | 1% · 81 MB |
-| Grade: 1000 células, um texto muda | 58 · 58% · 321 MB | 60 · 37% · 228 MB | 59 · 51% · 155 MB | 59 · 49% · 108 MB | 57 · 39% · 110 MB |
-| Grade: 1000 células, todas mudam | 59 · 128% · 413 MB | 29 · 147% · 277 MB | 21 · 96% · 173 MB | 59 · 68% · 113 MB | 58 · 44% · 139 MB |
-| Grade: 3000 células, todas mudam | 49 · 172% · 447 MB | 20 · 123% · 351 MB | 7 · 140% · 243 MB | 46 · 84% · 128 MB | 50 · 94% · 194 MB |
+| **Dashboard** ([dashboard.tsx](examples/dashboard.tsx)): overview | 59 · 58% · 337 MB | 60 · 66% · 267 MB | 59 · 45% · 126 MB | 59 · 27% · 105 MB | 59 · 33% · 91 MB |
+| Dashboard: table with 500 rows | 59 · 64% · 383 MB | 59 · 62% · 292 MB | 59 · 41% · 133 MB¹ | 54 · 72% · 112 MB | 49 · 54% · 161 MB |
+| Dashboard: live logs | 59 · 94% · 408 MB | 59 · 142% · 298 MB | 59 · 47% · 135 MB¹ | 59 · 42% · 108 MB | 56 · 45% · 157 MB |
+| Dashboard: settings | 59 · 44% · 308 MB | 60 · 51% · 267 MB | 60 · 38% · 123 MB | 60 · 23% · 105 MB | 59 · 24% · 83 MB |
+| Dashboard: tab switch every 30 frames | 58 · 70% · 384 MB | 59 · 85% · 321 MB | 59 · 45% · 141 MB | 58 · 45% · 114 MB | 55 · 43% · 166 MB |
+| **Grid** ([bench.tsx](examples/bench.tsx)): 1000 static cells | 0% · 310 MB | 0% · 216 MB | 0% · 147 MB | 0% · 106 MB | 1% · 81 MB |
+| Grid: 1000 cells, one text changes | 58 · 58% · 321 MB | 60 · 37% · 228 MB | 59 · 51% · 155 MB | 59 · 49% · 108 MB | 57 · 39% · 110 MB |
+| Grid: 1000 cells, all change | 59 · 128% · 413 MB | 29 · 147% · 277 MB | 21 · 96% · 173 MB | 59 · 68% · 113 MB | 58 · 44% · 139 MB |
+| Grid: 3000 cells, all change | 49 · 172% · 447 MB | 20 · 123% · 351 MB | 7 · 140% · 243 MB | 46 · 84% · 128 MB | 50 · 94% · 194 MB |
 
-¹ O Flutter usa listas virtualizadas (`ListView.builder`), o padrão dele: só constrói as
-linhas visíveis. Nas outras quatro, todas as linhas existem.
+¹ Flutter uses virtualized lists (`ListView.builder`), its default: it only builds the
+visible rows. In the other four, every row exists.
 
-**Em resumo:**
-- **Os dois runtimes web são os mais pesados:** 216 a 447 MB, e muito mais CPU quando muito
-  texto muda. O Tauri usa de 13% a 33% menos memória que o Electron, mas não sustenta 60 fps
-  nas cenas mais pesadas (29 e 20 fps).
-- **O egui é o rival mais próximo** do nodebuilder: memória quase constante (105 a 128 MB,
-  sem coletor de lixo) e a menor CPU nas abas leves do painel. Por ser immediate mode, ele
-  refaz a interface inteira a cada frame, e isso pesa quando há muitos elementos: perde na
-  tabela (72% contra 54%) e quando 1000 textos mudam (68% contra 44%).
-- **O Flutter** gasta pouca memória e pouca CPU no painel, mas trava em 60 fps e cai para
-  21 e 7 fps quando milhares de textos mudam a cada frame.
-- **O nodebuilder** tem a menor memória parado (81 MB) e nas abas leves do painel, e a
-  menor CPU quando 1000 textos mudam a cada frame (44%; com 3000, o egui gasta menos, mas a
-  46 fps contra 50). Nesta rodada perdia fps na tabela de 500 linhas (49 contra 54 a 59)
-  porque media e desenhava o que estava fora da tela; isso já foi resolvido (veja abaixo).
-  Na tabela, nos logs e na troca de abas usa mais memória que egui e Flutter (157 a
-  166 MB): é o heap do JavaScript.
-- **Com teto de 120 fps**, só Electron, egui e nodebuilder passam de 60: o Electron fica
-  entre 107 e 117 fps, o egui entre 102 e 119 e o nodebuilder entre 80 e 118 (com 3000
-  células, todos em 45–51 fps).
-- **Depois desta rodada**, o nodebuilder passou a ignorar o que está fora da área visível
-  (culling). Medido antes e depois na mesma sessão: a tabela de 500 linhas foi de 78 para
-  104 fps com teto de 120 (CPU de 82% para 51%) e, com teto de 60, de 55% para 40% de CPU;
-  "um texto muda entre 1000" caiu de 39% para 23% de CPU. Com teto de 60 o fps ainda fica
-  abaixo de 59 em todas as cenas, por causa do agendamento de frames ([roadmap](ROADMAP.md)).
-- **Tamanho:** o Tauri tem 5,7 MB (usa o WebKit do sistema), o egui 15 MB, o Flutter 23 MB,
-  o nodebuilder ~91 MB (~31 MB compactado, quase tudo é o runtime do Bun) e o Electron
+**In short:**
+- **The two web runtimes are the heaviest:** 216 to 447 MB, and much more CPU when a lot of
+  text changes. Tauri uses 13% to 33% less memory than Electron, but can't sustain 60 fps
+  in the heaviest scenes (29 and 20 fps).
+- **egui is nodebuilder's closest rival:** almost constant memory (105 to 128 MB, no
+  garbage collector) and the lowest CPU on the light dashboard tabs. Being immediate mode, it
+  rebuilds the whole interface every frame, and that weighs on it when there are many
+  elements: it loses on the table (72% vs. 54%) and when 1000 texts change (68% vs. 44%).
+- **Flutter** uses little memory and little CPU on the dashboard, but is locked at 60 fps and
+  drops to 21 and 7 fps when thousands of texts change every frame.
+- **nodebuilder** has the lowest memory when idle (81 MB) and on the light dashboard tabs, and
+  the lowest CPU when 1000 texts change every frame (44%; with 3000, egui uses less, but at
+  46 fps vs. 50). In this round it lost fps on the 500-row table (49 vs. 54 to 59)
+  because it measured and drew what was off screen; that has since been fixed (see below).
+  On the table, the logs and the tab switching it uses more memory than egui and Flutter (157
+  to 166 MB): that is the JavaScript heap.
+- **With a 120 fps cap**, only Electron, egui and nodebuilder go above 60: Electron stays
+  between 107 and 117 fps, egui between 102 and 119 and nodebuilder between 80 and 118 (with
+  3000 cells, all of them at 45–51 fps).
+- **After this round**, nodebuilder started skipping what is outside the visible area
+  (culling). Measured before and after in the same session: the 500-row table went from 78 to
+  104 fps with a 120 cap (CPU from 82% to 51%) and, with a 60 cap, from 55% to 40% CPU;
+  "one text changes out of 1000" dropped from 39% to 23% CPU. With a 60 cap, fps still stays
+  below 59 in every scene, because of frame scheduling ([roadmap](ROADMAP.md)).
+- **Size:** Tauri is 5.7 MB (it uses the system WebKit), egui 15 MB, Flutter 23 MB,
+  nodebuilder ~91 MB (~31 MB compressed, almost all of it the Bun runtime) and Electron
   ~280 MB.
 
-E a ergonomia conta: no egui você escreve Rust; no Flutter, Dart; no Electron e no Tauri,
-HTML/CSS/JS (com Rust para a parte nativa do Tauri); no nodebuilder, TypeScript com JSX, que
-é o que a maioria dos devs web (e dos LLMs) já escreve.
+Ergonomics matter too: with egui you write Rust; with Flutter, Dart; with Electron and Tauri,
+HTML/CSS/JS (with Rust for Tauri's native side); with nodebuilder, TypeScript with JSX, which
+is what most web devs (and LLMs) already write.
 
-### Por que o Tauri fica tão perto do Electron?
+### Why is Tauri so close to Electron?
 
-O Tauri troca o navegador do Electron (Chromium) pelo do sistema (no Linux, o WebKitGTK),
-mas continua sendo um navegador. O trabalho caro, que é rodar o JS, aplicar o CSS, fazer o
-layout do DOM e desenhar, acontece num motor completo nos dois casos; o Rust do Tauri só abre
-a janela. Medindo processo por processo na cena de logs:
+Tauri swaps Electron's browser (Chromium) for the system one (on Linux, WebKitGTK), but it is
+still a browser. The expensive work, which is running the JS, applying the CSS, laying out the
+DOM and painting, happens in a full engine in both cases; Tauri's Rust only opens the window.
+Measuring process by process in the logs scene:
 
-| Processo | Tauri | Electron |
+| Process | Tauri | Electron |
 |---|---|---|
-| Página (JS, DOM, CSS, layout, pintura) | 172 MB · 131% CPU | 163 MB · 82% CPU |
-| Janela / processo principal | 87 MB | 86 MB |
-| GPU, rede e utilitários | 33 MB (1 processo) | 115 MB (5 processos) |
+| Page (JS, DOM, CSS, layout, painting) | 172 MB · 131% CPU | 163 MB · 82% CPU |
+| Window / main process | 87 MB | 86 MB |
+| GPU, network and utilities | 33 MB (1 process) | 115 MB (5 processes) |
 
-- **Memória:** o processo da página custa quase o mesmo nos dois. O Tauri economiza só nos
-  processos auxiliares, o que dá de 13% a 33% menos memória que o Electron nas cenas medidas.
-- **CPU:** o WebKitGTK desenha a página na CPU (threads `SkiaCPUWorker`, ~45% de um núcleo),
-  enquanto o Chromium desenha na GPU. Por isso o Tauri gasta mais justamente quando muito
-  texto muda a cada frame.
-- **O "Tauri é leve"** se refere principalmente ao tamanho do download: ele não leva um
-  navegador junto.
+- **Memory:** the page process costs almost the same in both. Tauri only saves on the helper
+  processes, which gives 13% to 33% less memory than Electron in the measured scenes.
+- **CPU:** WebKitGTK paints the page on the CPU (`SkiaCPUWorker` threads, ~45% of a core),
+  while Chromium paints on the GPU. That is why Tauri spends more precisely when a lot of text
+  changes every frame.
+- **"Tauri is lightweight"** mostly refers to the download size: it doesn't ship a browser
+  along with it.
 
-O nodebuilder não tem motor de navegador: não há cascata de CSS nem DOM para recalcular, um
-signal atualiza direto o nó que mudou, tudo é desenhado na GPU com um draw call por frame, e
-é um processo só. Em troca, oferece menos recursos que a web (ver limitações abaixo).
+nodebuilder has no browser engine: there is no CSS cascade or DOM to recompute, a signal
+updates the node that changed directly, everything is drawn on the GPU with one draw call per
+frame, and it is a single process. In exchange, it offers fewer features than the web (see
+limitations below).
 
-Estes números valem para o Linux. No Windows o Tauri usa o WebView2 (Chromium) e no macOS o
-WebKit do sistema; lá o resultado pode ser diferente.
+These numbers apply to Linux. On Windows Tauri uses WebView2 (Chromium) and on macOS the
+system WebKit; the results there may differ.
 
-Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#medindo-desempenho).
+Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#measuring-performance).
 
-## Limitações atuais
+## Current limitations
 
-- Só Linux x64 (arm64, Windows e macOS estão no roadmap).
-- Texto com uma fonte só (emojis não aparecem); palavra maior que a linha transborda.
-- Campo de texto sem seleção, cópia e desfazer (colar funciona).
-- SVG só no subconjunto para ícones (sem gradientes, texto, filtros); AVIF/HEIC dependem da
-  `libheif` do sistema.
-- O tema escuro não segue a preferência do sistema sozinho (no Linux ela vem do portal XDG
-  por D-Bus, ainda não lido): chame `setTheme` a partir de uma opção do app.
-- `ProgressBar` indeterminada e `Spinner` pedem um frame atrás do outro enquanto aparecem
-  (CPU baixa, mas não zero); esconda-os quando a espera acabar.
-- Animações só de números (`opacity`, `translate`, tamanhos, cores com `mixColor`): sem
-  `scale`/`rotate`, transição declarativa de estilo (`transition` do CSS) nem molas. Sem
-  acessibilidade e IME (teclados de idiomas asiáticos).
-- `opacity` é aplicada a cada coisa desenhada, não ao grupo: filhos que se sobrepõem
-  aparecem um através do outro.
-- Rolagem sem inércia nem animação (a roda e as teclas pulam direto), sem rolagem
-  automática ao arrastar uma seleção até a borda e sem repetição ao segurar o clique na
-  trilha da barra.
+- Linux x64 only (arm64, Windows and macOS are on the roadmap).
+- Text with a single font (emojis don't show up); a word longer than the line overflows.
+- Text field without selection, copy or undo (paste works).
+- SVG only in the icon subset (no gradients, text, filters); AVIF/HEIC depend on the system
+  `libheif`.
+- The dark theme doesn't follow the system preference on its own (on Linux it comes from the
+  XDG portal over D-Bus, not read yet): call `setTheme` from an app option.
+- An indeterminate `ProgressBar` and `Spinner` request frame after frame while they are shown
+  (low CPU, but not zero); hide them when the wait is over.
+- Animations of numbers only (`opacity`, `translate`, sizes, colors with `mixColor`): no
+  `scale`/`rotate`, declarative style transitions (CSS `transition`) or springs. No
+  accessibility or IME (keyboards for Asian languages).
+- `opacity` is applied to each thing drawn, not to the group: overlapping children
+  show through each other.
+- Scrolling without inertia or animation (the wheel and keys jump straight there), without
+  auto-scroll when dragging a selection to the edge and without repeat when holding the click
+  on the scrollbar track.
 
-## Contribuir
+## Contributing
 
 ```sh
 git clone https://github.com/felipebrgs1/nodebuilderjs && cd nodebuilderjs
 bun install
-bun run build:native     # compila o núcleo em C (precisa dos headers de Wayland, X11, EGL...)
-bun run counter          # roda um exemplo
+bun run build:native     # compiles the C core (needs the Wayland, X11, EGL... headers)
+bun run counter          # runs an example
 bun test && bun run typecheck
 ```
 
-O desenvolvimento segue TDD: comportamento novo ou bug começa por um teste que falha
-(`bun test` roda sem janela, em ~0,1 s). [ARCHITECTURE.md](ARCHITECTURE.md) explica como o
-framework é organizado por dentro, e o [AGENTS.md](AGENTS.md) traz as regras, as convenções
-e como testar cada camada.
+Development follows TDD: new behavior or a bug fix starts with a failing test
+(`bun test` runs without a window, in ~0.1 s). [ARCHITECTURE.md](ARCHITECTURE.md) explains how
+the framework is organized internally, and [AGENTS.md](AGENTS.md) has the rules, the
+conventions and how to test each layer.
 
-## Licença
+## License
 
 [MIT](LICENSE)

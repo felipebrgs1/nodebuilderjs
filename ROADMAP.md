@@ -193,7 +193,7 @@ Depois:
 
 - Windows e macOS: implementar o contrato `native/include/nb_platform.h` em
   `native/platform/<os>/`, com ANGLE para o OpenGL ES (ver
-  [ARCHITECTURE.md](ARCHITECTURE.md#portabilidade-para-outros-sistemas))
+  [ARCHITECTURE.md](ARCHITECTURE.md#porting-to-other-systems))
 
 ## Ferramentas
 
