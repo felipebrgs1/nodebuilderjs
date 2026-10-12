@@ -4,7 +4,7 @@ import { type Child, insert, jsx } from "../jsx-runtime.js";
 import { type Handlers, type Placement, UINode } from "../render/node.js";
 import { createPresence } from "../animation/index.js";
 import { Show } from "../reactive/control.js";
-import { type MaybeAccessor, createSignal, onCleanup } from "../reactive/signals.js";
+import { type MaybeAccessor, createEffect, createSignal, onCleanup, read } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 import { Box } from "./containers.js";
 import { Overlay } from "./overlay.js";
@@ -24,6 +24,10 @@ export function Tooltip(
   const wrap = new UINode("Tooltip");
   applyProps(wrap, props);
   insert(wrap, props.children);
+  // The tip names an icon-only trigger (findByLabel), unless it is labelled already.
+  const kids = wrap.children;
+  const trigger = kids.length === 1 ? kids[0]! : wrap;
+  if (trigger.ariaLabel === undefined && props.ariaLabel === undefined) createEffect(() => (trigger.ariaLabel = read(props.text)));
   const [open, setOpen] = createSignal(false);
   const delay = props.delay ?? 500;
   let timer: ReturnType<typeof setTimeout> | undefined;

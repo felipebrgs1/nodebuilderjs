@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-testing
-description: Write and debug tests for nodebuilder apps with bun test, without opening a window (mount, findByText, click, interact for mouse and keyboard, layout, debugTree). Use when creating tests, when verifying a behavior or layout change, or when a component test fails.
+description: Write and debug tests for nodebuilder apps with bun test, without opening a window (mount, findByText, findByLabel, click, interact for mouse and keyboard, layout, debugTree). Use when creating tests, when verifying a behavior or layout change, or when a component test fails.
 ---
 
 # Tests without a window
@@ -29,9 +29,15 @@ test("adds a task", () => {
 
 - `mount(view, size?)` → `{ root, relayout, dispose }`. Layout runs once in `mount`;
   call `relayout()` before checking `x`, `y`, `width`, `height` after changing state.
-- `findByText(root, "text" | /regex/)`: first `Text` whose entire content matches.
+- `findByText(root, "text" | /regex/)`: first `Text` whose entire content matches;
+  `findAllByText` returns every match (e.g. a title repeated in a list and in a player bar).
+- `findByLabel(root, "label" | /regex/)` / `findAllByLabel`: by `ariaLabel`, for elements
+  without text (`<Button ariaLabel="Play">` with only an icon). Built-in labels: the window's
+  title-bar buttons (`"Minimize"`, `"Maximize"` or `"Restore"`, `"Close"`), and a `Tooltip`'s
+  trigger gets the tip text when it has no `ariaLabel` of its own.
 - `findAll(root, (n) => ...)`: free-form search; `n.label` is `"Text \"...\""`, `"Button"`, `"Row"`...
-- `click(node)`: fires the `onClick` of the node or of its nearest ancestor (quick shortcut).
+- `click(node)`: fires the `onClick` of the node or of its nearest ancestor (quick shortcut),
+  at the node's center.
 - `interact(root)`: mouse and keyboard delivered as in the real app (hover, focus, capture
   while dragging, Tab): `hover(n)`, `press(n)`, `release(n)`, `drag(n, dx, dy)`, `move(x, y)`,
   `down(x, y)`/`up(x, y)` (button at a window position, e.g. on the scrollbar),
@@ -44,6 +50,41 @@ ui.press(field);            // focuses the TextField
 ui.type("Ana");             // types into the focused field
 ui.key("Return");           // fires onSubmit
 ui.drag(slider, 80, 0);     // drags 80 px to the right
+```
+- **Hidden targets throw.** `click(n)` and the node helpers of `interact` (`hover`, `press`,
+  `release`, `drag`, `scroll`) throw when a user could not reach the node: it is `culled`
+  (it, or an ancestor, is outside the visible area of the last layout, e.g. a chip that
+  overflowed a `clip` panel or a row far down a `Scroll`), or its center is cut off by a
+  clipping/scrolling ancestor or the window. The message names the node and the ancestor.
+  Fix the test (or the layout): `n.scrollIntoView()` then `relayout()`, give it room (a
+  bigger `mount` size, `width`), or `relayout()` if the tree changed since the last layout.
+  `down(x, y)`/`up(x, y)`/`move(x, y)` take window positions and are never checked.
+
+```tsx
+import { expect, test } from "bun:test";
+import { Button, For, Row, Scroll } from "@nodebuilderjs/core";
+import { click, findAllByText, findByLabel, findByText, mount } from "@nodebuilderjs/core/testing";
+
+test("plays a genre that starts off screen", () => {
+  const played: string[] = [];
+  const genres = ["Rock", "Jazz", "Pop", "Funk", "Soul"];
+  const { root, relayout } = mount(() => (
+    <Row>
+      <Button ariaLabel="Play" label="▶" onClick={() => played.push("all")} />
+      <Scroll horizontal width={300}>
+        <For each={genres}>{(g) => <Button label={g} width={100} onClick={() => played.push(g)} />}</For>
+      </Scroll>
+    </Row>
+  ));
+  click(findByLabel(root, "Play")!);
+  const soul = findByText(root, "Soul")!;
+  expect(() => click(soul)).toThrow(/culled/); // past the 300 px Scroll
+  soul.scrollIntoView();
+  relayout();
+  click(soul);
+  expect(played).toEqual(["all", "Soul"]);
+  expect(findAllByText(root, /o/)).toHaveLength(3); // Rock, Pop, Soul
+});
 ```
 - `debugTree(node)` (from `@nodebuilderjs/core`): tree with positions, great for inspecting layout.
 - Animations finish immediately in tests (there is no window): a closed `Dialog` leaves the

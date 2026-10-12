@@ -59,6 +59,12 @@ export interface RenderOptions {
   color?: Rgba;
   /** Overrides the root stroke-width (in viewBox units), like Lucide's strokeWidth prop. */
   strokeWidth?: number;
+  /**
+   * Replaces the root <svg>'s fill, which its shapes inherit, like Lucide's `fill` prop:
+   * outline icons (root fill="none") become solid and keep their stroke. A fill a group or
+   * shape sets itself, "none" included, still wins.
+   */
+  fill?: "current" | Rgba;
 }
 
 /** Rasterizes into a width x height bitmap (straight alpha), scaled to fit like xMidYMid meet. */
@@ -96,7 +102,7 @@ export function renderSvg(svg: Svg, width: number, height: number, options: Rend
       const polys = strokePolygons(geometry, { width: style.strokeWidth, cap: style.cap, join: style.join, miterLimit: style.miterLimit }, tol).map(toDevice);
       composite(canvas, rasterize(polys, width, height, false), stroke, style.strokeOpacity * style.opacity);
     }
-  });
+  }, options.fill === undefined ? undefined : { fill: options.fill });
 
   const data = new Uint8Array(width * height * 4);
   for (let i = 0; i < width * height; i++) {

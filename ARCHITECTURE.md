@@ -314,7 +314,10 @@ coverage horizontally, with 16 samples per pixel vertically. `<Icon>` rasterizes
 physical size (logical size × scale), aligned to pixels. If all of the SVG's colors are
 `currentColor`, it rasterizes in white once, and the color enters as a tint in the IMAGE
 command: the shader multiplies the texels by it, and changing the color does not redo the
-icon.
+icon. The `fill` prop overrides the root `<svg>`'s fill in the style that `walk()` computes for
+it (attribute and `style=""` alike), so only shapes that inherit it change; a `fill` color
+makes the icon multicolor (rasterized with its colors, no tint). Rasterized bitmaps are cached
+by SVG, pixel size, stroke width, fill and, for multicolor icons, color.
 
 Drawing primitives (`<Canvas>`): each line segment is a rectangle oriented along the
 segment; the shader receives the position in that frame of reference and computes the
@@ -360,6 +363,10 @@ click and double click, pointer capture while a button is held, scrolling (wheel
 keys; see "Scrolling") and keyboard with Tab. Whatever belongs to the window (move, resize,
 cursor, clock) goes through an `InputHost` interface; `run()` wires it to the addon, and the
 tests (and `interact()` from `@nodebuilderjs/core/testing`) use a windowless host.
+The testing helpers that target a node (`click`, `interact().press`...) first check what the
+hit test would see: the node and its ancestors are not `culled`, and its center lies inside
+every clipping or scrolling ancestor and the window. Otherwise they throw instead of letting
+the event miss silently.
 
 `createInput` registers focus on the root (`root.focusHost`); that is how a `ref`'s
 `focus()` and `blur()` reach the input. A `focus()` made while the widget is being created

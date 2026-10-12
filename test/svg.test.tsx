@@ -168,3 +168,63 @@ test("Icon: a broken SVG warns and draws nothing", () => {
     console.warn = warn;
   }
 });
+
+// Lucide draws outlines: fill="none" on the root, strokes in currentColor.
+const lucide = (body: string, root = 'fill="none"') =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ${root} stroke="currentColor" stroke-width="2">${body}</svg>`;
+const PLAY = '<path d="M6 3 20 12 6 21 6 3z" />';
+const pixel = (bitmap: { width: number; data: Uint8Array }, x: number, y: number) =>
+  Array.from(bitmap.data.slice((y * bitmap.width + x) * 4, (y * bitmap.width + x) * 4 + 4));
+
+test("SVG fill option fills what the root left unfilled and keeps the stroke", () => {
+  const play = parseSvg(lucide(PLAY));
+  const outline = renderSvg(play, 24, 24, { color: BLACK });
+  expect(pixel(outline, 10, 12)[3]).toBe(0); // inside the triangle: empty
+  expect(pixel(outline, 5, 12)).toEqual([0, 0, 0, 255]); // the stroke
+  const solid = renderSvg(play, 24, 24, { color: BLACK, fill: "current" });
+  expect(pixel(solid, 10, 12)).toEqual([0, 0, 0, 255]);
+  expect(pixel(solid, 5, 12)).toEqual([0, 0, 0, 255]);
+  expect(pixel(solid, 2, 2)[3]).toBe(0); // outside stays empty
+  const red = renderSvg(play, 24, 24, { color: BLACK, fill: [1, 0, 0, 1] });
+  expect(pixel(red, 10, 12)).toEqual([255, 0, 0, 255]);
+  expect(pixel(red, 5, 12)).toEqual([0, 0, 0, 255]); // stroke drawn over the fill
+  // Also when the root says it in style="".
+  const styled = parseSvg(lucide(PLAY, 'style="fill: none"'));
+  expect(pixel(renderSvg(styled, 24, 24, { color: BLACK, fill: "current" }), 10, 12)[3]).toBe(255);
+});
+
+test("SVG fill option keeps fills a shape sets itself, none included", () => {
+  const own = parseSvg(lucide('<path d="M6 3 20 12 6 21 6 3z" fill="#00ff00" /><rect x="0" y="0" width="4" height="4" fill="none" stroke="none" />'));
+  const solid = renderSvg(own, 24, 24, { color: BLACK, fill: "current" });
+  expect(pixel(solid, 10, 12)).toEqual([0, 255, 0, 255]);
+  expect(pixel(solid, 2, 2)[3]).toBe(0);
+});
+
+test("Icon fill: reactive, re-rasterizes, keeps tinting; a color fill is painted in", () => {
+  const created: Uint8Array[] = [];
+  setImageBackend({ create: (_w, _h, rgba) => (created.push(rgba), created.length), destroy: () => {} });
+  const [fill, setFill] = createSignal<boolean | string>(false);
+  const { node } = mount(() => (
+    <Column align="start" color="#0000ff">
+      <Icon svg={lucide(PLAY)} size={24} fill={fill} />
+    </Column>
+  ));
+  const interior = (i: number) => pixel({ width: 24, data: created[i]! }, 10, 12);
+  commandsOf(node, "image"); // textures are made when painting
+  expect(created.length).toBe(1);
+  expect(interior(0)[3]).toBe(0);
+  setFill(true);
+  const image = commandsOf(node, "image")[0]!;
+  expect(created.length).toBe(2);
+  expect(interior(1)).toEqual([255, 255, 255, 255]); // white, tinted on the GPU
+  expect(image.tint).toEqual([0, 0, 1, 1]);
+  setFill("#ff0000");
+  expect(commandsOf(node, "image")[0]!.tint).toEqual([1, 1, 1, 1]);
+  expect(created.length).toBe(3);
+  expect(interior(2)).toEqual([255, 0, 0, 255]);
+  expect(pixel({ width: 24, data: created[2]! }, 5, 12)).toEqual([0, 0, 255, 255]); // stroke in the icon color
+  setFill(false);
+  commandsOf(node, "image");
+  expect(created.length).toBe(4);
+  expect(interior(3)[3]).toBe(0);
+});

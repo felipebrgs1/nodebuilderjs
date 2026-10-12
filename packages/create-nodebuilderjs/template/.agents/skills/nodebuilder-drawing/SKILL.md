@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-drawing
-description: Freeform drawing in nodebuilder with the Canvas widget (lines, polygons, arcs, gauges, sparklines, annotations, custom visualizations). Use for non-rectangular shapes and charts that @nodebuilderjs/core/charts does not cover, instead of the browser <canvas> or D3. For regular line, area, bar and pie charts, use the nodebuilder-charts skill.
+description: Freeform drawing in nodebuilder with the Canvas widget (lines, dashed lines, polygons, arcs, gauges, sparklines, annotations, labels fitted with measureText, custom visualizations); the draw function is reactive. Use for non-rectangular shapes and charts that @nodebuilderjs/core/charts does not cover, instead of the browser <canvas> or D3. For regular line, area, bar and pie charts, use the nodebuilder-charts skill.
 ---
 
 # Drawing with `<Canvas>`
@@ -29,20 +29,50 @@ const [data, setData] = createSignal([12, 40, 33, 70, 55, 90]);
 |---|---|
 | `g.width`, `g.height` | canvas size (inside the `padding`) |
 | `rect(x, y, w, h, color, radius?)` | rectangle (bars) |
-| `line(x0, y0, x1, y1, color, width = 1, cap = "round")` | segment; cap `round`, `butt` (flat) or `square` |
-| `polyline(points, color, width = 1, { cap, closed })` | line through several points `[x0, y0, x1, y1, ...]`, round joins |
+| `line(x0, y0, x1, y1, color, width = 1, cap = "round", dash?)` | segment; cap `round`, `butt` (flat) or `square`; `dash` like `[4, 3]` (dash, gap...) |
+| `polyline(points, color, width = 1, { cap, closed, dash })` | line through several points `[x0, y0, x1, y1, ...]`, round joins |
 | `polygon(points, color)` | filled polygon (concave is fine; self-intersecting is not drawn) |
 | `circle(cx, cy, radius, color)` | disc |
 | `arc(cx, cy, outerRadius, innerRadius, start, sweep, color)` | slice (inner 0) or ring; radians, 0 = top, clockwise |
-| `text(text, x, y, color, size?, bold?)`, `measureText(text, size?)` | labels; `y` is the top of the line |
+| `text(text, x, y, color, size?, bold?)` | one line of text; `y` is the top of the line. No max width, wrapping or "…" |
+| `measureText(text, size?, bold?)` | `{ width, height }` of that text, to align it or make it fit (below) |
+
+Sizes default to the theme's font size (14). Text that must fit a width:
+
+```tsx
+import { Canvas, createSignal, theme } from "@nodebuilderjs/core";
+import type { DrawContext } from "@nodebuilderjs/core";
+
+/** `text` cut with "…" to fit `max` px. */
+function fit(g: DrawContext, text: string, max: number, size?: number): string {
+  if (g.measureText(text, size).width <= max) return text;
+  let end = text.length;
+  while (end > 0 && g.measureText(text.slice(0, end) + "…", size).width > max) end--;
+  return text.slice(0, end) + "…";
+}
+
+const [title] = createSignal("A very long track title that does not fit");
+<Canvas width={180} height={40} draw={(g) => {
+  const label = fit(g, title(), g.width - 8, 13);
+  const { height } = g.measureText(label, 13);
+  g.text(label, 4, (g.height - height) / 2, theme.text.primary, 13);           // centered vertically
+  g.line(0, g.height - 1, g.width, g.height - 1, theme.divider, 1, "butt", [4, 3]); // dashed
+}} />;
+```
+
+For wrapping paragraphs, a `<Text>` next to the canvas (or over it: an absolute sibling in a
+`Box`, declared after the `Canvas`) is simpler than drawing text.
 
 ## Rules
 
 - Give the canvas a size: `width`/`height` or `grow`. Without a size, `draw` does not run.
 - Local coordinates, with `y` pointing down. Flip it for charts: `g.height - value * scale`.
 - `draw` must only draw: do not create signals or effects or call `set` inside it.
-- The canvas redraws when a signal read in `draw` changes or its size changes; the geometry
-  is recorded, so other parts of the window redrawing cost nothing here.
+- `draw` is **reactive**: it runs inside an effect, so every signal it reads (the data, a
+  hovered index, `theme.*` colors) is tracked, and changing one redraws the canvas, once per
+  change. It also redraws when its size changes. Do not wrap it in `createEffect` and do not
+  read the data outside `draw` (that reads it once). The geometry is recorded, so other parts
+  of the window redrawing cost nothing here.
 - Live data: update the signal with `requestAnimationFrame`; thousands of points
   work (5000 line + area points at ~120 fps).
 - Pie/donut: accumulate the slices in radians (`fraction * 2 * Math.PI`); a small gap

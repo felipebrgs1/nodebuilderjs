@@ -1,7 +1,7 @@
-import { expect, test } from "bun:test";
-import { Box, Button, Column, Overlay, Scroll, Text, TextField, createSignal } from "@nodebuilderjs/core";
+import { describe, expect, test } from "bun:test";
+import { Box, Button, Column, For, Overlay, Row, Scroll, Text, TextField, Tooltip, Window, createSignal } from "@nodebuilderjs/core";
 import type { PointerEvent } from "@nodebuilderjs/core";
-import { click, findByText, interact, mount } from "@nodebuilderjs/core/testing";
+import { click, findAllByLabel, findAllByText, findByLabel, findByText, interact, mount } from "@nodebuilderjs/core/testing";
 
 test("interact: hover, press and release go through the real event delivery", () => {
   const log: string[] = [];
@@ -92,4 +92,179 @@ test("findByText and click also reach overlay content", () => {
   ));
   click(findByText(root, "Renomear")!);
   expect(log).toEqual(["renomear"]);
+});
+
+describe("node helpers refuse targets the user could not reach", () => {
+  // Chips 100 px wide in a 300 px panel: Funk (300..400) touches the edge, Soul (400..500) is culled.
+  const genres = ["Rock", "Jazz", "Pop", "Funk", "Soul"];
+  const chips = (log: string[]) => (
+    <For each={genres}>{(genre) => <Button label={genre} width={100} onClick={() => log.push(genre)} />}</For>
+  );
+
+  test("a culled node (or inside one): the interact helpers and click throw, naming it and the fix", () => {
+    const log: string[] = [];
+    const { root } = mount(() => (
+      <Column align="start">
+        <Row width={300} clip>{chips(log)}</Row>
+      </Column>
+    ));
+    const soul = findByText(root, "Soul")!;
+    const ui = interact(root);
+    const attempts = [
+      () => ui.hover(soul),
+      () => ui.press(soul),
+      () => ui.release(soul),
+      () => ui.drag(soul, 10, 0),
+      () => ui.scroll(soul, 10),
+      () => click(soul),
+    ];
+    for (const attempt of attempts) expect(attempt).toThrow(/Text "Soul".*culled.*scrollIntoView/s);
+    expect(log).toEqual([]);
+  });
+
+  test("a node whose center is outside a clipping ancestor: the error names the ancestor", () => {
+    const log: string[] = [];
+    const { root } = mount(() => (
+      <Column align="start">
+        <Row width={300} clip>{chips(log)}</Row>
+      </Column>
+    ));
+    // The Button sits on the edge, so it is laid out (its padded label is already culled).
+    const funk = findByText(root, "Funk")!.parent!;
+    expect(funk.culled).toBe(false);
+    expect(() => interact(root).press(funk)).toThrow(/^Button cannot be reached: .*\(350, \d+.*clipped by Row \[0,0 300x\d+\]/s);
+    expect(() => click(funk)).toThrow(/clipped by Row/);
+    expect(log).toEqual([]);
+  });
+
+  test("the window clips too", () => {
+    const { root } = mount(() => (
+      <Column align="start">
+        <Box height={590} />
+        <Button label="Below" onClick={() => {}} />
+      </Column>
+    ), { width: 800, height: 600 });
+    const below = findByText(root, "Below")!;
+    expect(() => interact(root).press(below.parent!)).toThrow(/^Button cannot be reached: .*clipped by the window/);
+    expect(() => interact(root).press(below)).toThrow(/clipped by the window/); // its top shows, its center does not
+  });
+
+  test("after scrollIntoView() and relayout() the same node is clickable", () => {
+    const log: string[] = [];
+    const { root, relayout } = mount(() => (
+      <Column align="start">
+        <Scroll horizontal width={300}>{chips(log)}</Scroll>
+      </Column>
+    ));
+    const soul = findByText(root, "Soul")!;
+    expect(() => click(soul)).toThrow(/culled/);
+    soul.scrollIntoView();
+    relayout();
+    click(soul);
+    interact(root).press(findByText(root, "Soul")!);
+    expect(log).toEqual(["Soul"]);
+  });
+
+  test("a partly clipped node with its center in view still works", () => {
+    const log: string[] = [];
+    const { root } = mount(() => (
+      <Column align="start">
+        <Row width={280} clip>{chips(log)}</Row>
+      </Column>
+    ));
+    const ui = interact(root);
+    const pop = findByText(root, "Pop")!; // 200..300 inside 280: center 250 is visible
+    ui.press(pop);
+    ui.release(pop);
+    click(pop);
+    expect(log).toEqual(["Pop", "Pop"]);
+  });
+
+  test("window positions are not checked: down/up at a clipped point just miss", () => {
+    const log: string[] = [];
+    const { root } = mount(() => (
+      <Column align="start">
+        <Row width={300} clip>{chips(log)}</Row>
+      </Column>
+    ));
+    const ui = interact(root);
+    ui.down(450, 10);
+    ui.up(450, 10);
+    expect(log).toEqual([]);
+  });
+});
+
+test("findAllByText returns every match, in tree order", () => {
+  const { root } = mount(() => (
+    <Column>
+      <Text>Play</Text>
+      <Text>Pause</Text>
+      <Button label="Play" />
+    </Column>
+  ));
+  expect(findAllByText(root, "Play")).toHaveLength(2);
+  expect(findAllByText(root, /^P/).map((n) => n.label)).toEqual(['Text "Play"', 'Text "Pause"', 'Text "Play"']);
+  expect(findAllByText(root, "Stop")).toEqual([]);
+});
+
+describe("ariaLabel", () => {
+  test("any widget takes one; findByLabel finds it (string or RegExp) and it can be clicked", () => {
+    const log: string[] = [];
+    const { root } = mount(() => (
+      <Row>
+        <Button ariaLabel="Previous" onClick={() => log.push("previous")} />
+        <Button ariaLabel="Play" onClick={() => log.push("play")} width={40} height={40} />
+        <Box ariaLabel="Cover" width={40} height={40} />
+        <Text ariaLabel="Elapsed">1:02</Text>
+      </Row>
+    ));
+    click(findByLabel(root, "Play")!);
+    const ui = interact(root);
+    ui.press(findByLabel(root, /^prev/i)!);
+    ui.release(findByLabel(root, /^prev/i)!);
+    expect(log).toEqual(["play", "previous"]);
+    expect(findByLabel(root, "Cover")!.label).toBe("Box");
+    expect(findAllByLabel(root, /e/).map((n) => n.ariaLabel)).toEqual(["Previous", "Cover", "Elapsed"]);
+    expect(findByLabel(root, "Stop")).toBeUndefined();
+  });
+
+  test("a reactive ariaLabel follows its signal", () => {
+    const [playing, setPlaying] = createSignal(false);
+    const { root } = mount(() => <Button ariaLabel={() => (playing() ? "Pause" : "Play")} />);
+    expect(findByLabel(root, "Play")).toBeDefined();
+    setPlaying(true);
+    expect(findByLabel(root, "Play")).toBeUndefined();
+    expect(findByLabel(root, "Pause")).toBeDefined();
+  });
+
+  test("the window's title-bar buttons are labelled", () => {
+    const { root } = mount(() => <Window title="Player"><Text>body</Text></Window>);
+    for (const name of ["Minimize", "Maximize", "Close"]) expect(findByLabel(root, name)).toBeDefined();
+  });
+
+  test("a Tooltip labels its trigger with the tip, unless the trigger has its own label", () => {
+    const { root } = mount(() => (
+      <Row>
+        <Tooltip text="Shuffle">
+          <Button label="⤮" />
+        </Tooltip>
+        <Tooltip text="Repeat">
+          <Button ariaLabel="Repeat all" label="↻" />
+        </Tooltip>
+      </Row>
+    ));
+    expect(findByLabel(root, "Shuffle")!.label).toBe("Button");
+    expect(findByLabel(root, "Repeat")).toBeUndefined();
+    expect(findByLabel(root, "Repeat all")!.label).toBe("Button");
+  });
+
+  test("a Tooltip around several nodes labels itself", () => {
+    const { root } = mount(() => (
+      <Tooltip text="Now playing">
+        <Text>Blue in Green</Text>
+        <Text>Miles Davis</Text>
+      </Tooltip>
+    ));
+    expect(findByLabel(root, "Now playing")!.label).toBe("Tooltip");
+  });
 });

@@ -8,6 +8,8 @@ import { theme } from "../theme.js";
 export type StyleProps = { [K in keyof Style]?: MaybeAccessor<NonNullable<Style[K]>> } & {
   /** Called with the widget's element when it is created: focus(), scrollTo(), its laid-out box. */
   ref?: (el: ElementRef) => void;
+  /** Accessible name, for elements without text (an icon-only button); tests find it with `findByLabel`. */
+  ariaLabel?: MaybeAccessor<string>;
 };
 export type BoxProps = StyleProps & Handlers & { children?: Child };
 
@@ -29,6 +31,9 @@ export function applyProps(node: UINode, props: Record<string, any>) {
     else node.set(key, value);
   }
   for (const key of HANDLER_KEYS) if (props[key]) node.handlers[key] = props[key];
+  const aria = props.ariaLabel;
+  if (typeof aria === "function") createEffect(() => (node.ariaLabel = aria()));
+  else if (aria !== undefined) node.ariaLabel = aria;
   props.ref?.(node);
 }
 

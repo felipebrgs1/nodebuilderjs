@@ -232,6 +232,8 @@ export class UINode implements ElementRef {
   paint?: (p: Painter, node: UINode) => void;
   /** Debug label shown by `debugTree`. */
   label: string;
+  /** Accessible name for nodes without text of their own (icon-only buttons); what `findByLabel` matches. */
+  ariaLabel?: string;
 
   // Layout results (absolute, logical pixels).
   x = 0;
@@ -339,7 +341,8 @@ export function scrolls(n: UINode): boolean {
 
 export function debugTree(node: UINode, indent = ""): string {
   const box = `${Math.round(node.x)},${Math.round(node.y)} ${Math.round(node.width)}x${Math.round(node.height)}`;
-  let out = `${indent}${node.label} [${box}]\n`;
+  const aria = node.ariaLabel === undefined ? "" : ` ariaLabel=${JSON.stringify(node.ariaLabel)}`;
+  let out = `${indent}${node.label}${aria} [${box}]\n`;
   for (const c of node.children) out += debugTree(c, indent + "  ");
   return out;
 }

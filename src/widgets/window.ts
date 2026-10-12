@@ -12,6 +12,9 @@ function WindowButton(props: { kind: "minimize" | "maximize" | "close"; onClick:
   Object.assign(node.style, { width: 26, height: 26, radius: 13, cursor: "default" } satisfies Style);
   const state = interaction(node);
   node.handlers.onClick = props.onClick;
+  createEffect(() => {
+    node.ariaLabel = props.kind === "minimize" ? "Minimize" : props.kind === "close" ? "Close" : windowState.maximized() ? "Restore" : "Maximize";
+  });
   createEffect(() =>
     node.set("background", state.pressed() ? theme.control.pressed : state.hovered() ? theme.control.hover : theme.control.base),
   );

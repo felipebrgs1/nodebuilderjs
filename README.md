@@ -61,6 +61,22 @@ freehand drawing, charts, overlays (menu, dialog and tooltip), text (paragraphs,
 ellipsis), scrolling (horizontal, both axes, `scrollIntoView`) and a dashboard
 with tabs, a table and a chart.
 
+### Layout
+
+A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch by default),
+`justify`, `min/max` sizes. There are no percentages or grid:
+
+- **Equal or proportional columns:** `width={0} grow={1}` on each child (CSS `flex: 1 1 0`);
+  the widths follow the `grow` values, not the content. In a column with a height,
+  `height={0} grow={1}` does the same for rows.
+- **`position="absolute"`** with `left`/`top` (from the parent's corner, inside its `padding`; no
+  `right`/`bottom`): out of the flow and at its natural size (it does not stretch), so give it
+  `width`/`height`, taken from the parent's `onResize` to fill it. There is no `zIndex`:
+  children are drawn and hit in order, so declare it last to be on top. Inside a `Scroll` it
+  stays fixed in the visible area; inside an in-flow child of the `Scroll`, it scrolls with it.
+- `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
+  drawn even without a `background` (the blurred box shows through).
+
 ### Images
 
 ```tsx
@@ -92,6 +108,7 @@ import { Star } from "lucide";                                              // o
 <Icon svg={camera} />                          // 20 px, color inherited like text
 <Icon svg={heart} size={32} color="#e01b24" />
 <Button variant="primary"><Icon svg={Star} size={16} /><Text>Favorite</Text></Button>
+<Icon svg={Star} fill />                       // solid: outline icons filled with their color
 ```
 
 `<Icon>` draws SVG with its own renderer, written in TypeScript and built for icons: paths
@@ -100,7 +117,10 @@ import { Star } from "lucide";                                              // o
 of 0.8 out of 255 on stroke edges). A single-color icon is rasterized once, at the exact
 screen size (sharp on HiDPI too), and the color is applied on the GPU: changing the color, on
 hover for example, costs nothing. `strokeWidth` changes the thickness of outline icons, as in
-Lucide. Gradients, text, filters, masks and `<use>` are not supported yet, so complex
+Lucide. `fill` makes them solid, also as in Lucide: it replaces the fill of the root `<svg>`
+(Lucide's is `none`), so the shapes are filled with the icon's color (`fill`) or another one
+(`fill="#e01b24"`) and keep their stroke; a fill that a group or shape sets itself, `none`
+included, still wins. It can be reactive (`fill={liked}`). Gradients, text, filters, masks and `<use>` are not supported yet, so complex
 illustrations should be turned into PNG. React packages (`lucide-react`,
 `@phosphor-icons/react`) don't work: use `lucide-static`, `lucide` or `@phosphor-icons/core`.
 
@@ -117,10 +137,14 @@ illustrations should be turned into PNG. React packages (`lucide-react`,
 
 `<Canvas>` draws with antialiased GPU primitives: thick lines with round, butt or square
 caps, filled polygons (concave ones included), circles and arcs (pie, donut, gauges) and
-text. Coordinates are local to the canvas; `g.width` and `g.height` give its size. Signals read
-in `draw` are tracked: changing one of them redraws. Geometry is computed when the data
-changes, not every frame. Limits: a self-intersecting polygon is not drawn, and lines with a
-translucent color get darker at the joins.
+text. Coordinates are local to the canvas; `g.width` and `g.height` give its size. `draw` is
+reactive: it runs inside an effect, so the signals it reads (data, `theme` colors) are tracked
+and changing one of them redraws. Geometry is computed when the data changes, not every frame.
+`g.text(text, x, y, color, size?, bold?)` draws one line, with no maximum width or ellipsis:
+measure with `g.measureText(text, size?, bold?)` (`{ width, height }`) to align or cut it.
+Lines take a dash pattern (`g.line(..., cap, [4, 3])`, `g.polyline(..., { dash })`).
+Limits: a self-intersecting polygon is not drawn, and lines with a translucent color get darker
+at the joins.
 
 ### Charts
 
@@ -236,6 +260,11 @@ const [width, setWidth] = createSignal(0);
   `scrollTo({ x, y })`, `scrollX` and `scrollY`. `ref` is called when the widget is created,
   before layout; a `focus()` or `scrollIntoView()` at that point takes effect as soon as the
   widget enters the tree.
+- `ariaLabel` (any widget, fixed or a function) names an element that has no text, such as an
+  icon-only button: `<Button ariaLabel="Play">`. Tests find it with `findByLabel` (see
+  [Testing](#testing)). The window's title-bar buttons are labelled `"Minimize"`,
+  `"Maximize"`/`"Restore"` and `"Close"`, and a `Tooltip` gives its text to a trigger without
+  a label. There is no screen reader support yet (see the limitations).
 
 ### Scrolling
 
@@ -354,9 +383,13 @@ const panel = createPresence(open, { enter: 180, exit: 120 });
   `color={theme.text.secondary}` keeps the color from that moment. The built-in widgets
   already follow it.
 - `animate(from, to, onUpdate, { duration, easing, onDone })` returns a function that stops it;
-  `createTween(source)` follows a value; `createPresence(when)` gives `mounted` (stays `true`
-  until the exit finishes, for use in `<Show>`) and `progress` (0 to 1). Curves in `easing`
-  (`linear`, `easeIn`, `easeOut`, `easeInOut`); `mixColor(a, b, t)` blends colors.
+  `createTween(source, { duration, easing })` follows a value; `createPresence(when, { enter,
+  exit, easing })` gives `mounted` (stays `true` until the exit finishes, for use in `<Show>`)
+  and `progress` (0 to 1). Durations in ms (default 200; presence 180 in, 120 out), default
+  curve `easing.easeOut` (also `linear`, `easeIn`, `easeInOut`, or any `(t) => number`).
+- `mixColor(a, b, t)` blends two colors into `"#rrggbbaa"`, alpha included and not
+  premultiplied: to fade a color out, mix it with the same color at alpha 0, not `"transparent"`
+  (which passes through gray).
 - `Dialog`, `Select`, `Tooltip` and `Toggle` already animate. Without a window (in tests) every
   animation finishes immediately; `frames()` from `@nodebuilderjs/core/testing` controls time.
 
@@ -442,6 +475,48 @@ It is the system clipboard (Wayland and X11), text only. `TextField` pastes with
 Shift+Insert (line breaks become spaces). Without a window, as in tests, it is an in-memory
 clipboard. On Wayland, the compositor only accepts a copy right after a key press or click
 (the usual case: Ctrl+C, a "Copy" button).
+
+### Testing
+
+`@nodebuilderjs/core/testing` runs the app in `bun test` without a window, with fake text
+metrics (8 px per character, 20 px lines) so layout is deterministic:
+
+```tsx
+import { expect, test } from "bun:test";
+import { Button, Row, Text, createSignal } from "@nodebuilderjs/core";
+import { click, findAllByText, findByLabel, interact, mount } from "@nodebuilderjs/core/testing";
+
+test("play and pause", () => {
+  const [playing, setPlaying] = createSignal(false);
+  const { root } = mount(() => (
+    <Row>
+      <Text>Blue in Green</Text>
+      <Button ariaLabel={() => (playing() ? "Pause" : "Play")} label="▶" onClick={() => setPlaying((p) => !p)} />
+      <Text>Blue in Green</Text>
+    </Row>
+  ));
+  click(findByLabel(root, "Play")!);
+  expect(playing()).toBe(true);
+  const ui = interact(root); // real event delivery: hit testing, hover, focus, capture
+  ui.press(findByLabel(root, "Pause")!);
+  ui.release(findByLabel(root, "Pause")!);
+  expect(playing()).toBe(false);
+  expect(findAllByText(root, "Blue in Green")).toHaveLength(2);
+});
+```
+
+- `findByText`/`findAllByText` match `Text` content (a string or a RegExp);
+  `findByLabel`/`findAllByLabel` match `ariaLabel`; `findAll(root, predicate)` is free-form.
+  All of them also search open overlays.
+- `click(node)` calls the nearest `onClick` directly; `interact(root)` delivers pointer and
+  keyboard input like a window does (`hover`, `press`, `release`, `drag`, `scroll`, `key`,
+  `type`, plus `down`/`up`/`move` at window positions). `frames()` controls time for
+  animations.
+- `click` and the node helpers of `interact` throw when a user could not reach the node: it
+  is culled (outside the visible area in the last layout, e.g. overflowing a `clip` panel or
+  a `Scroll`) or its center is clipped by an ancestor or the window. The error names the node
+  and the ancestor; bring it into view with `scrollIntoView()` and `relayout()`, or give it
+  room. Window positions (`down(x, y)`...) are not checked.
 
 ## Distributing
 

@@ -137,7 +137,7 @@ What cannot be tested automatically is documented when closing the task:
 src/                   one module per folder; relative imports with `.js`
   index.ts             public API (re-exports the modules)
   jsx-runtime.ts       own JSX runtime; jsx() only creates descriptions (ElementDesc)
-  testing.ts           @nodebuilderjs/core/testing: mount, findByText, click, interact
+  testing.ts           @nodebuilderjs/core/testing: mount, findBy/AllByText, findBy/AllByLabel, click, interact
   theme.ts             lightTheme/darkTheme, `theme` (reactive getters), setTheme, colorScheme
   animation/index.ts   animate, createTween, createPresence, easing, mixColor
   assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts references it with preserve="true")
@@ -278,8 +278,9 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   fades, leaves focus and the Tab order and changes the cursor; the control's handlers check
   the returned accessor. Keys the control uses (arrows in `Slider`) call `e.stop()`,
   otherwise they scroll the surrounding `Scroll`.
-- Every widget passes its props through `applyProps`: it is what wires style, handlers and
-  the `ref` (the `ref` receives the `UINode`, typed as `ElementRef`). New widgets too.
+- Every widget passes its props through `applyProps`: it is what wires style, handlers,
+  `ariaLabel` (into `UINode.ariaLabel`; `UINode.label` is the debug label) and the `ref`
+  (the `ref` receives the `UINode`, typed as `ElementRef`). New widgets too.
 - Focus by click only (e.g. `<Text selectable>`, which needs focus for Ctrl+C):
   `focusable = true` and `tabStop = false`, so it stays out of the Tab order.
 - Color/size defaults come from `theme.ts`, not hard-coded in widgets. Theme colors go
@@ -550,6 +551,12 @@ packages, all with the version from the root `package.json`:
   `create-nodebuilderjs` renames it when copying. Relative symlinks also do not survive
   pack/`cpSync`: that is why the `.claude/skills/` links are created by `index.js`.
 - `Object.keys(native)` returns `[]` (non-enumerable properties); it is not an error.
+
+### Frame loop
+- Code that runs inside `renderFrame` (`layout()`, `refreshHover()`, paint) must only call
+  `invalidate()` when something really changed: an unconditional invalidate there redraws
+  at the fps cap forever while idle (this happened with the scrollbar highlight). To find
+  who asks for frames, log `new Error().stack` in `schedule()` (`runtime/app.ts`).
 
 ### Native
 - libwayland headers < 1.22 lack the v6 fields of `wl_surface_listener`, and an old

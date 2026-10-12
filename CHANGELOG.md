@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### New
+- **`<Icon fill>`:** `true` fills with the icon color, a color fills with that color; replaces
+  the root `<svg>` fill (as Lucide's prop does), so outline icons become solid. Reactive.
+- **`ariaLabel`** on every widget: a name for elements without text (icon-only buttons). The
+  window's title-bar buttons are labelled ("Minimize", "Maximize"/"Restore", "Close") and a
+  `Tooltip` labels its trigger with the tip. `debugTree()` shows it.
+- **Testing:** `findAllByText`, `findByLabel`, `findAllByLabel`.
+
+### Changed
+- **Testing:** `click(node)` and the node helpers of `interact()` throw when the node can't be
+  reached (culled, clipped by an ancestor or the window, not in the tree, overlay not shown)
+  instead of silently missing. `click(node)` uses the node's center, and `localX/localY` are
+  relative to the node that handles the click.
+
+### Docs
+- Skills and README: equal columns (`width={0} grow={1}`), absolute children, `clip` with
+  `radius`, `shadow` without `background`, reactive Canvas `draw` and fitting text with
+  `measureText`, animation options (`createTween` `duration`/`easing`, `mixColor`), events.
+
+### Fixed
+- **Idle redraw:** since the interactive scrollbars (0.2.5), an idle window redrew at the fps cap
+  (~10% CPU for an empty window, ~25% for the dashboard) because the per-frame hover refresh
+  invalidated even with no scrollbar to highlight. Idle is back to 0 frames and 0% CPU.
+
 ## 0.2.5 (2026-10-12)
 
 ### New
