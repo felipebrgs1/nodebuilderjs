@@ -106,7 +106,7 @@ What cannot be tested automatically is documented when closing the task:
 
 ### Test organization
 
-- One file per subject: `core` (reactivity, tree, layout, culling), `grid` (`Grid`, `aspectRatio`), `wrap` (`wrap` rows/columns), `app` (`run()` with a
+- One file per subject: `core` (reactivity, tree, layout, culling), `grid` (`Grid`, `aspectRatio`), `wrap` (`wrap` rows/columns), `margin`, `app` (`run()` with a
   fake native: idle renders nothing, frame reasons, `NB_TRACE`, frame loop and overflow
   warnings), `overflow` (overflow detection, `layoutWarnings()`), `control-flow`
   (`Show`, `Switch`/`Match`, `Index`, nesting without recreating components),
@@ -439,6 +439,13 @@ Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes
   `align`/`alignSelf` says otherwise or they have an `aspectRatio`. Children stay in one
   parent, so `<For>` stays keyed. Every `direction === "row"` check has a grid branch next
   to it: a new layout function needs one too.
+- **`margin`** is outside the box: every size function adds the child's margins to it
+  (`intrinsic`, `heightAt`, `minWidth`/`minHeightAt` floors, `gridRows`, `wrapLines`), flex
+  (`mainSizes`) works on outer sizes and returns the box, `crossSize` subtracts the cross
+  margins from the room, and placement offsets by the start margins (`absoluteSpan` adds them to
+  the edges). `margins()`/`marginX()`/`marginY()` return shared zeros without a margin, and
+  `mainSizes` only allocates when a child has one. Overflow math counts them. Hit test and
+  paint use the box, so they ignore it.
 - **`wrap`** (Row/Column, not grid): `wrapLines` breaks the in-flow children into lines by
   their natural main size and runs `mainSizes` per line (grow/shrink stay inside it);
   `placeWrapped` places line by line (`justify`/`alignSelf` per line, lines packed at the

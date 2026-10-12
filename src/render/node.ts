@@ -22,6 +22,12 @@ export interface Style {
   /** Space between the rows of a grid, or between the lines of a wrapping Row/Column. Default: `gap`. */
   rowGap?: number;
   padding?: Edges;
+  /**
+   * Space outside the border that the parent's layout keeps free (CSS order; negative values
+   * pull neighbors closer). Not painted and not hit: the node's box is its border box.
+   * On an absolute child, an extra offset from the edges it is placed by.
+   */
+  margin?: Edges;
   width?: number;
   height?: number;
   minWidth?: number;

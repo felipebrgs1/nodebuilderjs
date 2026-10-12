@@ -56,7 +56,7 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
 ## Style props (any widget)
 
 - Layout: `direction` (`"row"`/`"column"`), `gap`, `padding` (`8`, `[v, h]` or
-  `[top, right, bottom, left]`), `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
+  `[top, right, bottom, left]`), `margin` (same forms, negative allowed), `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
   `maxHeight`, `grow`, `aspectRatio` (width / height), `align`, `alignSelf`, `justify`,
   `wrap` (on a `Row`/`Column`: lines; on a `Text`: word wrapping), `rowGap`,
   `position: "absolute"` + `left`/`top`/`right`/`bottom`, `zIndex`, `clip`.
@@ -357,6 +357,12 @@ let button: ElementRef | undefined;
   whatever width it gets (stretched in a column, `grow`, a fixed `width`) and its height follows;
   it can shrink down to its widest child. `<Column wrap height={...}>` breaks into columns at
   its height.
+- **`margin`** is space outside the border that the parent keeps free: it counts in every size
+  around the child (natural size, `grow`, `Grid` cells, `wrap` lines) and a stretched child
+  gets the room minus its margins. Prefer `gap`/`padding` on the parent for regular spacing;
+  use `margin` for one child (extra space above a section title) or negative values (a divider
+  that cancels the card's padding: `margin={[8, -16]}`). Not painted, not clickable, never
+  collapses, adds to `gap`. On an absolute child it adds to `left`/`top`/`right`/`bottom`.
 - **`<Grid columns={3} gap={8}>`** (CSS `repeat(3, 1fr)`): children flow into rows of equal
   cells, whatever their content; the last row keeps its empty cells. A row is as tall as its
   tallest cell and cells stretch to it (`align`/`alignSelf` change that). `rowGap` sets the

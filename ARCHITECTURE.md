@@ -218,6 +218,17 @@ a fixed `height`. Overflow is checked per line along it (only a child longer tha
 overflows) and once across, for the stacked lines. Nodes without `wrap` take none of these
 paths (dashboard table, 500 rows: layout 2.77 → 2.79 ms/frame, within noise).
 
+**`margin`** lives only in the parent's arithmetic: a node's box (`x`, `y`, `width`,
+`height`) stays its border box, so painting and hit testing never see it. Every function that
+sums or compares children adds their margins (`intrinsic`, `heightAt`, the floors of
+`minWidth`/`minHeightAt`, `gridRows`, `wrapLines`); `mainSizes` runs flex on outer sizes
+(basis, `grow` clamps and shrink floors include the margin, as in CSS) and returns the box
+sizes; `crossSize` takes the cross margins out of the room, so a stretched child fits inside
+them; placement adds the start margin before a child and the end margin after it. Absolute
+children add theirs to the edge distances (`absoluteSpan`). Without a margin, the helpers
+return shared zeros and `mainSizes` skips its extra array (dashboard table, 500 rows: layout
+2.73 → 2.78 ms/frame, within noise).
+
 The wrapping itself lives in `render/text-wrap.ts`: greedy, at spaces, like CSS's
 `overflow-wrap: normal` (a word longer than the line overflows). Word widths are summed
 instead of measuring the whole line again; a line that fits whole is measured only once.

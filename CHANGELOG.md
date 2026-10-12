@@ -7,6 +7,10 @@
   between items and `rowGap` (default `gap`) between lines; `grow`, `justify` and `alignSelf`
   apply per line. The Row's height follows the width it gets and it shrinks down to its widest
   child. `<Column wrap>` breaks into columns at its height.
+- **`margin`** (`8`, `[v, h]` or `[top, right, bottom, left]`; negative allowed): space outside
+  the border that the parent's layout keeps free, counted in natural sizes, `grow`, shrinking,
+  `Grid` cells and `wrap` lines; stretched children fit inside it. Not painted or hit; adds to
+  `gap` (no collapsing). On absolute children it adds to `left`/`top`/`right`/`bottom`.
 - **Fix:** a child with a fixed `width` and a smaller `minWidth` (such as `Slider`) no longer
   lets its container shrink below that width.
 - **`zIndex`:** paint and hit-test order among siblings (default 0; ties keep child order).

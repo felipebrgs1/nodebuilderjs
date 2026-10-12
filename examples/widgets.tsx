@@ -26,7 +26,7 @@ function Controls() {
   const [city, setCity] = createSignal<string | undefined>(initial === "select" ? "sp" : undefined);
   const [confirm, setConfirm] = createSignal(initial === "dialogo");
   return (
-    <Window title="Widgets" width={680} height={600}>
+    <Window title="Widgets" width={680} height={640}>
       <Column grow={1} padding={20} gap={16}>
       <Tabs
         value={tab}
@@ -77,6 +77,8 @@ function Controls() {
             <Spinner />
             <Text color={() => theme.text.secondary}>Carregando…</Text>
           </Row>
+          {/* A negative margin cancels the card's 16px padding: the rule runs edge to edge. */}
+          <Box height={1} margin={[4, -16]} background={() => theme.divider} />
           <Text color={() => theme.text.secondary}>Tags</Text>
           <Row wrap gap={6}>
             {TAGS.map((tag) => (

@@ -4,7 +4,7 @@
 // here: run() prints them in development, tests read them with layoutWarnings().
 
 import { type UINode, scrolls } from "./node.js";
-import type { Rect } from "./layout.js";
+import { type Rect, margins } from "./layout.js";
 
 export interface LayoutWarning {
   /** The container whose children do not fit. */
@@ -44,7 +44,11 @@ export function checkOverflow(node: UINode, kids: UINode[], row: boolean, conten
     if (child) report(node, child, mainAxis, content - innerMain, `children need ${Math.round(content)}px, ${Math.round(innerMain)}px available`);
   }
   if (widest > innerCross + EPSILON && !scrollsOn(node, crossAxis)) {
-    const size = (c: UINode) => (crossAxis === "x" ? c.width : c.height);
+    // Margins included: a box that fits can still be pushed past the edge by them.
+    const size = (c: UINode) => {
+      const [mt, mr, mb, ml] = margins(c);
+      return crossAxis === "x" ? c.width + ml + mr : c.height + mt + mb;
+    };
     const child = kids.find((c) => size(c) > innerCross + EPSILON && (end(c, crossAxis) > viewEnd(view, crossAxis) + EPSILON || start(c, crossAxis) < viewStart(view, crossAxis) - EPSILON));
     if (child) {
       const need = size(child);

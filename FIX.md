@@ -47,19 +47,7 @@ keeps being the default. Document the trade-off (real metrics depend on installe
 
 ## B. Layout
 
-### B5. `margin` (report item 8) - medium
-
-**API:** `margin?: Edges` (CSS order, negative allowed). Space outside the border, not
-painted, not hit-tested.
-
-**Implementation:** `Style` + `STYLE_KEYS`; in `layout.ts` every child's outer size =
-box + margin (intrinsic, `heightAt`, flex basis, min-content) and its placement offsets by
-`margin.left/top`. Negative margins shrink the outer size (can overlap a sibling). This
-touches every size function: write the tests first and keep `gap` semantics unchanged.
-
-**Tests:** margin adds to the parent's intrinsic size; with `grow` the box shrinks by the
-margin; negative margin pulls the next sibling over; absolute children use margin as an
-offset; `align="stretch"` subtracts cross margins.
+Done (B4 `wrap`, B5 `margin`).
 
 ---
 
@@ -143,5 +131,5 @@ premultiplied space (as CSS does) and un-premultiply; test that
 
 ## Suggested order
 
-1. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
+1. C3 + F6 (gradients, premultiplied mixColor)
 2. C2 (weights, spacing), A4, E1, F4

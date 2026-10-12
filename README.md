@@ -64,8 +64,16 @@ with tabs, a table and a chart.
 ### Layout
 
 A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch by default;
-`alignSelf` overrides it for one child), `justify`, `min/max` sizes, `wrap`, plus `Grid` and
-`aspectRatio`. There are no percentages:
+`alignSelf` overrides it for one child), `justify`, `min/max` sizes, `wrap`, `margin`, plus
+`Grid` and `aspectRatio`. There are no percentages:
+
+- **`margin`** (`8`, `[v, h]` or `[top, right, bottom, left]`, like `padding`): space outside the
+  border that the parent keeps free. It adds to the child's size in everything around it
+  (natural sizes, `grow`, shrinking, `Grid` cells, `wrap` lines); a stretched child gets the
+  room minus its margins. Negative values pull a neighbor over or let a child bleed into its
+  parent's padding (`margin={[0, -16]}` in a `Card` runs edge to edge). It is not painted and
+  not clickable. On an absolute child it adds to `left`/`top`/`right`/`bottom`. Margins do not
+  collapse (unlike CSS block margins) and add to `gap`.
 
 - **`<Row wrap gap={6} rowGap={8}>`** (CSS `flex-wrap: wrap`): children that do not fit start
   a new line (chips, tags). Each line is laid out on its own (`grow`, `justify`, `alignSelf`
