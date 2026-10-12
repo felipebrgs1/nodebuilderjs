@@ -15,6 +15,8 @@ A user built a Spotify-like dashboard with 0.2.5 and reported 13 problems. Alrea
   `hoverStyle`/`pressStyle`/`createInteraction` (C1); `underline` (C2 part); Canvas
   `text` `maxWidth` (C4); `<Window decorations={false}>`, `dragRegion`, `<WindowControls>`
   (D1); `bun run check:snippets` (F5).
+- **1. Seeing the UI**: `nodebuilder screenshot` and `screenshot()` in testing render real
+  pixels with no window or display server (A1).
 - **3, 4, 10, 11 (docs)**: equal columns, absolute children, clip radius, shadow without
   background, reactive Canvas `draw`, fitting text with `measureText`, animation options,
   `mixColor`, events. All pinned by tests in `core`/`style`.
@@ -26,46 +28,6 @@ effort inside each group. Delete an item from here when it ships (and add it to 
 ---
 
 ## A. Agents and debugging
-
-### A1. Headless screenshot (report item 1) - large, highest value
-
-**Problem:** an agent finishes a UI without ever seeing it. Tests check boxes and draw
-commands, not colors, shadows, Canvas output or visual alignment.
-
-**API:**
-- CLI: `nodebuilder screenshot <app.tsx> <out.png> [--width 1200 --height 800 --scale 1
-  --theme dark --wait-frames 2]`.
-- Tests: `const shot = await screenshot(root, { width, height, scale })` in
-  `@nodebuilderjs/core/testing` returning `{ width, height, rgba }` plus `toPNG()`; and
-  `savePNG(shot, path)`.
-
-**Implementation:**
-1. Platform contract (`native/include/nb_platform.h`): `bool nb_platform_offscreen_open(int w,
-   int h, int scale)` / `nb_platform_offscreen_close()`. Runs on the JS thread, no event pump.
-2. Linux (`native/platform/linux/offscreen.c`): `eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA,
-   EGL_DEFAULT_DISPLAY, NULL)`; fallback `EGL_EXT_platform_device` (first device). GLES2
-   context with no surface (`EGL_KHR_surfaceless_context`) rendering into an FBO
-   (RGBA8 renderbuffer). Must work with no `WAYLAND_DISPLAY`/`DISPLAY` (CI, containers).
-3. Core (`render_gles2.c`): `nb_render_*` already draws into the bound framebuffer; add
-   `nb_render_read_pixels(uint8_t *out)` (`glReadPixels`, flip Y, un-premultiply or keep
-   premultiplied and document it).
-4. Addon (`core/addon.c`): `renderOffscreen(w, h, scale, commands, texts) -> Uint8Array`,
-   typed in `src/runtime/native.ts`. Text uses the same FreeType atlas, so real fonts.
-5. TS: `src/testing.ts` lays out with **real** text metrics (`nat.measureText`) for the
-   screenshot, paints with `paintTree`, calls the addon. PNG encoder in `src/image/png-encode.ts`
-   (stored or deflate via `node:zlib`, which png.ts already uses).
-6. CLI (`cli/nodebuilder.ts`): imports the app module with a fake `run()` that captures the
-   view instead of opening a window (add a `NB_HEADLESS=<out.png>` path in `run()` instead
-   of opening a window: layout, `frames()` until animations settle, screenshot, exit).
-
-**Tests:** addon test with `test.skipIf(!offscreenAvailable)`: a red 10x10 RECT gives red
-pixels; rounded corners have AA alpha; TEXT draws non-transparent pixels in its box. PNG
-encoder: round trip through `decodeImage`. CLI: smoke test in `test/cli.test.ts` skipped
-without EGL.
-
-**Docs:** README (Testing), `nodebuilder-testing` skill ("look at your UI: `nodebuilder
-screenshot` then read the PNG"), template AGENTS.md ("after visual changes, take a
-screenshot"), ARCHITECTURE (offscreen path).
 
 ### A3. Overflow warnings (report item 2) - medium
 
@@ -93,8 +55,8 @@ clears it.
 `measureText` works without a window); `useFakeTextMetrics({ charWidth, lineHeight })`
 keeps being the default. Document the trade-off (real metrics depend on installed fonts).
 
-**Implementation:** check that `nat.measureText` initializes FreeType lazily without
-`open()` (it should: `text.c` + `nb_platform_font_path`). If not, add the lazy init.
+**Implementation:** `nat.measureText` already works without `open()`, and
+`nativeTextMeasurer(nat, scale)` (`src/runtime/native.ts`) is what screenshots use: install it.
 
 **Tests:** `test/testing.test.tsx`: with real metrics "iiii" is narrower than "MMMM";
 `skipIf` no addon.
@@ -194,7 +156,7 @@ before the shader, or accept straight interpolation and document it. Keep `nb.h`
 where a plain color is required.
 
 **Tests:** `test/draw.test.ts`: the op is emitted with the stops; theme switch re-emits;
-visual check with an example + `spectacle` capture (or A1 once it exists).
+visual check with `nodebuilder screenshot` of an example.
 
 ---
 
@@ -251,7 +213,6 @@ premultiplied space (as CSS does) and un-premultiply; test that
 
 ## Suggested order
 
-1. A1 (screenshot): the biggest win left for agents
-2. B2/B3 (Grid, aspectRatio), A3 (overflow warnings), B4 (wrap)
-3. C3 + F6 (gradients, premultiplied mixColor), F3 (zIndex), B5 (margin)
-4. C2 (weights, spacing), A4, E1, F4
+1. B2/B3 (Grid, aspectRatio), A3 (overflow warnings), B4 (wrap)
+2. C3 + F6 (gradients, premultiplied mixColor), F3 (zIndex), B5 (margin)
+3. C2 (weights, spacing), A4, E1, F4

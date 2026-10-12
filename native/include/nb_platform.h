@@ -40,6 +40,19 @@ void nb_platform_resize(uint32_t edges);        // interactive resize (NB_EDGE_*
 void nb_platform_set_maximized(bool maximized);
 void nb_platform_minimize(void);
 
+// ---- offscreen rendering (screenshots) ---------------------------------------
+
+/**
+ * JS thread. Makes a GLES2 context current with no window, no display server and no event
+ * pump, with a `buffer_w` x `buffer_h` RGBA8 framebuffer bound: what the renderer draws then
+ * lands there, to be read back with glReadPixels. The context is created on the first call and
+ * kept (the next call only resizes the target). The core never calls it while a window is open
+ * (both would share the renderer's GL objects). On failure: false and the reason in `error`.
+ */
+bool nb_platform_offscreen_begin(int buffer_w, int buffer_h, char *error, size_t error_size);
+/** JS thread: releases the offscreen context, if any. */
+void nb_platform_offscreen_close(void);
+
 // ---- clipboard (plain text) ------------------------------------------------
 
 /** Offers `utf8` (copied) as the clipboard's content until another client takes it over. */

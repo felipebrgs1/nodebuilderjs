@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-testing
-description: Write and debug tests for nodebuilder apps with bun test, without opening a window (mount, findByText, findByLabel, click, interact for mouse and keyboard, layout, debugTree). Use when creating tests, when verifying a behavior or layout change, or when a component test fails.
+description: Write and debug tests for nodebuilder apps with bun test, without opening a window (mount, findByText, findByLabel, click, interact for mouse and keyboard, layout, debugTree), and look at the UI with screenshots (nodebuilder screenshot, screenshot()). Use when creating tests, when verifying a behavior, layout or visual change, or when a component test fails.
 ---
 
 # Tests without a window
@@ -100,6 +100,39 @@ test("plays a genre that starts off screen", () => {
   Their content lives in `root.layers` (not in `root.children`); `findByText(root, ...)` searches
   both.
 
+## Look at the UI: screenshots
+
+Tests check boxes, not looks. **After a visual change, take a screenshot and look at it**
+(read the PNG): wrong colors, clipped text, misalignment and missing icons show up at once.
+No window or display server is needed (it renders with the GPU through EGL):
+
+```sh
+bun run screenshot                      # screenshot.png: src/main.tsx at the <Window>'s size
+nodebuilder screenshot src/main.tsx dark.png --theme dark --scale 2 --width 1024 --height 700
+```
+
+Animations run to their end on a simulated clock (`--wait-frames <n>` stops earlier). In a
+test, `screenshot()` gives the real pixels of a mounted tree, with real fonts:
+
+```tsx
+import { expect, test } from "bun:test";
+import { Box } from "@nodebuilderjs/core";
+import { canScreenshot, mount, savePNG, screenshot } from "@nodebuilderjs/core/testing";
+
+test.skipIf(!canScreenshot())("the banner is red", () => {
+  const { root } = mount(() => <Box height={40} background="#e01b24" />, { width: 200, height: 40 });
+  const shot = screenshot(root, { scale: 2 });         // 400x80 pixels
+  expect(shot.pixel(10, 10)).toEqual([0xe0, 0x1b, 0x24, 255]); // [r, g, b, a], straight alpha
+  savePNG(shot, "banner.png");                         // to look at it
+});
+```
+
+- `screenshot(root | () => view, { width, height, scale, background })` →
+  `{ width, height, scale, rgba, pixel(x, y), toPNG() }`; size in device pixels. Uncovered
+  areas stay transparent. The fake text metrics come back after the shot.
+- Pixels depend on the machine's fonts and GPU: assert colors at chosen points, not whole
+  images. `canScreenshot()` is false without a GPU driver (e.g. some CI runners).
+
 ## Clipboard and selection
 
 In tests, `clipboard` is an in-memory area (no window, no system). To check a copy, read it
@@ -135,4 +168,4 @@ is shared within the file: write the expected value at the start of each test.
   After changes that move nodes, call `relayout()` before interacting again.
 - Test layout calculations with fixed sizes (`width`, `height`) so they do not depend on the
   fake metrics.
-- Before finishing a task: `bun run typecheck && bun test`.
+- Before finishing a task: `bun run typecheck && bun test`, and a screenshot if anything visual changed.

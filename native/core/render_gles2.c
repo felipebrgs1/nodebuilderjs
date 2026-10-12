@@ -456,3 +456,26 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
   }
   flush();
 }
+
+void nb_render_read_pixels(int w, int h, uint8_t *out) {
+  glPixelStorei(GL_PACK_ALIGNMENT, 4);
+  glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, out);
+  // GL rows go bottom to top: flip, and un-premultiply (PNG and decodeImage use straight alpha).
+  size_t stride = (size_t)w * 4;
+  uint8_t *row = malloc(stride);
+  for (int y = 0; row && y < h / 2; y++) {
+    uint8_t *a = out + y * stride, *b = out + (size_t)(h - 1 - y) * stride;
+    memcpy(row, a, stride);
+    memcpy(a, b, stride);
+    memcpy(b, row, stride);
+  }
+  free(row);
+  for (size_t i = 0, n = (size_t)w * h * 4; i < n; i += 4) {
+    unsigned a = out[i + 3];
+    if (a == 0 || a == 255) continue;
+    for (int c = 0; c < 3; c++) {
+      unsigned v = (out[i + c] * 255 + a / 2) / a;
+      out[i + c] = (uint8_t)(v > 255 ? 255 : v);
+    }
+  }
+}

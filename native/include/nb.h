@@ -82,5 +82,7 @@ int nb_image_create(int width, int height, const uint8_t *rgba);
 void nb_image_destroy(int id);
 
 bool nb_render_init(void);
+/** Reads the bound framebuffer (w x h) into `out` as RGBA8, rows top to bottom, straight alpha. */
+void nb_render_read_pixels(int w, int h, uint8_t *out);
 void nb_render_frame(int buffer_w, int buffer_h, float scale, const float *cmds, size_t count,
                      const char **texts, size_t text_count);

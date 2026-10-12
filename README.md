@@ -611,6 +611,40 @@ test("play and pause", () => {
   and the ancestor; bring it into view with `scrollIntoView()` and `relayout()`, or give it
   room. Window positions (`down(x, y)`...) are not checked.
 
+#### Seeing the UI: screenshots without a window
+
+Tests check boxes and draw commands, not how the result looks. A screenshot renders the real
+pixels (fonts, colors, shadows, icons, images) with the GPU but **no window and no display
+server** (EGL surfaceless: works in CI, containers and agent sandboxes):
+
+```sh
+nodebuilder screenshot src/main.tsx shot.png                    # the app at its <Window> size
+nodebuilder screenshot src/main.tsx shot@2x.png --scale 2 --theme dark --width 1024 --height 700
+```
+
+The command runs the app with `NB_SCREENSHOT=<out.png>` set, so `run()` lays out, lets
+animations finish on a simulated clock (`--wait-frames <n>` to stop earlier), renders one
+frame offscreen, writes the PNG and exits. In tests:
+
+```tsx
+import { expect, test } from "bun:test";
+import { Box } from "@nodebuilderjs/core";
+import { canScreenshot, mount, savePNG, screenshot } from "@nodebuilderjs/core/testing";
+
+test.skipIf(!canScreenshot())("the banner is red", () => {
+  const { root } = mount(() => <Box height={40} background="#e01b24" />, { width: 200, height: 40 });
+  const shot = screenshot(root, { scale: 2 }); // 400x80 device pixels, real text metrics
+  expect(shot.pixel(10, 10)).toEqual([0xe0, 0x1b, 0x24, 255]);
+  savePNG(shot, "banner.png"); // or shot.toPNG()
+});
+```
+
+`screenshot(root | view, { width, height, scale, background })` returns `{ width, height,
+scale, rgba, pixel(x, y), toPNG() }`; `rgba` has straight (not premultiplied) alpha, rows top
+to bottom, and what nothing covers stays transparent (the window's rounded corners too). The
+tree is laid out with real fonts for the shot and gets its fake metrics back afterwards.
+Pixels depend on the installed fonts and GPU driver: compare colors at points, not whole images.
+
 ## Distributing
 
 ```sh
@@ -721,6 +755,8 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
 ## Current limitations
 
 - Linux x64 only (arm64, Windows and macOS are on the roadmap).
+- Screenshots (`nodebuilder screenshot`, `screenshot()`) need a GPU driver with EGL
+  (Mesa or NVIDIA); a process that took one can't open a window afterwards.
 - Text with a single font (emojis don't show up), in regular and bold only (no other weights,
   italics or letter spacing); a word longer than the line overflows.
 - Text field without selection, copy or undo (paste works).

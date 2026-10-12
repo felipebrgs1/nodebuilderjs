@@ -152,6 +152,10 @@ export function setTextMeasurer(fn: TextMeasurer) {
   measurer = fn;
   generation++;
 }
+/** The measurer in use (a screenshot swaps in the real one and puts this back). */
+export function textMeasurer(): TextMeasurer {
+  return measurer;
+}
 /** Bumped whenever earlier measurements may be wrong (new measurer, new scale); per-node caches compare it. */
 export function metricsGeneration() {
   return generation;

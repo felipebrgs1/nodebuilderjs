@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### New
+- **Screenshots without a window:** `nodebuilder screenshot <app.tsx> <out.png>` (`--width`,
+  `--height`, `--scale`, `--theme`, `--wait-frames`) renders the app to a PNG with the GPU and
+  no display server (EGL surfaceless), after its animations finish; `screenshot(root | view)`,
+  `savePNG` and `canScreenshot` in `@nodebuilderjs/core/testing` give the real pixels in tests.
+  Generated apps get `bun run screenshot`, and their skills tell agents to look at the UI.
 - **`<Icon fill>`:** `true` fills with the icon color, a color fills with that color; replaces
   the root `<svg>` fill (as Lucide's prop does), so outline icons become solid. Reactive.
 - **`ariaLabel`** on every widget: a name for elements without text (icon-only buttons). The

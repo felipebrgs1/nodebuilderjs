@@ -1,6 +1,8 @@
 // Loads the native core for the current OS/arch.
 
 import { createRequire } from "node:module";
+import type { ImageBackend } from "../image/source.js";
+import type { TextMeasurer } from "../render/node.js";
 
 export type NativeKeyEvent = { type: "keydown" | "keyup"; key: string; text: string; repeat: boolean; ctrl: boolean; shift: boolean; alt: boolean; super: boolean };
 
@@ -17,7 +19,14 @@ export interface Native {
   open(options: { title: string; appId: string; width: number; height: number }, onEvents: (events: NativeEvent[]) => void): void;
   close(): void;
   render(commands: Float32Array, texts: string[]): void;
-  measureText(text: string, size: number, font: number): [width: number, ascent: number, descent: number];
+  /** Logical px. `scale` (default: the window's) is the device scale the text is hinted for. */
+  measureText(text: string, size: number, font: number, scale?: number): [width: number, ascent: number, descent: number];
+  /**
+   * Draws `commands` without a window (no display needed) into a `width*scale` x `height*scale`
+   * target and returns its pixels: RGBA8, straight alpha, rows top to bottom. Throws
+   * "offscreen rendering is unavailable: ..." without a usable EGL driver, and while a window is open.
+   */
+  renderOffscreen(width: number, height: number, scale: number, commands: Float32Array, texts: string[]): Uint8Array;
   /** Copies straight-alpha RGBA pixels; returns an id (> 0) for draw commands. */
   createImage(width: number, height: number, rgba: Uint8Array): number;
   destroyImage(id: number): void;
@@ -85,4 +94,25 @@ export function loadNative(): Native {
     `nodebuilder: native core for ${target} not found. Install @nodebuilderjs/${target} ` +
       `(normally pulled in by @nodebuilderjs/core) or, in the framework repo, run "bun run build:native".`,
   );
+}
+
+/** Real text metrics from the addon (FreeType + HarfBuzz) at device `scale`, cached by text, size and weight. */
+export function nativeTextMeasurer(nat: Native, scale: number): TextMeasurer {
+  const metrics = new Map<string, { width: number; ascent: number; descent: number }>();
+  return (text, size, bold) => {
+    const key = `${bold ? 1 : 0}|${size}|${text}`;
+    let m = metrics.get(key);
+    if (!m) {
+      if (metrics.size > 20_000) metrics.clear();
+      const [width, ascent, descent] = nat.measureText(text, size, bold ? 1 : 0, scale);
+      m = { width, ascent, descent };
+      metrics.set(key, m);
+    }
+    return m;
+  };
+}
+
+/** Images uploaded to the addon as textures. */
+export function nativeImageBackend(nat: Native): ImageBackend {
+  return { create: (w, h, rgba) => nat.createImage(w, h, rgba), destroy: (id) => nat.destroyImage(id) };
 }

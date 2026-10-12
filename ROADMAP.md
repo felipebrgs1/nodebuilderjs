@@ -28,6 +28,8 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - Roda no Bun e no Node
 - `bun create nodebuilderjs`, helpers de teste sem janela, `AGENTS.md` no template
 - `nodebuilder package`: AppImage, `.deb`, `.rpm` e `.tar.gz` (glibc 2.34+)
+- Screenshots without a window or display server (2026-10-12): `nodebuilder screenshot` and
+  `screenshot()` in testing (EGL surfaceless + FBO), so agents can look at the UI they build
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 
 ## Onde estamos (benchmarks de 2026-10-11)

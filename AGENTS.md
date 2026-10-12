@@ -54,6 +54,8 @@ bun run bench               # stress test with NB_STATS=1 (env: N=1000 MODE=one|
 bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settings ROWS=500
                             #   LIVE=0 CYCLE=<frames per tab switch>)
 bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]
+bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --wait-frames N]
+                            # PNG of the app without a window or display server (EGL offscreen)
 bun run npm:build           # npm packages in dist/npm/ (does not publish)
 scripts/compare.sh <label> <warmup-s> <sample-s> -- <command...>  # CPU/RAM of the process tree
 ```
@@ -85,13 +87,16 @@ from internal details, so that refactoring does not break tests for no reason.
 | Images and textures | `setImageBackend({ create, destroy })` records texture creation and release |
 | Decoders and rasterizers | "golden" tests: the reference output (libjpeg-turbo, libwebp, librsvg, ImageMagick) lives in `test/fixtures/`, generated once; compare byte for byte or with an explicit tolerance. Then fuzzing with flipped bytes and truncated files: every error is a format message (never a TypeError), and absurd dimensions are rejected before allocating (2^28 pixel limit) |
 | Addon (what runs without a window) | call the native function through `loadNative()` in a test; use `test.skipIf` when it depends on something optional in the system (e.g. libheif) |
+| Pixels (the C drawing: shaders, corners, AA, text, images) | `renderOffscreen()` in the addon or `screenshot(root)` from testing, behind `test.skipIf(!canScreenshot())`; assert colors at chosen points (fonts and drivers vary), not whole images |
 
 What cannot be tested automatically is documented when closing the task:
 
-- **Visual** (the drawing C code, shaders, corners, AA): open the example in the background
-  and capture the active window with `spectacle -b -n -a -o <scratch>/x.png`; inspect
-  pixels with `magick` (crop + `-filter point -resize 800%`). The automated test covers the
-  TS side (the emitted commands); the capture covers the C.
+- **Visual** (how it looks): `bun cli/nodebuilder.ts screenshot examples/x.tsx <scratch>/x.png`
+  (no window; `--scale 2`, `--theme dark`) and look at the PNG; inspect pixels with `magick`
+  (crop + `-filter point -resize 800%`). Pixel assertions go in tests via `screenshot()`
+  (see the table above). What the offscreen path cannot show (the window itself: CSD
+  resize edges, compositor transparency, X11 vs Wayland) still needs the example opened in
+  the background and `spectacle -b -n -a -o <scratch>/x.png`.
 - **System keyboard** (accents, dead keys, compose): the xkb -> text path is in C and can
   only be tested by actually typing; ask the user. From the key event onward (focus, Tab,
   TextField), use `interact().key/type`.
@@ -111,11 +116,13 @@ What cannot be tested automatically is documented when closing the task:
   (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets following the switch),
   `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
   (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
-  `input` (events),
+  `input` (events), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
+  `cli` (the `nodebuilder` command, spawned),
   `clipboard`, `text-selection`, `testing` (public helpers), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
 - Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
-  ~0.1 s; a test that needs more than that must have a reason.
+  ~0.5 s (most of it: the EGL context of `screenshot` and the spawns of `cli`); a test that
+  needs more than a few ms must have a reason.
 - Small fixtures (a few KB). Record where they came from (tool and version, as in
   `svg-LICENSES.md`) and the license of third-party files.
 - Code snippets in skills, the template's AGENTS.md or the README are tested too:
@@ -133,8 +140,8 @@ What cannot be tested automatically is documented when closing the task:
   and check that they are still correct and up to date: names and comments that describe
   today's behavior, cases that became trivial or redundant, and what is missing in the
   interaction with what changed (e.g. an old widget with the new prop). Fix in the same commit.
-- Visual change: an example opened and captured. Performance change: before and after
-  numbers.
+- Visual change: a screenshot of the example looked at (`nodebuilder screenshot`).
+  Performance change: before and after numbers.
 - Docs alongside, in English: README (public API, limitations), ARCHITECTURE (how it
   works), ROADMAP (item done), this file (structure, conventions) and the template skills
   (public API, new widget, resolved limitation, plus the table in `template/AGENTS.md`).
@@ -146,7 +153,8 @@ What cannot be tested automatically is documented when closing the task:
 src/                   one module per folder; relative imports with `.js`
   index.ts             public API (re-exports the modules)
   jsx-runtime.ts       own JSX runtime; jsx() only creates descriptions (ElementDesc)
-  testing.ts           @nodebuilderjs/core/testing: mount, findBy/AllByText, findBy/AllByLabel, click, interact
+  testing.ts           @nodebuilderjs/core/testing: mount, findBy/AllByText, findBy/AllByLabel, click, interact,
+                       screenshot/savePNG/canScreenshot
   theme.ts             lightTheme/darkTheme, `theme` (reactive getters), setTheme, colorScheme
   animation/index.ts   animate, createTween, createPresence, easing, mixColor
   assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts references it with preserve="true")
@@ -169,6 +177,7 @@ src/                   one module per folder; relative imports with `.js`
     native.ts          loads native/build/<platform>-<arch>/nodebuilder.node (literal requires)
     frames.ts          frame clock: requestAnimationFrame queue, frameNow, animating()
     clipboard.ts       clipboard (text): in memory without a window, native with run(); read via event
+    screenshot.ts      captureTree: real metrics + native images, layout, paint, renderOffscreen
   widgets/             one file per widget; index.ts re-exports
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps (+ hoverStyle/pressStyle), inherited, interaction, createInteraction
     containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
@@ -184,6 +193,7 @@ src/                   one module per folder; relative imports with `.js`
     png.ts             PNG (all color types, tRNS, Adam7) via node:zlib
     jpeg.ts            baseline/progressive JPEG, CMYK/YCCK, EXIF; identical to libjpeg-turbo
     webp.ts            WebP VP8 (lossy), VP8L, alpha, first animation frame; identical to libwebp
+    png-encode.ts      PNG encoder (RGBA, Sub/Up filters, node:zlib) for screenshots
   svg/                 SVG for icons (<Icon>)
     parse.ts           XML, presentation attributes, style="", transform
     render.ts          shapes -> geometry -> bitmap
@@ -211,6 +221,7 @@ native/
     pump.c              poll() thread over the active backend's fds + exit eventfd
     fonts.c             font discovery via fontconfig
     codecs.c            AVIF/HEIC via libheif (dlopen; own declarations, no header)
+    offscreen.c         EGL context with no display server (surfaceless/device) + FBO, for screenshots
     build.sh            backend build (called by scripts/build-native.sh)
     protocols/          xdg-shell.xml (vendored; wayland-protocols is not installed)
   build/<platform>-<arch>/  output (names from process.platform/arch: linux-x64, ...)
@@ -219,7 +230,7 @@ test/            one file per module (bun:test; bunfig.toml limits bun test to t
   charts/        tests for src/charts (scales and each chart type)
   fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
 examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
-cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts
+cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces published together with core (see "Publishing to npm")
   linux-x64/     @nodebuilderjs/linux-x64: only the prebuilt addon (generated, not in git)
@@ -345,6 +356,11 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   number reused: every backend fd is non-blocking. `nb_wl_dispatch()` never blocks
   (prepare_read/read_events/cancel_read).
 - Events to JS: fill an `nb_event` and call `nb_push_event()` **on the JS thread**.
+- **Offscreen** (`nb_platform_offscreen_begin`, JS thread, no pump): its own EGL display and
+  context, outside the window backends' vtable; the target is a texture FBO left bound for
+  `nb_render_frame`, and `nb_render_read_pixels` returns straight alpha, top row first. The
+  renderer's GL objects belong to one context, so `addon.c` refuses a window after a shot and
+  a shot while a window is open.
 - After calls that may receive events (e.g. `eglSwapBuffers`), the core calls
   `nb_platform_flush()` and requests a delivery (`request_delivery()`).
 - Coordinates: JS works in **logical px**; C multiplies by the integer `scale`
@@ -536,6 +552,8 @@ packages, all with the version from the root `package.json`:
 - Dark theme does not follow the system (missing the XDG portal over D-Bus); a theme color
   copied as a fixed value (`color={theme.x}`) does not follow the switch. Animations without
   `scale`/`rotate` or declarative `transition`.
+- Screenshots need EGL (Mesa surfaceless or an EGL device); a process that took one cannot
+  open a window afterwards (and vice versa).
 - No accessibility (AT-SPI), multi-window, IME
   (text-input-v3), DnD, real fractional scaling (KDE 125% renders at 2x and downscales).
 - Window always uses its own decoration (CSD): title bar, move, maximize,

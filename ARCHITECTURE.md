@@ -361,6 +361,37 @@ and those that use it pay ~15 KB.
 Coordinates: TypeScript works in logical pixels; the C multiplies by the screen's integer
 scale (Wayland: `preferred_buffer_scale`; X11: `Xft.dpi / 96`).
 
+### Offscreen rendering (screenshots)
+
+`renderOffscreen(width, height, scale, commands, texts)` runs the same `nb_render_frame` as a
+window, into a framebuffer object instead of a window surface, and reads it back. The
+platform contract has `nb_platform_offscreen_begin(w, h)`: on Linux (`offscreen.c`) an EGL
+display that needs no display server (`EGL_PLATFORM_SURFACELESS_MESA`, else the first
+`EGL_EXT_platform_device`), a GLES2 context with no surface (`EGL_KHR_surfaceless_context`;
+a 1x1 pbuffer otherwise) and an RGBA8 texture attached to an FBO (RGBA8 renderbuffers are an
+extension in GLES2). The context is created on the first shot (~30-140 ms, driver dependent)
+and kept; each shot after that costs a few ms plus layout and paint. `nb_render_read_pixels`
+flips the rows (GL reads bottom-up) and un-premultiplies: the output has **straight alpha**,
+like `decodeImage` and PNG. Uncovered pixels stay transparent, as in the window.
+
+The renderer's GL objects (program, glyph atlas, image textures) live in whichever context
+created them, so a process uses either a window or the offscreen renderer: `open()` after a
+shot and a shot with a window open both throw.
+
+On the TypeScript side, `captureTree` (`src/runtime/screenshot.ts`) swaps in, for the shot,
+real text metrics at the shot's scale (`measureText(..., scale)`), the display scale and the
+native image backend, lays out, paints, renders, and then puts the previous ones back (and
+lays the tree out again with them). The headless image backend of tests keeps the decoded
+pixels (`keepsPixels`), and a source painted earlier by another backend is uploaded again,
+so an icon a test already painted still shows up. `screenshot()` (testing) wraps it;
+`run()` checks `NB_SCREENSHOT` and calls `screenshotApp` instead of opening a window: it
+mounts the app as `run()` does, at the `<Window>`'s size (or `NB_SCREENSHOT_WIDTH/HEIGHT`),
+applies `NB_SCREENSHOT_THEME`, runs frames on a simulated 16 ms clock until no
+`requestAnimationFrame` callback is pending (at most 120, or exactly `NB_SCREENSHOT_FRAMES`),
+waiting one `setImmediate` per frame for the app's promises, renders at `NB_SCREENSHOT_SCALE`,
+writes the PNG (`src/image/png-encode.ts`: Sub/Up filter per row, zlib) and exits.
+`nodebuilder screenshot` (`cli/screenshot.ts`) only sets those variables and spawns the app.
+
 ## Events and threads
 
 Bun does not implement libuv, so the addon cannot use it. Instead:
@@ -435,7 +466,7 @@ server.
 ## Porting to other systems
 
 Everything OS-specific sits behind `native/include/nb_platform.h`: opening a window, pumping
-events, cursor, font discovery. The core (`native/core/`) only includes Node-API, GLES2,
+events, cursor, font discovery, offscreen GL context. The core (`native/core/`) only includes Node-API, GLES2,
 FreeType, HarfBuzz and libc. A new OS is a `native/platform/<os>/` folder with the
 implementation of this contract and a `build.sh`. On Windows and macOS the planned path is
 ANGLE (GLES on top of Direct3D/Metal) or a new `render_<api>.c` with the same interface.

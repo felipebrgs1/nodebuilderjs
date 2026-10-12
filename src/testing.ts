@@ -1,13 +1,19 @@
 // Headless helpers for app tests (bun test): no window, fake text metrics.
 //   const { root } = mount(() => <App />);
 //   click(findByText(root, "Save")!);
+//   savePNG(screenshot(root), "app.png"); // real pixels, still without a window
 
+import { writeFileSync } from "node:fs";
 import { type Child, insert } from "./jsx-runtime.js";
 import { layout } from "./render/layout.js";
 import { UINode, setTextMeasurer } from "./render/node.js";
 import { createRoot } from "./reactive/signals.js";
 import { runFrameCallbacks, setAnimating, setFrameClock } from "./runtime/frames.js";
 import { createInput } from "./runtime/input.js";
+import { loadNative } from "./runtime/native.js";
+import { type Screenshot, type ScreenshotOptions, captureTree } from "./runtime/screenshot.js";
+
+export type { Screenshot, ScreenshotOptions } from "./runtime/screenshot.js";
 
 /** 8 px per character, 20 px lines: layout is deterministic without fonts. */
 export function useFakeTextMetrics() {
@@ -211,4 +217,49 @@ export function frames() {
       }
     },
   };
+}
+
+let offscreen: boolean | undefined;
+
+/**
+ * Whether `screenshot()` works here: the native core loads and the GPU driver can render
+ * without a window (EGL; no display server needed). For `test.skipIf(!canScreenshot())`.
+ */
+export function canScreenshot(): boolean {
+  if (offscreen === undefined) {
+    try {
+      loadNative().renderOffscreen(1, 1, 1, new Float32Array(0), []);
+      offscreen = true;
+    } catch {
+      offscreen = false;
+    }
+  }
+  return offscreen;
+}
+
+/**
+ * Renders a mounted root (at the size of its last layout, unless given) or a view (mounted
+ * for the shot, then disposed) into real pixels, without a window: real fonts and text
+ * metrics, images, icons, shadows. The tree's fake metrics are put back afterwards.
+ * Throws when the machine cannot render offscreen (see canScreenshot()).
+ */
+export function screenshot(target: UINode | (() => Child), options: ScreenshotOptions = {}): Screenshot {
+  const nat = loadNative();
+  const scale = options.scale ?? 1;
+  if (typeof target === "function") {
+    const width = options.width ?? 800, height = options.height ?? 600;
+    const { root, dispose } = mount(target, { width, height });
+    try {
+      return captureTree(nat, root, width, height, scale, options.background);
+    } finally {
+      dispose();
+    }
+  }
+  const width = options.width ?? (target.width || 800), height = options.height ?? (target.height || 600);
+  return captureTree(nat, target, width, height, scale, options.background);
+}
+
+/** Writes a screenshot to `path` as PNG (then look at it, e.g. with an image viewer or an agent's file reader). */
+export function savePNG(shot: Screenshot, path: string) {
+  writeFileSync(path, shot.toPNG());
 }

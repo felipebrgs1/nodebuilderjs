@@ -1,16 +1,19 @@
 // App runtime: owns the window, turns native events into UI events
 // (hover, click, focus, keys, scroll) and renders a frame whenever the tree changes.
 
+import { writeFileSync } from "node:fs";
 import { type Child, insert } from "../jsx-runtime.js";
 import { setImageBackend } from "../image/source.js";
 import { layout } from "../render/layout.js";
 import { nativeClipboard, setClipboardBackend } from "./clipboard.js";
 import { createInput } from "./input.js";
-import { frameNow, hasFrameCallbacks, runFrameCallbacks, setAnimating } from "./frames.js";
-import { type Native, type NativeEvent, loadNative } from "./native.js";
-import { UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer, textMetricsChanged } from "../render/node.js";
+import { frameNow, hasFrameCallbacks, runFrameCallbacks, setAnimating, setFrameClock } from "./frames.js";
+import { type Native, type NativeEvent, loadNative, nativeImageBackend, nativeTextMeasurer } from "./native.js";
+import { UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer } from "../render/node.js";
 import { CommandBuffer, paintTree } from "../render/paint.js";
 import { batch, createRoot, createSignal } from "../reactive/signals.js";
+import { setTheme } from "../theme.js";
+import { type Screenshot, captureTree } from "./screenshot.js";
 
 export interface WindowOptions {
   title: string;
@@ -95,7 +98,89 @@ export interface RunHooks {
 }
 
 export function run(app: () => Child, runOptions: RunOptions = {}) {
+  if (process.env.NB_SCREENSHOT) {
+    // `nodebuilder screenshot`: one PNG instead of a window, then exit.
+    screenshotApp(loadNative(), app, process.env).then(
+      (shot) => {
+        console.log(`nodebuilder: wrote ${process.env.NB_SCREENSHOT} (${shot.width}x${shot.height})`);
+        process.exit(0);
+      },
+      (err) => {
+        console.error(`nodebuilder screenshot: ${(err as Error).message}`);
+        process.exit(1);
+      },
+    );
+    return;
+  }
   runWith(loadNative(), app, runOptions);
+}
+
+/** Frames simulated (16 ms each) waiting for animations to finish, unless NB_SCREENSHOT_FRAMES says how many. */
+const SETTLE_FRAMES = 120;
+
+/**
+ * run() without a window: mounts `app` like run() does, at the window's size (or
+ * NB_SCREENSHOT_WIDTH/HEIGHT), runs frames on a simulated clock until animations finish
+ * (or NB_SCREENSHOT_FRAMES frames), renders offscreen at NB_SCREENSHOT_SCALE and writes the
+ * PNG to NB_SCREENSHOT. NB_SCREENSHOT_THEME=light|dark switches the theme first. Internal.
+ */
+export async function screenshotApp(nat: Native, app: () => Child, env: Record<string, string | undefined>): Promise<Screenshot> {
+  const option = (name: string, valid: (n: number) => boolean) => {
+    const raw = env[`NB_SCREENSHOT_${name}`];
+    if (raw === undefined || raw === "") return undefined;
+    const n = Number(raw);
+    if (!valid(n)) throw new Error(`bad ${name.toLowerCase()} "${raw}"`);
+    return n;
+  };
+  const scale = option("SCALE", (n) => n > 0 && n <= 8) ?? 1;
+  const fixedFrames = option("FRAMES", (n) => Number.isInteger(n) && n >= 0);
+  const forcedWidth = option("WIDTH", (n) => n >= 1);
+  const forcedHeight = option("HEIGHT", (n) => n >= 1);
+  const scheme = env.NB_SCREENSHOT_THEME;
+  if (scheme === "light" || scheme === "dark") setTheme(scheme);
+  else if (scheme) throw new Error(`bad theme "${scheme}" (use light or dark)`);
+
+  native = nat;
+  let time = 0;
+  setAnimating(true);
+  setFrameClock(() => time);
+  setTextMeasurer(nativeTextMeasurer(nat, scale));
+  setDisplayScale(scale);
+  setImageBackend(nativeImageBackend(nat));
+
+  const root = new UINode("root");
+  root.isRoot = true;
+  let dispose = () => {};
+  try {
+    createRoot((d) => {
+      dispose = d;
+      insert(root, app);
+    });
+    const windowNode = root.children[0];
+    const options: WindowOptions = (windowNode as any)?.[windowOptionsKey] ?? { title: "nodebuilder" };
+    if (windowNode) windowNode.style.grow = 1;
+    const w = forcedWidth ?? options.width ?? 800, h = forcedHeight ?? options.height ?? 600;
+    setWidth(w);
+    setHeight(h);
+    const buffer = new CommandBuffer();
+    for (let frame = 0; frame < (fixedFrames ?? SETTLE_FRAMES); frame++) {
+      await new Promise((resolve) => setImmediate(resolve)); // the app's promises and immediates
+      if (fixedFrames === undefined && frame > 0 && !hasFrameCallbacks()) break;
+      time += 16;
+      runFrameCallbacks(time);
+      layout(root, w, h); // painting can start work too (Canvas sizes, icons)
+      buffer.reset();
+      paintTree(root, buffer);
+    }
+    const shot = captureTree(nat, root, w, h, scale);
+    writeFileSync(env.NB_SCREENSHOT!, shot.toPNG());
+    return shot;
+  } finally {
+    dispose();
+    setAnimating(false);
+    setFrameClock(null);
+    native = null;
+  }
 }
 
 /** run() with an explicit native core (tests pass a fake one). Internal: not exported from the package. */
@@ -103,20 +188,9 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
   native = nat;
   setAnimating(true);
 
-  const metrics = new Map<string, { width: number; ascent: number; descent: number }>();
-  setTextMeasurer((text, size, bold) => {
-    const key = `${bold ? 1 : 0}|${size}|${text}`;
-    let m = metrics.get(key);
-    if (!m) {
-      if (metrics.size > 20_000) metrics.clear();
-      const [w, ascent, descent] = nat.measureText(text, size, bold ? 1 : 0);
-      m = { width: w, ascent, descent };
-      metrics.set(key, m);
-    }
-    return m;
-  });
+  setTextMeasurer(nativeTextMeasurer(nat, 1));
 
-  setImageBackend({ create: (w, h, rgba) => nat.createImage(w, h, rgba), destroy: (id) => nat.destroyImage(id) });
+  setImageBackend(nativeImageBackend(nat));
 
   const root = new UINode("root");
   root.isRoot = true;
@@ -301,8 +375,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
         setTransparent(ev.transparent);
         if (ev.scale !== currentScale) {
           currentScale = ev.scale;
-          metrics.clear();
-          textMetricsChanged();
+          setTextMeasurer(nativeTextMeasurer(nat, ev.scale)); // metrics are hinted per scale
           setDisplayScale(ev.scale);
         }
         configured = true;

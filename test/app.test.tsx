@@ -25,6 +25,9 @@ function fakeNative() {
     decodeImage: () => {
       throw new Error("not in tests");
     },
+    renderOffscreen: () => {
+      throw new Error("not in tests");
+    },
     setCursor: () => {},
     setTitle: () => {},
     move: () => {},
