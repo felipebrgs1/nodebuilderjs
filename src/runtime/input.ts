@@ -315,7 +315,9 @@ export function createInput(root: UINode, host: InputHost) {
       setFocus(path.find((n) => n.focusable) ?? null);
 
       const e = pointerEvent(x, y, button, lastClick.clicks);
-      // Controls inside a drag region (fields, sliders, focusables) take the press: no window move.
+      // The press bubbles to every ancestor until stop() (a list's context menu sees a press on
+      // a clickable row). Controls inside a drag region (clickables, fields, sliders,
+      // focusables) take the press: an ancestor drag region does not move the window.
       let taken = false;
       for (const n of path) {
         n.handlers.onPointerDown?.(at(n, e));
@@ -325,8 +327,7 @@ export function createInput(root: UINode, host: InputHost) {
           pressed = null; // the compositor takes the pointer; the release may never come
           return host.move();
         }
-        if (n.handlers.onClick) return; // clickable things never start a window move
-        if (n.handlers.onPointerDown || n.focusable) taken = true;
+        if (n.handlers.onClick || n.handlers.onPointerDown || n.focusable) taken = true;
       }
     },
 

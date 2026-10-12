@@ -310,7 +310,10 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   as `ElementRef`). New widgets too.
 - A control inside a drag region keeps the press because it is clickable, focusable or has
   `onPointerDown` (`pointerDown` in `runtime/input.ts`); a new pressable widget needs one of
-  those, otherwise pressing it in a custom title bar moves the window.
+  those, otherwise pressing it in a custom title bar moves the window. Taking the press only
+  blocks the window move: `onPointerDown` keeps bubbling to every ancestor until `stop()`,
+  past clickable nodes too (a parent's `pressStyle` shows like CSS `:active`); only `onClick`
+  stops at the innermost node that has one.
 - Handlers are **chained, never replaced**: `applyProps` adds the app's handlers (and the
   ones from spread `createInteraction().props`, carried under a unique symbol key so a later
   `onPointerEnter={...}` cannot drop them) after the node's; a widget that sets a handler

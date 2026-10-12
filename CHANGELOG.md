@@ -63,6 +63,12 @@
 - **Absolute children** of a `Scroll` now scroll with the content (they stayed fixed).
 - Handlers passed to a widget are chained with the widget's own instead of replacing them
   (`Slider` and `TextField` dropped a user's `onPointerDown`).
+- **`onPointerDown` bubbles past clickable nodes** until `e.stop()`, as the docs said: it used
+  to end at the first node with an `onClick`, so a list's context menu (`e.button === 2`)
+  missed presses on its clickable rows and a `Tooltip` around a `Button` only hid on release.
+  `onClick` still runs only on the innermost clickable, and a clickable still never moves the
+  window from a drag region. A parent's `pressStyle` now shows while a child is pressed (CSS
+  `:active`); `e.stop()` in an `onPointerDown` on the child keeps the press to it.
 
 ### Docs
 - `bun run check:snippets` typechecks the README and skill snippets; the ones that failed are fixed.

@@ -41,6 +41,8 @@ const track = (name: string) => ({
   onPointerLeave: () => log.push(`leave ${name}`),
 });
 
+const center = (n: UINode): [number, number] => [n.x + n.width / 2, n.y + n.height / 2];
+
 // A at (0,0) 100x50 with B inside it at (0,0) 50x20; C at (0,50) 100x50.
 const tree = () => (
   <Column align="start">
@@ -156,6 +158,46 @@ describe("pointer buttons", () => {
     expect(log).toEqual(["inner", "outer"]);
   });
 
+  test("pointerdown bubbles past a clickable node (a row's context menu), but only it clicks", () => {
+    const { root, input } = setup(() => (
+      <Box width={100} height={100} onPointerDown={(e: PointerEvent) => log.push(`list ${e.button}`)} onClick={() => log.push("click list")}>
+        <Button label="row" onClick={() => log.push("click row")} />
+      </Box>
+    ));
+    const row = root.children[0]!.children[0]!;
+    input.pointerDown(...center(row), 2); // right button: the list opens its menu
+    input.pointerUp(...center(row), 2);
+    now += 1000;
+    input.pointerDown(...center(row), 0);
+    input.pointerUp(...center(row), 0);
+    expect(log).toEqual(["list 2", "list 0", "click row"]);
+  });
+
+  test("stop() in a clickable node's onPointerDown keeps the press from its parents", () => {
+    const { root, input } = setup(() => (
+      <Box width={100} height={100} onPointerDown={() => log.push("outer")}>
+        <Box width={50} height={50} onPointerDown={(e: PointerEvent) => e.stop()} onClick={() => log.push("click row")} />
+      </Box>
+    ));
+    const row = root.children[0]!.children[0]!;
+    input.pointerDown(...center(row), 0);
+    input.pointerUp(...center(row), 0);
+    expect(log).toEqual(["click row"]);
+  });
+
+  test("pressStyle on a parent shows while a child button is pressed (like CSS :active)", () => {
+    const { root, input } = setup(() => (
+      <Box width={100} height={100} pressStyle={{ background: "#222222" }}>
+        <Button label="row" onClick={() => {}} />
+      </Box>
+    ));
+    const card = root.children[0]!;
+    input.pointerDown(...center(card.children[0]!), 0);
+    expect(card.style.background).toBe("#222222");
+    input.pointerUp(...center(card.children[0]!), 0);
+    expect(card.style.background).not.toBe("#222222");
+  });
+
   test("pressing focuses the nearest focusable; pressing elsewhere blurs it", () => {
     const { input } = setup(() => (
       <Column align="start">
@@ -213,7 +255,6 @@ describe("custom title bar", () => {
     }
     throw new Error(`no ${label}`);
   };
-  const center = (n: UINode): [number, number] => [n.x + n.width / 2, n.y + n.height / 2];
 
   test("decorations={false} has no built-in title bar or divider", () => {
     const { root } = setup(() => <Window title="t" decorations={false}><Text>body</Text></Window>);

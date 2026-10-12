@@ -110,12 +110,6 @@ Done (E1).
 
 ## F. Found while fixing the above
 
-### F4. `onPointerDown` bubbling stops at a node with `onClick` - check
-
-Bubbling of `onPointerDown` ends at the first node with an `onClick`, even without
-`stop()`. Decide whether it is intended (buttons own their press) and document it, or make
-it bubble until `stop()`. Test either way in `test/input.test.tsx`.
-
 ### F6. `mixColor` interpolates straight alpha - small
 
 Mixing toward `"transparent"` (`#00000000`) passes through translucent gray. Interpolate in
@@ -126,4 +120,4 @@ premultiplied space (as CSS does) and un-premultiply; test that
 
 1. B4 (wrap)
 2. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
-3. C2 (weights, spacing), F4
+3. C2 (weights, spacing)

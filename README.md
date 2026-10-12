@@ -132,6 +132,9 @@ the widget or pressing it:
 - `hoverStyle` alone leaves presses alone; `pressStyle` (and `createInteraction().props`)
   make the widget handle the press, so inside a window's drag region it no longer moves the
   window.
+- Like `:active`, a parent's `pressStyle` also shows while a child (a button in the card) is
+  pressed; `onPointerDown={(e) => e.stop()}` on the child (or on a `Box` around a `Button`)
+  keeps the press to the child.
 
 When something else depends on the state, such as a play button that only shows while its card
 is hovered, `createInteraction()` gives `hovered`, `pressed` and `focused` accessors and
@@ -151,6 +154,20 @@ The pointer is still over the card while it is over the play button. `props` add
 widget's own handlers and to `onPointerEnter`/`onPointerLeave`/... written next to it,
 before or after the spread; nothing is replaced, and several interactions can share a widget.
 `focused` only changes on focusable widgets (`Button`, `TextField`...).
+
+### Events
+
+Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onScroll`,
+`onKeyDown`, `onFocus` and `onBlur`. Pointer events carry `x`/`y` (window), `localX`/`localY`
+(node), `button` (0 left, 1 middle, 2 right) and `clicks` (2 = double click).
+
+- `onClick` is the left button only and runs on the innermost node that has one (pressed and
+  released on it): a button inside a clickable card clicks the button, not the card.
+- `onPointerDown`, `onPointerUp`, `onPointerMove`, `onScroll` and `onKeyDown` bubble from the
+  innermost node to the root until a handler calls `e.stop()`, also past nodes with `onClick`:
+  a list's `onPointerDown` with `e.button === 2` (context menu) sees a right press on any of
+  its clickable rows. On keys and the wheel, `stop()` also keeps the surrounding `Scroll` still.
+- While a button is held, `onPointerMove` keeps reaching the node where the press started.
 
 ### Images
 
