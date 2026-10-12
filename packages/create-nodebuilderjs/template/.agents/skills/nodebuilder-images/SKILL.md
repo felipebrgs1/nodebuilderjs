@@ -6,12 +6,17 @@ description: Show images (PNG, JPEG, WebP, AVIF, HEIC) with nodebuilder's Image 
 # Images
 
 ```tsx
-import { Image } from "@nodebuilderjs/core";
+import { Column, Image, createSignal } from "@nodebuilderjs/core";
 import logo from "./assets/logo.png" with { type: "file" };
+import photo from "./assets/photo.jpg" with { type: "file" };
 
-<Image src={logo} width={64} />                       // height follows the aspect ratio
-<Image src={photo} width={200} height={120} fit="cover" radius={12} />
-<Image src={() => avatarOf(user())} width={32} height={32} radius={16} opacity={0.9} />
+const [user] = createSignal({ name: "Ana", avatar: logo });
+
+<Column gap={8}>
+  <Image src={logo} width={64} />                     {/* height follows the aspect ratio */}
+  <Image src={photo} width={200} height={120} fit="cover" radius={12} />
+  <Image src={() => user().avatar} width={32} height={32} radius={16} opacity={0.9} />
+</Column>
 ```
 
 ## Rules
