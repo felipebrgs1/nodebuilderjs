@@ -392,13 +392,13 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
                   MODE_SHADOW, 0, 0, 0, 0);
         break;
       }
-      case NB_OP_TEXT: {  // x y size font  r g b a  text_index
+      case NB_OP_TEXT: {  // x y size font(id)  r g b a  text_index  letter_spacing
         const float *a = cmd + i;
-        i += 9;
+        i += 10;
         size_t idx = (size_t)a[8];
         if (idx >= text_count || !texts[idx]) break;
         glyph_ctx ctx = {.color = a + 4};
-        nb_text_draw((int)a[3], texts[idx], (int)lroundf(a[2] * scale), roundf(a[0] * scale),
+        nb_text_draw((int)a[3], texts[idx], (int)lroundf(a[2] * scale), a[9] * scale, roundf(a[0] * scale),
                      roundf(a[1] * scale), emit_glyph, &ctx);
         break;
       }

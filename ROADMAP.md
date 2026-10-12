@@ -109,8 +109,11 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
   `wrap`, `maxLines` com "…", `textAlign`, `lineHeight`, seleção em várias linhas. Falta
   hifenização e quebrar palavra longa no meio (opcional, como `overflow-wrap: anywhere`).
 - ~~Underline~~ **done** (2026-10-12): `underline` on `Text` (inherited like `bold`), and
-  `<Canvas>` text cut to a `maxWidth` with "…". Still missing: font weights beyond bold,
-  italics and letter spacing.
+  `<Canvas>` text cut to a `maxWidth` with "…".
+- ~~Font weights, italics, letter spacing~~ **done** (2026-10-12): `fontWeight` (closest
+  face via fontconfig, the `wght` axis of variable fonts), `italic` (slanted upright face when
+  there is no italic), `letterSpacing` per cluster in `text.c`. Still missing: synthetic bold
+  and choosing the font family.
 - ~~Font fallback (emoji, CJK)~~ **done** (2026-10-12): fontconfig's fallback order per
   codepoint, clusters kept whole, color emoji in an RGBA atlas. Still missing: choosing the
   font family, COLRv1 and bidi.

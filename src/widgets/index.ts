@@ -6,7 +6,7 @@ export { Box, Card, Column, Divider, Grid, type GridProps, Row, Scroll, type Scr
 export { Text, type TextAlign } from "./text.js";
 export { Image, type ImageFit } from "./image.js";
 export { Icon, type IconFill, type IconInput } from "./icon.js";
-export { Canvas, type CanvasTextOptions, type DrawContext } from "./canvas.js";
+export { Canvas, type CanvasFontOptions, type CanvasTextOptions, type DrawContext } from "./canvas.js";
 export { Button } from "./button.js";
 export { Checkbox } from "./checkbox.js";
 export { Toggle } from "./toggle.js";

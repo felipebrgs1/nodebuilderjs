@@ -15,6 +15,7 @@ A user built a Spotify-like dashboard with 0.2.5 and reported 13 problems. Alrea
   `hoverStyle`/`pressStyle`/`createInteraction` (C1); `underline` (C2 part); Canvas
   `text` `maxWidth` (C4); `<Window decorations={false}>`, `dragRegion`, `<WindowControls>`
   (D1); `bun run check:snippets` (F5).
+- **8. Font weights, letter spacing**: `fontWeight`, `italic`, `letterSpacing` (C2).
 - **1. Seeing the UI**: `nodebuilder screenshot` and `screenshot()` in testing render real
   pixels with no window or display server (A1).
 - **3, 4, 10, 11 (docs)**: equal columns, absolute children, clip radius, shadow without
@@ -79,20 +80,6 @@ offset; `align="stretch"` subtracts cross margins.
 ---
 
 ## C. Styling and painting
-
-### C2. Font weights, letter spacing (report item 8) - medium to large
-
-- **Letter spacing (medium):** `letterSpacing?: number` (px). Measure: width + spacing *
-  (graphemes - 1); TEXT opcode gains a float (update `nb.h`, `paint.ts`,
-  `render_gles2.c`, `decode()` in `test/helpers.ts`); `text.c` adds the spacing to each
-  HarfBuzz cluster advance. The measure cache key in `app.ts` includes it. Wrapping
-  (`text-wrap.ts`) and selection (`text-selection.ts`) positions must include it.
-- **Weights (large):** `fontWeight?: 100..900` (`bold` = 700) and `italic`. Today fonts are
-  `NB_FONT_REGULAR/BOLD` (`nb_platform_font_path(int)`). Change the contract to
-  `nb_platform_font_path(int weight, bool italic)` (fontconfig `FC_WEIGHT`/`FC_SLANT`,
-  closest match), and the TEXT opcode `font` field to a font id `(weight/100)*2 + italic`;
-  `text.c` keeps an atlas per loaded face (lazy). Test: `measureText` with weight 900 is
-  wider than 400 (addon test, `skipIf` fonts missing).
 
 ### C3. Gradients (report item 4) - medium
 
@@ -160,4 +147,4 @@ premultiplied space (as CSS does) and un-premultiply; test that
 
 1. B4 (wrap)
 2. C3 + F6 (gradients, premultiplied mixColor), B5 (margin)
-3. C2 (weights, spacing), A4, E1, F4
+3. A4, E1, F4

@@ -222,10 +222,11 @@ caps, filled polygons (concave ones included), circles and arcs (pie, donut, gau
 text. Coordinates are local to the canvas; `g.width` and `g.height` give its size. `draw` is
 reactive: it runs inside an effect, so the signals it reads (data, `theme` colors) are tracked
 and changing one of them redraws. Geometry is computed when the data changes, not every frame.
-`g.text(text, x, y, color, size?, bold?, { maxWidth, ellipsis })` draws one line; with
-`maxWidth` text that does not fit is cut and ends in "…" (`ellipsis: false` just cuts it;
-nothing is drawn when not even the "…" fits). `g.measureText(text, size?, bold?)`
-(`{ width, height }`) measures it, to align it.
+`g.text(text, x, y, color, size?, bold?, { maxWidth, ellipsis, weight, italic, letterSpacing })`
+draws one line; with `maxWidth` text that does not fit is cut and ends in "…" (`ellipsis:
+false` just cuts it; nothing is drawn when not even the "…" fits); `weight` wins over `bold`.
+`g.measureText(text, size?, bold?, { weight, italic, letterSpacing })` (`{ width, height }`)
+measures it, to align it.
 Lines take a dash pattern (`g.line(..., cap, [4, 3])`, `g.polyline(..., { dash })`).
 Limits: a self-intersecting polygon is not drawn, and lines with a translucent color get darker
 at the joins.
@@ -498,6 +499,22 @@ import { Row, Text, theme } from "@nodebuilderjs/core";
 - `maxLines`: truncates and ends the last line with "…"; `maxLines={1}` shortens a single line.
 - `textAlign` (`"start"`, `"center"`, `"end"`) and `lineHeight` (a multiple of the font's line
   spacing, default 1).
+- `fontWeight` (1..1000, as in CSS: 300 light, 400 regular, 600 semibold, 700 bold, 900
+  black) picks the closest face the system font has (a variable font gets exactly that
+  weight); `bold` is shorthand for 700 (`bold={false}`: 400), and on the same widget
+  `fontWeight` wins. `italic` uses the italic face, or slants the upright one when the family
+  has none. `letterSpacing` (px, may be negative) goes after every character, the last one
+  too, as in browsers; it turns ligatures off. All three are inherited, like `fontSize`:
+  `<Column fontWeight={500}>`. Wrapping, selection and `underline` follow them.
+
+```tsx
+import { Text } from "@nodebuilderjs/core";
+
+<Text fontWeight={300} fontSize={28}>Light headline</Text>;
+<Text fontSize={12} bold letterSpacing={1.5}>SECTION</Text>;
+<Text italic>An aside</Text>;
+```
+
 - `underline`: a line under each line of text, in the text color (it follows wrapping,
   `textAlign` and the "…" of `maxLines`). Like `color`, `fontSize` and `bold` it is inherited,
   so `<Button underline>` or a `Row underline` underlines the text inside; `underline={false}`
@@ -794,8 +811,8 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
 - Linux x64 only (arm64, Windows and macOS are on the roadmap).
 - Screenshots (`nodebuilder screenshot`, `screenshot()`) need a GPU driver with EGL
   (Mesa or NVIDIA); a process that took one can't open a window afterwards.
-- Text in regular and bold only (no other weights, italics or letter spacing); a word longer
-  than the line overflows. Characters the UI font lacks (symbols, CJK, emoji) come from the
+- Text weights come from the system font's files (or its `wght` axis); a family without a
+  weight uses the closest one (no synthetic bold). A word longer than the line overflows. Characters the UI font lacks (symbols, CJK, emoji) come from the
   system's fallback fonts and color emoji are drawn in color (Noto Color Emoji and other
   CBDT, sbix or COLRv0 fonts; COLRv1-only fonts are not rendered in color). No bidi: a
   right-to-left run is shaped, but lines are not reordered.

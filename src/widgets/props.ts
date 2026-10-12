@@ -1,7 +1,7 @@
 // Props shared by every widget: style keys, event handlers, inheritance and interaction state.
 
 import type { Child } from "../jsx-runtime.js";
-import { type ElementRef, type Handlers, type Style, UINode } from "../render/node.js";
+import { type ElementRef, type FontStyle, type Handlers, REGULAR, type Style, UINode } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, createSignal, read } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 
@@ -30,6 +30,7 @@ const STYLE_KEYS: (keyof Style)[] = [
   "align", "justify", "position", "left", "top", "clip", "background", "radius", "borderWidth", "borderColor",
   "shadow", "color", "fontSize", "bold", "underline", "cursor", "opacity", "translateX", "translateY",
   "alignSelf", "right", "bottom", "zIndex", "columns", "rowGap", "aspectRatio",
+  "fontWeight", "italic", "letterSpacing",
 ];
 const HANDLER_KEYS: (keyof Handlers)[] = [
   "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur", "onResize",
@@ -90,9 +91,28 @@ function stateStyles(node: UINode, props: { hoverStyle?: StyleValues; pressStyle
   }
 }
 
-export function inherited<K extends "color" | "fontSize" | "bold" | "underline">(node: UINode, key: K): Style[K] | undefined {
+export function inherited<K extends "color" | "fontSize" | "bold" | "underline" | "fontWeight" | "italic" | "letterSpacing">(node: UINode, key: K): Style[K] | undefined {
   for (let n: UINode | null = node; n; n = n.parent) if (n.style[key] !== undefined) return n.style[key];
   return undefined;
+}
+
+/** The nearest `fontWeight` or `bold` (700/400) up the tree; on the same node `fontWeight` wins. */
+function inheritedWeight(node: UINode): number {
+  for (let n: UINode | null = node; n; n = n.parent) {
+    if (n.style.fontWeight !== undefined) return n.style.fontWeight;
+    if (n.style.bold !== undefined) return n.style.bold ? 700 : 400;
+  }
+  return 400;
+}
+
+/** The font of the node's text (weight, italic, letter spacing), inherited; `last` is returned while nothing changed. */
+export function inheritedFont(node: UINode, last?: FontStyle): FontStyle {
+  const weight = inheritedWeight(node);
+  const italic = inherited(node, "italic") ?? false;
+  const letterSpacing = inherited(node, "letterSpacing") ?? 0;
+  if (last && last.weight === weight && last.italic === italic && last.letterSpacing === letterSpacing) return last;
+  if (weight === 400 && !italic && !letterSpacing) return REGULAR;
+  return { weight, italic, letterSpacing };
 }
 
 /** Hover, press and focus state, and the handlers that keep it. */

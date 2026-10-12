@@ -16,9 +16,9 @@ import { type Screenshot, type ScreenshotOptions, captureTree } from "./runtime/
 
 export type { Screenshot, ScreenshotOptions } from "./runtime/screenshot.js";
 
-/** 8 px per character, 20 px lines: layout is deterministic without fonts. */
+/** 8 px per character (plus `letterSpacing` after each), 20 px lines: layout is deterministic without fonts. */
 export function useFakeTextMetrics() {
-  setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
+  setTextMeasurer((text, _size, font) => ({ width: text.length * 8 + (font.letterSpacing ? Array.from(text).length * font.letterSpacing : 0), ascent: 15, descent: 5 }));
 }
 
 /** Renders `view` into a detached root and lays it out at `width`x`height`. */

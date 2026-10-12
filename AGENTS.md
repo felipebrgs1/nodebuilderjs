@@ -113,7 +113,8 @@ What cannot be tested automatically is documented when closing the task:
   `error-boundary` (errors, effect queue), `context`, `ref`
   (`ref`, programmatic focus and scrolling, `onResize`), `overlay`, `style` (`opacity`, `translate`),
   `text` (line wrapping, alignment, `maxLines`, multi-line selection), `font-fallback`
-  (fallback fonts and color emoji with real fonts, `skipIf` they are missing), `controls`
+  (fallback fonts and color emoji with real fonts, `skipIf` they are missing), `font-style`
+  (weights, italics and letter spacing with real fonts and pixels), `controls`
   (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `popups`
   (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets following the switch),
   `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
@@ -293,7 +294,10 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   (`MaybeAccessor` of each `Style` field).
 - **When adding a field to `Style`**, also add it to `STYLE_KEYS` (`widgets/props.ts`);
   new handlers go in `Handlers` (`render/node.ts`) and `HANDLER_KEYS`.
-- Inherited through the tree: `color`, `fontSize`, `bold`, `underline` (the `inherited` function).
+- Inherited through the tree: `color`, `fontSize`, `bold`, `fontWeight`, `italic`,
+  `letterSpacing`, `underline` (the `inherited` function; `inheritedFont()` resolves the
+  weight, where the nearest `fontWeight` or `bold` wins and `fontWeight` beats `bold` on the
+  same node). Text widgets measure and paint with that `FontStyle`.
 - A widget that opens something on top returns `[node, <Show><Overlay>]` (the `Overlay` stays
   outside the node, so the list's events do not bubble up through the trigger); the trigger
   keeps focus and handles keys while it is open.
@@ -364,10 +368,14 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   `nb_render_frame`, and `nb_render_read_pixels` returns straight alpha, top row first. The
   renderer's GL objects belong to one context, so `addon.c` refuses a window after a shot and
   a shot while a window is open.
-- **Fonts:** `nb_platform_font_path(font)` gives the UI font, `nb_platform_font_fallback(cp,
-  font, emoji, &index)` a file (and face index) that has `cp`, color fonts only when `emoji`
-  (JS thread, may be slow: `text.c` caches the answer per codepoint and never calls it for
-  ASCII-only strings). `text.c` keeps `measure` and `draw` on the same run itemization; color
+- **Fonts:** `nb_platform_font_path(weight, italic, &index, &oblique)` gives the UI font
+  closest to a CSS weight and slant (`oblique`: an upright face stands in for italic, the core
+  slants it), `nb_platform_font_fallback(cp, weight, italic, emoji, &index)` a file (and face
+  index) that has `cp`, color fonts only when `emoji` (JS thread, may be slow: `text.c` asks
+  once per font id, caches fallbacks per codepoint and font id, and never calls it for
+  ASCII-only strings). Font ids are `weight * 2 + italic`; variable fonts get their `wght`
+  axis set in the core (FreeType). Letter spacing is added per HarfBuzz cluster in
+  `layout_runs`, shared by measure and draw. `text.c` keeps `measure` and `draw` on the same run itemization; color
   glyphs go to the RGBA atlas and are drawn with `MODE_COLOR_GLYPH` (texture unit 2, only the
   alpha of the text color applies).
 - After calls that may receive events (e.g. `eglSwapBuffers`), the core calls
@@ -397,7 +405,7 @@ Keep **`native/include/nb.h`, `src/render/paint.ts` and `native/core/render_gles
 | Op | Code | Following floats |
 |---|---|---|
 | RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
-| TEXT | 2 | x y(line top) size font(0/1 bold) · r g b a · index into `texts[]` |
+| TEXT | 2 | x y(line top) size font id (weight * 2 + italic, `fontId()`) · r g b a · index into `texts[]` · letterSpacing |
 | CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
@@ -563,8 +571,9 @@ packages, all with the version from the root `package.json`:
 ## Current limitations
 
 - TextField: no selection, copy, undo (paste exists); Text: a word longer than the line
-  overflows (selection only with `selectable`, no Shift+click or keyboard); regular and bold
-  only (no other weights, italics or letter spacing); `underline` is painted in TS and
+  overflows (selection only with `selectable`, no Shift+click or keyboard); weights only as
+  the system font has them (no synthetic bold; italic falls back to a slanted upright face),
+  no font family choice; `underline` is painted in TS and
   `TextField` ignores it. Font fallback and color emoji work (CBDT/sbix/COLRv0), but COLRv1
   fonts are not drawn in color and there is no bidi reordering.
 - `<Canvas>`: a self-intersecting polygon is not drawn; translucent lines get darker at the

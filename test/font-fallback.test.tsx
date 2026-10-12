@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { Column, Text } from "@nodebuilderjs/core";
 import { type Screenshot, canScreenshot, screenshot } from "@nodebuilderjs/core/testing";
-import { loadNative } from "../src/runtime/native.js";
+import { fontId, loadNative } from "../src/runtime/native.js";
 
 /** Whether some installed font has `codepoint` (and is a color font, if asked), per fontconfig. */
 function fontHas(codepoint: number, color = false): boolean {
@@ -17,7 +17,7 @@ const symbols = fontHas(0x25b2) && fontHas(0x2191);
 const emoji = fontHas(0x1f389, true);
 const shots = canScreenshot();
 
-const width = (text: string, size = 16, bold = false) => loadNative().measureText(text, size, bold ? 1 : 0, 1)[0];
+const width = (text: string, size = 16, bold = false) => loadNative().measureText(text, size, fontId(bold ? 700 : 400, false), 1)[0];
 /** Advance of a character no font has: the primary font's .notdef (tofu). */
 const tofu = () => width("\u{10FFFD}");
 

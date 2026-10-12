@@ -4,7 +4,7 @@ import type { DrawContext } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
 import { drawCommands } from "./helpers.js";
 
-setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
+setTextMeasurer((text, _size, font) => ({ width: text.length * (8 + font.letterSpacing), ascent: 15, descent: 5 }));
 
 function mount(view: () => any) {
   const root = new UINode("root");
@@ -71,6 +71,23 @@ test("Canvas: text with maxWidth is cut to fit, ending in an ellipsis", () => {
   expect(texts.map((t) => t.text)).toEqual(["a lon…", "short", "a long"]);
   for (const t of texts) expect(t.text.length * 8).toBeLessThanOrEqual(50); // fake metrics: 8 px per character
   expect(texts[0]).toMatchObject({ x: 0, y: 0, size: 12, bold: true });
+});
+
+test("Canvas: text and measureText take weight, italic and letterSpacing options", () => {
+  let measured = { width: 0, height: 0 };
+  const { node } = mount(() => (
+    <Column>
+      <Canvas width={200} height={100} draw={(g) => {
+        g.text("abc", 0, 0, "#000", 12, false, { weight: 300, italic: true, letterSpacing: 2 });
+        g.text("abc", 0, 20, "#000", 12, true);
+        g.text("abc", 0, 40, "#000", 12, true, { weight: 900 }); // weight wins over bold
+        measured = g.measureText("abc", 12, false, { letterSpacing: 2 });
+      }} />
+    </Column>
+  ));
+  const texts = drawCommands(node).filter((c) => c.op === "text");
+  expect(texts.map((t) => [t.weight, t.italic, t.letterSpacing])).toEqual([[300, true, 2], [700, false, 0], [900, false, 0]]);
+  expect(measured.width).toBe(30); // fake metrics: 8 px per character + 2 after each
 });
 
 test("Canvas: signals read while drawing redraw it, once per change", () => {

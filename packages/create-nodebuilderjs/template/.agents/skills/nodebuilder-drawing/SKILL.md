@@ -34,8 +34,8 @@ const [data, setData] = createSignal([12, 40, 33, 70, 55, 90]);
 | `polygon(points, color)` | filled polygon (concave is fine; self-intersecting is not drawn) |
 | `circle(cx, cy, radius, color)` | disc |
 | `arc(cx, cy, outerRadius, innerRadius, start, sweep, color)` | slice (inner 0) or ring; radians, 0 = top, clockwise |
-| `text(text, x, y, color, size?, bold?, { maxWidth, ellipsis })` | one line of text; `y` is the top of the line. With `maxWidth`, text that does not fit is cut and ends in "…" (`ellipsis: false` just cuts; nothing is drawn if not even "…" fits). No wrapping |
-| `measureText(text, size?, bold?)` | `{ width, height }` of that text, to align it |
+| `text(text, x, y, color, size?, bold?, { maxWidth, ellipsis, weight, italic, letterSpacing })` | one line of text; `y` is the top of the line. With `maxWidth`, text that does not fit is cut and ends in "…" (`ellipsis: false` just cuts; nothing is drawn if not even "…" fits). `weight` (1..1000) wins over `bold`. No wrapping |
+| `measureText(text, size?, bold?, { weight, italic, letterSpacing })` | `{ width, height }` of that text, to align it |
 
 Sizes default to the theme's font size (14). Text that must fit a width:
 

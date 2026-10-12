@@ -1,6 +1,6 @@
 // Text: paragraphs that wrap, alignment, line spacing, one-line truncation with an
-// ellipsis, underlines (and a link underlined on hover) and a selectable paragraph cut at
-// two lines.
+// ellipsis, underlines (and a link underlined on hover), font weights, italics, letter
+// spacing and a selectable paragraph cut at two lines.
 
 import { Card, Column, Row, Text, Window, createSignal, run, theme } from "@nodebuilderjs/core";
 
@@ -18,7 +18,7 @@ function Link(props: { children: string }) {
 }
 
 run(() => (
-  <Window title="Texto" width={560} height={460}>
+  <Window title="Text" width={560} height={600}>
     <Column grow={1} padding={20} gap={12}>
       <Card>
         <Text>{paragraph}</Text>
@@ -39,6 +39,27 @@ run(() => (
       <Row gap={16} align="center">
         <Text fontSize={22} underline>Underlined at 22 px</Text>
         <Link>A link (underlined on hover)</Link>
+      </Row>
+      <Row gap={10} align="end">
+        {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => (
+          <Column gap={2} align="center">
+            <Text fontSize={22} fontWeight={w}>Ag</Text>
+            <Text fontSize={11} color={theme.text.secondary}>{w}</Text>
+          </Column>
+        ))}
+        <Column gap={2} align="center">
+          <Text fontSize={22} italic>Ag</Text>
+          <Text fontSize={11} color={theme.text.secondary}>italic</Text>
+        </Column>
+        <Column gap={2} align="center">
+          <Text fontSize={22} fontWeight={800} italic>Ag</Text>
+          <Text fontSize={11} color={theme.text.secondary}>800 italic</Text>
+        </Column>
+      </Row>
+      <Row gap={16} align="center">
+        <Text fontSize={12} bold letterSpacing={2} color={theme.text.secondary}>SECTION LABEL</Text>
+        <Text fontSize={22} fontWeight={700} letterSpacing={-0.5}>Tight headline</Text>
+        <Text italic letterSpacing={4} underline>spaced out</Text>
       </Row>
       <Text selectable maxLines={2}>{`${paragraph} ${paragraph}`}</Text>
     </Column>
