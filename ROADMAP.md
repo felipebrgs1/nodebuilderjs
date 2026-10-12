@@ -10,7 +10,7 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   posição) e `<ErrorBoundary>` (erros na criação e em effects, com `reset`); filho-função
   `{(valor) => ...}` no `<Show>` e no `<Match>`; mudanças internas não recriam mais os
   componentes em volta (ex.: `<For>` logo abaixo de um `Provider`)
-- Layout flexbox, rolagem, recorte com cantos arredondados, sombras
+- Flexbox layout (with `wrap` for chips and tags, `margin`), Grid, `aspectRatio`, scrolling, clipping with rounded corners, shadows
 - Widgets: `Window` com decoração própria, `Column`/`Row`/`Box`, `Scroll`, `Text`, `Image`
   (PNG, JPEG, WebP; AVIF/HEIC via libheif), `Icon` (SVG: Lucide, Phosphor), `Canvas`
   (desenho livre na GPU), `Button`, `TextField`, `Checkbox`, `Card`, `Divider`, `Spacer`

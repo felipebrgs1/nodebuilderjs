@@ -29,34 +29,7 @@ effort inside each group. Delete an item from here when it ships (and add it to 
 
 ## B. Layout
 
-### B4. `wrap` on Row (report item 2) - medium
-
-**API:** `wrap?: boolean` on Row (and Column): children that don't fit start a new line;
-`gap` between items, `rowGap` between lines (default = gap). Chips and tags.
-
-**Implementation:** `layout.ts`: split children into lines by their main-axis basis
-(intrinsic or width), each line laid out with the existing flex code (grow/justify per
-line), lines stacked on the cross axis. Height depends on width (like wrapping text): the
-node needs `minContentWidth` = widest child, and `heightAt(node, w)` computes the lines.
-Culling per line as today.
-
-**Tests:** 5 chips of 80px in 300px with gap 8 -> 3 on the first line, 2 on the second;
-`grow` stretches within a line; `justify="center"` per line; inside a Column the Row's
-height is the sum of lines; changing the parent width reflows.
-
-### B5. `margin` (report item 8) - medium
-
-**API:** `margin?: Edges` (CSS order, negative allowed). Space outside the border, not
-painted, not hit-tested.
-
-**Implementation:** `Style` + `STYLE_KEYS`; in `layout.ts` every child's outer size =
-box + margin (intrinsic, `heightAt`, flex basis, min-content) and its placement offsets by
-`margin.left/top`. Negative margins shrink the outer size (can overlap a sibling). This
-touches every size function: write the tests first and keep `gap` semantics unchanged.
-
-**Tests:** margin adds to the parent's intrinsic size; with `grow` the box shrinks by the
-margin; negative margin pulls the next sibling over; absolute children use margin as an
-offset; `align="stretch"` subtracts cross margins.
+Done (B4 `wrap`, B5 `margin`).
 
 ---
 
@@ -98,6 +71,4 @@ All done (F1-F6).
 
 ## Suggested order
 
-1. B4 (wrap)
-2. B5 (margin)
-3. C2 (weights, spacing)
+1. C2 (weights, spacing)

@@ -56,8 +56,9 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
 ## Style props (any widget)
 
 - Layout: `direction` (`"row"`/`"column"`), `gap`, `padding` (`8`, `[v, h]` or
-  `[top, right, bottom, left]`), `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
+  `[top, right, bottom, left]`), `margin` (same forms, negative allowed), `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
   `maxHeight`, `grow`, `aspectRatio` (width / height), `align`, `alignSelf`, `justify`,
+  `wrap` (on a `Row`/`Column`: lines; on a `Text`: word wrapping), `rowGap`,
   `position: "absolute"` + `left`/`top`/`right`/`bottom`, `zIndex`, `clip`.
 - Visual: `background`, `radius`, `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}`,
   `opacity` (0 to 1, applies to children), `translateX`/`translateY` (shifts after
@@ -359,8 +360,20 @@ let button: ElementRef | undefined;
   text, `grow` with `width={0}`, `minWidth={0}` plus `clip` on what may be cut, or more room.
 - Text wraps by itself at the width it gets (`\n` also breaks); a word longer than the line
   overflows. A single line: `wrap={false}` (overflows) or `maxLines={1}` (truncates with "…").
-- There are no percentages or `flex-wrap`: build rows with `Row` and fixed widths (see
-  tables: `Text width={110}`), `grow`, proportional columns (below) or a `Grid`.
+- There are no percentages: build rows with `Row` and fixed widths (see tables:
+  `Text width={110}`), `grow`, proportional columns (below), `wrap` or a `Grid`.
+- **`<Row wrap gap={6}>`** (CSS `flex-wrap: wrap`) for chips and tags: children that do not fit
+  start a new line, `rowGap` (default `gap`) between lines. Each line is its own row (`grow`,
+  `justify`, `alignSelf` apply inside it) and is as tall as its tallest child. The Row wraps at
+  whatever width it gets (stretched in a column, `grow`, a fixed `width`) and its height follows;
+  it can shrink down to its widest child. `<Column wrap height={...}>` breaks into columns at
+  its height.
+- **`margin`** is space outside the border that the parent keeps free: it counts in every size
+  around the child (natural size, `grow`, `Grid` cells, `wrap` lines) and a stretched child
+  gets the room minus its margins. Prefer `gap`/`padding` on the parent for regular spacing;
+  use `margin` for one child (extra space above a section title) or negative values (a divider
+  that cancels the card's padding: `margin={[8, -16]}`). Not painted, not clickable, never
+  collapses, adds to `gap`. On an absolute child it adds to `left`/`top`/`right`/`bottom`.
 - **`<Grid columns={3} gap={8}>`** (CSS `repeat(3, 1fr)`): children flow into rows of equal
   cells, whatever their content; the last row keeps its empty cells. A row is as tall as its
   tallest cell and cells stretch to it (`align`/`alignSelf` change that). `rowGap` sets the

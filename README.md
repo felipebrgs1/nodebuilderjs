@@ -64,8 +64,34 @@ with tabs, a table and a chart.
 ### Layout
 
 A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch by default;
-`alignSelf` overrides it for one child), `justify`, `min/max` sizes, plus `Grid` and
-`aspectRatio`. There are no percentages:
+`alignSelf` overrides it for one child), `justify`, `min/max` sizes, `wrap`, `margin`, plus
+`Grid` and `aspectRatio`. There are no percentages:
+
+- **`margin`** (`8`, `[v, h]` or `[top, right, bottom, left]`, like `padding`): space outside the
+  border that the parent keeps free. It adds to the child's size in everything around it
+  (natural sizes, `grow`, shrinking, `Grid` cells, `wrap` lines); a stretched child gets the
+  room minus its margins. Negative values pull a neighbor over or let a child bleed into its
+  parent's padding (`margin={[0, -16]}` in a `Card` runs edge to edge). It is not painted and
+  not clickable. On an absolute child it adds to `left`/`top`/`right`/`bottom`. Margins do not
+  collapse (unlike CSS block margins) and add to `gap`.
+
+- **`<Row wrap gap={6} rowGap={8}>`** (CSS `flex-wrap: wrap`): children that do not fit start
+  a new line (chips, tags). Each line is laid out on its own (`grow`, `justify`, `alignSelf`
+  inside the line), is as tall as its tallest child and lines stack from the top, `rowGap`
+  (default `gap`) apart. Its natural width is a single line and its minimum the widest child,
+  so a stretched or shrunk Row wraps at whatever width it gets and its height follows. A
+  `<Column wrap>` breaks into columns at its height (give it one). On `<Text>`, `wrap` is
+  word wrapping instead.
+
+  ```tsx
+  import { Box, Row, Text } from "@nodebuilderjs/core";
+
+  const Tags = (props: { tags: string[] }) => (
+    <Row wrap gap={6}>
+      {props.tags.map((t) => <Box padding={[4, 10]} radius={12} background="#00000010"><Text>{t}</Text></Box>)}
+    </Row>
+  );
+  ```
 
 - **`<Grid columns={4} gap={8} rowGap={12}>`:** children flow into rows of equal-width cells
   (CSS `grid-template-columns: repeat(4, 1fr)`); the last row keeps empty cells, so widths stay

@@ -39,6 +39,8 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | `z-index` among siblings (badge over a card's content) | `zIndex={1}` (siblings only: no global stacking context; ties keep child order) |
 | `createPortal`, `position: fixed`, `z-index` above everything, library modal/dropdown/tooltip | `<Overlay>` (`modal`, `anchor={() => el}`, `onDismiss`); skill `nodebuilder-ui` |
 | CSS `display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; row-gap: 12px` | `<Grid columns={4} gap={8} rowGap={12}>` (equal columns only; no spans or named areas) |
+| CSS `margin: 8px 16px`, `margin-top`, negative margins | `margin={[8, 16]}`, `margin={[12, 0, 0, 0]}`, `margin={[0, -16]}` (no collapsing, no `auto`; adds to `gap`) |
+| CSS `flex-wrap: wrap` (chips, tags), `row-gap` | `<Row wrap gap={6} rowGap={8}>` (lines start at the top: no `align-content`) |
 | CSS `flex: 1 1 0` (equal or 1:1:2 columns in one row) | `width={0} grow={1}` (`grow={2}`...) on each child |
 | CSS `aspect-ratio: 16 / 9`, square thumbnails | `aspectRatio={16 / 9}`; `aspectRatio={1}` in `Grid` cells gives square cells |
 | CSS `align-self`, `position: absolute; inset: 0` / `right: 8px` | `alignSelf`, `position="absolute" left={0} top={0} right={0} bottom={0}` / `right={8}` (inside a `Scroll` it scrolls with the content) |
