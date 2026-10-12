@@ -175,7 +175,7 @@ export function createInput(root: UINode, host: InputHost) {
   /** Highlights the scrollbar being pressed, or else the one under the pointer. */
   function setActiveBar(node: UINode | null, axis: Axis | null, pressed: boolean) {
     const prev = activeBar?.activeScrollbar;
-    if (activeBar === node && prev?.axis === axis && prev.pressed === pressed) return;
+    if (activeBar === node && (prev?.axis ?? null) === axis && (prev?.pressed ?? false) === pressed) return;
     if (activeBar) activeBar.activeScrollbar = null;
     activeBar = node;
     if (node) node.activeScrollbar = { axis: axis!, pressed };

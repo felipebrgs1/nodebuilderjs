@@ -60,6 +60,17 @@ describe("hover and cursor", () => {
     expect(log).toEqual(["leave A"]);
   });
 
+  test("refreshing hover with nothing changed does not ask for a frame", () => {
+    // run() calls refreshHover() inside every frame: an invalidate here redraws forever.
+    const { input, host } = setup(tree);
+    input.refreshHover();
+    input.pointerMove(10, 10);
+    input.refreshHover();
+    input.pointerLeave();
+    input.refreshHover();
+    expect(host.calls).toEqual([]);
+  });
+
   test("the cursor comes from the nearest node that sets one", () => {
     const { input, host } = setup(tree);
     input.pointerMove(10, 10);
