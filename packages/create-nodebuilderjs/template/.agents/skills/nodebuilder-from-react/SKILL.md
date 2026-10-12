@@ -37,6 +37,7 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | `min-height: 0` / `min-width: 0` around what scrolls | unnecessary: the content of a `Scroll` does not hold up the size of its container |
 | `ResizeObserver`, media queries | `onResize={(s) => setWidth(s.width)}` + signal |
 | `createPortal`, `position: fixed`, `z-index`, library modal/dropdown/tooltip | `<Overlay>` (`modal`, `anchor={() => el}`, `onDismiss`); skill `nodebuilder-ui` |
+| CSS `align-self`, `position: absolute; inset: 0` / `right: 8px` | `alignSelf`, `position="absolute" left={0} top={0} right={0} bottom={0}` / `right={8}` (inside a `Scroll` it scrolls with the content) |
 | CSS `opacity`, `transform: translate(...)` | props `opacity`, `translateX`, `translateY` (no `scale`/`rotate`) |
 | `transition`, framer-motion, react-spring, `AnimatePresence` | `createTween`, `createPresence` (+ `<Show when={p.mounted}>`), `animate` |
 | `prefers-color-scheme`, `ThemeProvider` with a dark theme | `setTheme("dark")`, `colorScheme()`, colors in functions: `() => theme.text.primary` |

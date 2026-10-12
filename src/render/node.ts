@@ -21,12 +21,21 @@ export interface Style {
   grow?: number;
   /** Cross-axis alignment of children. Default: "stretch". */
   align?: "start" | "center" | "end" | "stretch";
+  /** This node's cross-axis alignment, overriding its parent's `align`. */
+  alignSelf?: "start" | "center" | "end" | "stretch";
   /** Main-axis distribution of children. Default: "start". */
   justify?: "start" | "center" | "end" | "space-between";
-  /** Taken out of the flow and placed at left/top inside the parent's padding box. */
+  /**
+   * Taken out of the flow and placed by left/top/right/bottom, measured from the parent's
+   * content box (inside its padding). It scrolls with the parent's content.
+   */
   position?: "flow" | "absolute";
   left?: number;
   top?: number;
+  /** With `left` (and no `width`), stretches to this distance from the right edge; alone, places from it. */
+  right?: number;
+  /** With `top` (and no `height`), stretches to this distance from the bottom edge; alone, places from it. */
+  bottom?: number;
   /** Clip children to this node's box. */
   clip?: boolean;
   // paint

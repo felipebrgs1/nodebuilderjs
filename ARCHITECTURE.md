@@ -141,7 +141,11 @@ refresh rate (XRandR).
 ## Layout
 
 `src/render/layout.ts` is a simplified flexbox: `direction`, `gap`, `padding`, `grow`, `align`
-(default `stretch`), `justify`, `min/max`, and `position: "absolute"` with `left/top`.
+(default `stretch`, overridden per child by `alignSelf`), `justify`, `min/max`, and
+`position: "absolute"` with `left/top/right/bottom`. Absolute children are placed after the
+in-flow ones, from the content box and minus the scroll offset (they scroll with the content);
+both edges of an axis without a size stretch them (`absoluteSpan`), and a wrapping child gets
+its height at that width (`heightAt`).
 
 Shrinking follows CSS's `min-size: auto`: a child does not get smaller than its own content,
 unless it is scrollable, clips its content (`clip`) or has an explicit `minWidth`/

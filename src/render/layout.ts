@@ -321,8 +321,7 @@ function minHeightAt(node: UINode, width: number): number {
     const widths = mainSizes(node, kids, inner, true);
     content = kids.reduce((h, c, i) => Math.max(h, heightFloor(c, widths[i]!)), 0);
   } else {
-    const align = s.align ?? "stretch";
-    content = kids.reduce((h, c) => h + heightFloor(c, columnChildWidth(node, align, c, inner)), 0);
+    content = kids.reduce((h, c) => h + heightFloor(c, columnChildWidth(node, c, inner)), 0);
     content += Math.max(0, kids.length - 1) * (s.gap ?? 0);
   }
   return clamp(content + pt + pb, s.minHeight, s.maxHeight);
@@ -346,8 +345,7 @@ function heightAt(node: UINode, width: number): number {
     const widths = mainSizes(node, kids, inner, true);
     content = kids.reduce((h, c, i) => Math.max(h, heightAt(c, widths[i]!)), 0);
   } else {
-    const align = s.align ?? "stretch";
-    content = kids.reduce((h, c) => h + heightAt(c, columnChildWidth(node, align, c, inner)), 0);
+    content = kids.reduce((h, c) => h + heightAt(c, columnChildWidth(node, c, inner)), 0);
     content += Math.max(0, kids.length - 1) * (s.gap ?? 0);
   }
   const height = clamp(content + pt + pb, s.minHeight, s.maxHeight);
@@ -370,9 +368,14 @@ function crossSize(align: string, c: UINode, row: boolean, innerCross: number, n
   );
 }
 
+/** How a child lines up across its parent's direction: its own `alignSelf`, else the parent's `align`. */
+function alignOf(parent: UINode, c: UINode): string {
+  return c.style.alignSelf ?? parent.style.align ?? "stretch";
+}
+
 /** Width of a child of a column: in a horizontal scroll, wide content keeps its width. */
-function columnChildWidth(node: UINode, align: string, c: UINode, innerW: number): number {
-  return crossSize(align, c, false, innerW, intrinsic(c).width, node.scrollableX ? minWidth(c) : undefined);
+function columnChildWidth(node: UINode, c: UINode, innerW: number): number {
+  return crossSize(alignOf(node, c), c, false, innerW, intrinsic(c).width, node.scrollableX ? minWidth(c) : undefined);
 }
 
 /**
@@ -449,7 +452,6 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   const row = s.direction === "row";
   const gap = s.gap ?? 0;
   const kids = node.children.filter(inFlow);
-  const align = s.align ?? "stretch";
 
   // A row knows widths first and heights from them; a column the other way around.
   let sizes: number[];
@@ -458,10 +460,10 @@ function place(node: UINode, x: number, y: number, width: number, height: number
     sizes = mainSizes(node, kids, innerW, true);
     crosses = kids.map((c, i) => {
       const h = heightAt(c, sizes[i]!);
-      return crossSize(align, c, true, innerH, h, node.scrollable ? h : undefined);
+      return crossSize(alignOf(node, c), c, true, innerH, h, node.scrollable ? h : undefined);
     });
   } else {
-    crosses = kids.map((c) => columnChildWidth(node, align, c, innerW));
+    crosses = kids.map((c) => columnChildWidth(node, c, innerW));
     sizes = mainSizes(node, kids, innerH, false, crosses);
   }
 
@@ -489,6 +491,7 @@ function place(node: UINode, x: number, y: number, width: number, height: number
 
   kids.forEach((c, i) => {
     const crossSize = crosses[i]!;
+    const align = alignOf(node, c);
     let crossOffset = align === "center" ? (innerCross - crossSize) / 2 : align === "end" ? innerCross - crossSize : 0;
     if (scrollsCross) crossOffset = Math.max(0, crossOffset); // what overflows stays reachable
     const main = sizes[i]!;
@@ -497,9 +500,23 @@ function place(node: UINode, x: number, y: number, width: number, height: number
     cursor += main + spacing;
   });
 
+  // Absolute children are measured from the content box and scroll with the content.
   for (const c of node.children) {
     if (inFlow(c)) continue;
-    const w = intrinsic(c).width;
-    place(c, innerX + (c.style.left ?? 0), innerY + (c.style.top ?? 0), w, heightAt(c, w), view);
+    const cs = c.style;
+    const [x0, w] = absoluteSpan(cs.left, cs.right, cs.width, intrinsic(c).width, innerW, cs.minWidth, cs.maxWidth);
+    const [y0, h] = absoluteSpan(cs.top, cs.bottom, cs.height, heightAt(c, w), innerH, cs.minHeight, cs.maxHeight);
+    place(c, innerX + x0 - offsetX, innerY + y0 - offsetY, w, h, view);
   }
+}
+
+/**
+ * Offset and size of an absolute child along one axis of a `room`-long content box, as in CSS:
+ * both edges and no fixed size stretch it (within min/max); otherwise it keeps `natural` and
+ * sits at `start`, or `end` away from the far edge when only that is set.
+ */
+function absoluteSpan(start: number | undefined, end: number | undefined, fixed: number | undefined, natural: number, room: number, min?: number, max?: number): [offset: number, size: number] {
+  if (start !== undefined && end !== undefined && fixed === undefined) return [start, clamp(room - start - end, min, max)];
+  if (start === undefined && end !== undefined) return [room - end - natural, natural];
+  return [start ?? 0, natural];
 }

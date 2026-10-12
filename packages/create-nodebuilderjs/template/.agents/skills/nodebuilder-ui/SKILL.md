@@ -55,7 +55,8 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
 
 - Layout: `direction` (`"row"`/`"column"`), `gap`, `padding` (`8`, `[v, h]` or
   `[top, right, bottom, left]`), `width`, `height`, `minWidth`, `minHeight`, `maxWidth`,
-  `maxHeight`, `grow`, `align`, `justify`, `position: "absolute"` + `left`/`top`, `clip`.
+  `maxHeight`, `grow`, `align`, `alignSelf`, `justify`, `position: "absolute"` +
+  `left`/`top`/`right`/`bottom`, `clip`.
 - Visual: `background`, `radius`, `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}`,
   `opacity` (0 to 1, applies to children), `translateX`/`translateY` (shifts after
   layout, without pushing siblings; for animation).
@@ -277,7 +278,8 @@ let button: ElementRef | undefined;
 ## Layout rules (simplified flexbox)
 
 - Default `align` is **stretch**: children take the full width of a column. Use
-  `align="start"`/`"center"` to shrink them to their content.
+  `align="start"`/`"center"` to shrink them to their content. `alignSelf` on one child
+  overrides its parent's `align` (e.g. one centered button in a stretched form).
 - `justify`: `start`, `center`, `end`, `space-between`. There is no `space-around`/`evenly`.
 - `grow={1}` splits the leftover space. Without `grow`, the size is the content's.
 - A child **does not shrink below its own content** (like CSS `min-size: auto`), except
@@ -299,19 +301,19 @@ let button: ElementRef | undefined;
   in a `Column` with a height: `height={0} grow={1}`. Content wider than its column overflows
   into the next one (`clip` cuts it), and the row's own natural width is just its gaps: give it
   room (stretched in a column, or `grow`).
-- **`position="absolute"`** takes the child out of the flow: `left`/`top` count from the
-  parent's content corner (inside its `padding`; negative values work); there is no
-  `right`/`bottom`. It keeps its natural size (it does not stretch): give it `width`/`height`,
-  or, to fill the parent, its size from `onResize` (below). It does not take space or change the
-  parent's size. No `zIndex`: nodes are drawn and hit in child order, so declare it **after**
-  the siblings it must cover. It is drawn outside its parent's box (unless the parent clips),
-  but only clicked inside it.
-- Inside a `Scroll`, an absolute child **stays put** relative to the visible area (it does not
-  scroll with the content): good for a pinned badge. To scroll with the content, put it inside
-  an in-flow child (the row it belongs to).
+- **`position="absolute"`** takes the child out of the flow: `left`/`top`/`right`/`bottom`
+  count from the parent's content box (inside its `padding`; negative values work), as in CSS.
+  It keeps its natural size, unless both `left` and `right` (or `top` and `bottom`) are set and
+  no `width` (`height`): then it stretches between them, within `min`/`max`. `right` (or
+  `bottom`) alone places it from that edge. It does not take space or change the parent's size.
+  No `zIndex`: nodes are drawn and hit in child order, so declare it **after** the siblings it
+  must cover. It is drawn outside its parent's box (unless the parent clips), but only clicked
+  inside it.
+- Inside a `Scroll`, an absolute child **scrolls with the content** (like CSS). For something
+  pinned to the visible area, put it next to the `Scroll` in a parent that does not scroll.
 
 ```tsx
-import { Box, Column, Row, Text, createSignal } from "@nodebuilderjs/core";
+import { Box, Column, Row, Text } from "@nodebuilderjs/core";
 
 // Three columns: 1 : 1 : 2, whatever their content.
 <Row gap={12}>
@@ -320,17 +322,17 @@ import { Box, Column, Row, Text, createSignal } from "@nodebuilderjs/core";
   <Column width={0} grow={2}><Text>Lyrics (twice as wide)</Text></Column>
 </Row>;
 
-// A layer over the whole cover and a badge on its corner (declared last: on top).
-const [size, setSize] = createSignal({ width: 0, height: 0 });
-<Box width={160} radius={12} clip background="#1f1f24" onResize={setSize}>
+// A layer over the whole cover and badges on its corners (declared last: on top).
+<Box width={160} radius={12} clip background="#1f1f24">
   <Column padding={16} gap={4}><Text color="#ffffff">Album</Text></Column>
-  <Box position="absolute" left={0} top={0} width={() => size().width} height={() => size().height} background="#00000066" />
+  <Box position="absolute" left={0} top={0} right={0} bottom={0} background="#00000066" />
   <Text position="absolute" left={8} top={8} padding={[2, 6]} radius={8} background="#e01b24" color="#ffffff">NEW</Text>
+  <Text position="absolute" right={8} bottom={8} color="#ffffff">3:45</Text>
 </Box>;
 ```
 
 Keep the `padding` on an inner child (as above) when an absolute layer must cover the padding
-too. `onResize` reports after layout, so the layer takes the size one frame later.
+too: the edges count from inside the parent's `padding`.
 
 ## Theme and window
 
