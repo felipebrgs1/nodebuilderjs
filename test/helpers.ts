@@ -14,7 +14,8 @@ export type DrawCommand =
   | { op: "image"; x: number; y: number; w: number; h: number; uv: [number, number, number, number]; tint: Rgba; radius: number; id: number }
   | { op: "line"; x0: number; y0: number; x1: number; y1: number; width: number; color: Rgba; capStart: "butt" | "round"; capEnd: "butt" | "round" }
   | { op: "triangles"; color: Rgba; points: number[]; coverage: number[] }
-  | { op: "arc"; cx: number; cy: number; outer: number; inner: number; start: number; sweep: number; color: Rgba };
+  | { op: "arc"; cx: number; cy: number; outer: number; inner: number; start: number; sweep: number; color: Rgba }
+  | { op: "gradient"; x0: number; y0: number; x1: number; y1: number; stops: { offset: number; color: Rgba }[] };
 
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
@@ -69,6 +70,14 @@ export function decode(buffer: CommandBuffer): DrawCommand[] {
         out.push({ op: "arc", cx: d[i]!, cy: d[i + 1]!, outer: d[i + 2]!, inner: d[i + 3]!, start: d[i + 4]!, sweep: d[i + 5]!, color: rgba(i + 6) });
         i += 10;
         break;
+      case 10: {
+        const count = d[i + 4]!;
+        const stops: { offset: number; color: Rgba }[] = [];
+        for (let k = 0; k < count; k++) stops.push({ offset: d[i + 5 + k * 5]!, color: rgba(i + 6 + k * 5) });
+        out.push({ op: "gradient", x0: d[i]!, y0: d[i + 1]!, x1: d[i + 2]!, y1: d[i + 3]!, stops });
+        i += 5 + count * 5;
+        break;
+      }
       default:
         throw new Error(`unknown op ${op} at ${i - 1}`);
     }

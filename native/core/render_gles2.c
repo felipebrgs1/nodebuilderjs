@@ -3,6 +3,8 @@
 // and one vertex format, so draw order is preserved with a single batch that is
 // only flushed when the clip changes. Clips are a scissor rectangle plus an
 // optional rounded mask (the innermost rounded clip) evaluated per fragment.
+// Colors are premultiplied in the vertex shader, so whatever varies per vertex (gradients,
+// antialiasing coverage) is interpolated in premultiplied space, like CSS.
 #include "nb.h"
 
 #include <GLES2/gl2.h>
@@ -27,7 +29,7 @@ static const char *vertex_src =
     "void main() {\n"
     "  vec2 ndc = a_pos / u_viewport * 2.0 - 1.0;\n"
     "  gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);\n"
-    "  v_local = a_local; v_half = a_half; v_color = a_color; v_bcolor = a_bcolor;\n"
+    "  v_local = a_local; v_half = a_half; v_color = vec4(a_color.rgb * a_color.a, a_color.a); v_bcolor = a_bcolor;\n"
     "  v_params = a_params; v_uv = a_uv;\n"
     "}\n";
 
@@ -43,7 +45,7 @@ static const char *fragment_src =
     "}\n"
     "void main() {\n"
     "  vec4 c;\n"
-    "  vec4 pm = vec4(v_color.rgb * v_color.a, v_color.a);\n"
+    "  vec4 pm = v_color;\n"
     "  if (v_params.z > 6.5) {\n"  // color glyph (premultiplied texels): only the alpha applies
     "    c = texture2D(u_color_atlas, v_uv) * v_color.a;\n"
     "  } else if (v_params.z > 5.5) {\n"  // ring sector, centered on +y: half aperture (sin, cos) in v_half
@@ -65,15 +67,15 @@ static const char *fragment_src =
     "    c = pm * clamp(0.5 - d, 0.0, 1.0);\n"
     "  } else if (v_params.z > 2.5) {\n"  // image (premultiplied texels), rounded like a rect
     "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
-    "    c = texture2D(u_image, v_uv) * vec4(v_color.rgb, 1.0) * v_color.a * clamp(0.5 - d, 0.0, 1.0);\n"
+    "    c = texture2D(u_image, v_uv) * pm * clamp(0.5 - d, 0.0, 1.0);\n"
     "  } else if (v_params.z > 1.5) {\n"  // shadow
     "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
-    "    c = vec4(v_color.rgb, 1.0) * v_color.a * (1.0 - smoothstep(-v_params.y, v_params.y, d));\n"
+    "    c = pm * (1.0 - smoothstep(-v_params.y, v_params.y, d));\n"
     "  } else if (v_params.z > 0.5) {\n"  // glyph
-    "    c = vec4(v_color.rgb, 1.0) * v_color.a * texture2D(u_atlas, v_uv).a;\n"
+    "    c = pm * texture2D(u_atlas, v_uv).a;\n"
     "  } else {\n"  // rounded rect; the border is composited over the fill (premultiplied)
     "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
-    "    c = vec4(v_color.rgb * v_color.a, v_color.a);\n"
+    "    c = pm;\n"
     "    if (v_params.y > 0.0) {\n"
     "      float ring = 1.0 - clamp(0.5 - (d + v_params.y), 0.0, 1.0);\n"
     "      vec4 b = vec4(v_bcolor.rgb * v_bcolor.a, v_bcolor.a) * ring;\n"
@@ -149,17 +151,127 @@ bool nb_render_init(void) {
   return true;
 }
 
-static void push_vertex(float x, float y, float lx, float ly, float hw, float hh, const float *color,
-                        const float *bcolor, float radius, float extra, float mode, float u, float v) {
+static float *alloc_vertex(void) {
   if (vert_count + 1 > vert_cap) {
     vert_cap = vert_cap ? vert_cap * 2 : 4096;
     verts = realloc(verts, vert_cap * VERTEX_FLOATS * sizeof(float));
   }
-  float *p = verts + vert_count++ * VERTEX_FLOATS;
+  return verts + vert_count++ * VERTEX_FLOATS;
+}
+
+// ---- gradients ------------------------------------------------------------------
+// A GRADIENT op fills the next drawing op: each of its triangles is cut at the stop lines,
+// so between two cuts the color is affine in position and per-vertex colors are exact. The
+// shape keeps its own vertices otherwise (rounded-rect SDF, borders, AA coverage).
+
+#define MAX_STOPS 32
+static struct {
+  bool active;
+  float x0, y0, dx, dy;           // line start and direction / length^2 (t = dot(p - p0, d))
+  int n;
+  float offset[MAX_STOPS];
+  float color[MAX_STOPS][4];      // premultiplied
+} grad;
+static float tri[3][VERTEX_FLOATS];
+static int tri_n;
+
+static float grad_t(const float *v) { return (v[0] - grad.x0) * grad.dx + (v[1] - grad.y0) * grad.dy; }
+
+// Color of band `b` (0 = before the first stop, n = after the last) at t, premultiplied.
+static void band_color(int b, float t, float *out) {
+  int lo = b - 1 < 0 ? 0 : b - 1, hi = b < grad.n ? b : grad.n - 1;
+  float span = grad.offset[hi] - grad.offset[lo];
+  float k = span > 0 ? (t - grad.offset[lo]) / span : 0;
+  k = k < 0 ? 0 : k > 1 ? 1 : k;
+  for (int c = 0; c < 4; c++) out[c] = grad.color[lo][c] + (grad.color[hi][c] - grad.color[lo][c]) * k;
+}
+
+// Emits vertex `v` colored by band `b`: gradient (straight, the shader premultiplies) times its own color.
+static void emit_band_vertex(const float *v, int b) {
+  float pm[4];
+  band_color(b, grad_t(v), pm);
+  float *p = alloc_vertex();
+  memcpy(p, v, VERTEX_FLOATS * sizeof(float));
+  float a = pm[3];
+  for (int c = 0; c < 3; c++) p[6 + c] = (a > 0 ? pm[c] / a : 0) * v[6 + c];
+  p[9] = a * v[9];
+}
+
+// Clips `poly` (n vertices) to t >= lo (sign 1) or t <= hi (sign -1); returns the new count.
+static int clip_poly(float (*in)[VERTEX_FLOATS], int n, float (*out)[VERTEX_FLOATS], float edge, float sign) {
+  int m = 0;
+  for (int i = 0; i < n; i++) {
+    const float *a = in[i], *b = in[(i + 1) % n];
+    float da = (grad_t(a) - edge) * sign, db = (grad_t(b) - edge) * sign;
+    if (da >= 0) memcpy(out[m++], a, sizeof in[0]);
+    if ((da >= 0) != (db >= 0)) {
+      float k = da / (da - db);
+      for (int f = 0; f < VERTEX_FLOATS; f++) out[m][f] = a[f] + (b[f] - a[f]) * k;
+      m++;
+    }
+  }
+  return m;
+}
+
+static void emit_gradient_triangle(void) {
+  float t[3] = {grad_t(tri[0]), grad_t(tri[1]), grad_t(tri[2])};
+  float tmin = fminf(t[0], fminf(t[1], t[2])), tmax = fmaxf(t[0], fmaxf(t[1], t[2]));
+  for (int b = 0; b <= grad.n; b++) {
+    float lo = b == 0 ? -INFINITY : grad.offset[b - 1], hi = b == grad.n ? INFINITY : grad.offset[b];
+    if (tmin >= lo && tmax <= hi) {  // the whole triangle is in this band
+      for (int i = 0; i < 3; i++) emit_band_vertex(tri[i], b);
+      return;
+    }
+    if (hi <= lo || tmax <= lo || tmin >= hi) continue;
+    float a[5][VERTEX_FLOATS], c[5][VERTEX_FLOATS];
+    memcpy(a, tri, sizeof tri);
+    int n = 3;
+    if (b > 0) n = clip_poly(a, n, c, lo, 1), memcpy(a, c, sizeof a);
+    if (b < grad.n) n = clip_poly(a, n, c, hi, -1), memcpy(a, c, sizeof a);
+    for (int i = 1; i + 1 < n; i++) {
+      emit_band_vertex(a[0], b);
+      emit_band_vertex(a[i], b);
+      emit_band_vertex(a[i + 1], b);
+    }
+  }
+}
+
+// Reads a GRADIENT op (`a` after the opcode); returns the floats it used, or 0 if truncated.
+static size_t read_gradient(const float *a, size_t left, float scale) {
+  if (left < 5) return 0;
+  size_t n = (size_t)a[4];
+  if (left < 5 + n * 5) return 0;
+  float x0 = a[0] * scale, y0 = a[1] * scale, dx = a[2] * scale - x0, dy = a[3] * scale - y0;
+  float len2 = dx * dx + dy * dy;
+  grad.x0 = x0;
+  grad.y0 = y0;
+  grad.dx = len2 > 0 ? dx / len2 : 0;
+  grad.dy = len2 > 0 ? dy / len2 : 0;
+  grad.n = n > MAX_STOPS ? MAX_STOPS : (int)n;
+  for (int k = 0; k < grad.n; k++) {
+    const float *s = a + 5 + k * 5;
+    grad.offset[k] = k > 0 && s[0] < grad.offset[k - 1] ? grad.offset[k - 1] : s[0];
+    grad.color[k][0] = s[1] * s[4];
+    grad.color[k][1] = s[2] * s[4];
+    grad.color[k][2] = s[3] * s[4];
+    grad.color[k][3] = s[4];
+  }
+  grad.active = grad.n > 0;
+  tri_n = 0;
+  return 5 + n * 5;
+}
+
+static void push_vertex(float x, float y, float lx, float ly, float hw, float hh, const float *color,
+                        const float *bcolor, float radius, float extra, float mode, float u, float v) {
+  float *p = grad.active ? tri[tri_n] : alloc_vertex();
   p[0] = x; p[1] = y; p[2] = lx; p[3] = ly; p[4] = hw; p[5] = hh;
   p[6] = color[0]; p[7] = color[1]; p[8] = color[2]; p[9] = color[3];
   p[10] = bcolor[0]; p[11] = bcolor[1]; p[12] = bcolor[2]; p[13] = bcolor[3];
   p[14] = radius; p[15] = extra; p[16] = mode; p[17] = u; p[18] = v;
+  if (grad.active && ++tri_n == 3) {
+    tri_n = 0;
+    emit_gradient_triangle();
+  }
 }
 
 // Quad covering [x0,x1]x[y0,y1]; local coords are relative to (cx,cy).
@@ -371,9 +483,19 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
   glBindTexture(GL_TEXTURE_2D, atlas_tex);
 
   size_t i = 0;
+  grad.active = false;
   while (i < count) {
     int op = (int)cmd[i++];
     switch (op) {
+      case NB_OP_GRADIENT: {  // x0 y0 x1 y1  n  then n x (offset r g b a)
+        size_t used = read_gradient(cmd + i, count - i, scale);
+        if (!used) {  // truncated buffer: stop drawing
+          i = count;
+          break;
+        }
+        i += used;
+        continue;
+      }
       case NB_OP_RECT: {  // x y w h  r g b a  radius border  br bg bb ba
         const float *a = cmd + i;
         i += 14;
@@ -483,6 +605,7 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
         fprintf(stderr, "nodebuilder: unknown draw op %d\n", op);
         i = count;
     }
+    grad.active = false;  // a gradient fills only the op right after it
   }
   flush();
 }

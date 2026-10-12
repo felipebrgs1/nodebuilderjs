@@ -103,6 +103,13 @@ A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch
   above everything.
 - `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
   drawn even without a `background` (the blurred box shows through).
+- **Gradients:** `background={{ linear: ["#1db954", "#121212"], angle: 180 }}` is a CSS
+  `linear-gradient`: `angle` in degrees (0 = to top, 90 = to right, default 180 = to bottom),
+  stops as colors or `[color, offset]` (offset 0 to 1; missing offsets are spread evenly).
+  Corners, `radius`, borders and `opacity` work as with a color, and it can be reactive
+  (`background={() => ({ linear: [theme.accent.base, "transparent"] })}` follows the theme).
+  Colors are interpolated in premultiplied space like CSS, so fading to `"transparent"` never
+  turns gray. Borders, text and shadows stay solid colors.
 - **Overflow warnings (development):** when children need more room than their container
   gives them (after wrapping text and `grow` children have shrunk) and the excess is hidden by
   a `clip` ancestor or the window, `run()` prints it once per node, e.g.
@@ -227,6 +234,9 @@ and changing one of them redraws. Geometry is computed when the data changes, no
 nothing is drawn when not even the "…" fits). `g.measureText(text, size?, bold?)`
 (`{ width, height }`) measures it, to align it.
 Lines take a dash pattern (`g.line(..., cap, [4, 3])`, `g.polyline(..., { dash })`).
+`g.linearGradient(x0, y0, x1, y1, stops)` returns a gradient (from offset 0 at the first point
+to 1 at the second, in canvas coordinates) that every shape takes in place of a color:
+`g.polygon(area, g.linearGradient(0, 0, 0, g.height, ["#3584e480", "transparent"]))`.
 Limits: a self-intersecting polygon is not drawn, and lines with a translucent color get darker
 at the joins.
 
@@ -473,9 +483,8 @@ const panel = createPresence(open, { enter: 180, exit: 120 });
   exit, easing })` gives `mounted` (stays `true` until the exit finishes, for use in `<Show>`)
   and `progress` (0 to 1). Durations in ms (default 200; presence 180 in, 120 out), default
   curve `easing.easeOut` (also `linear`, `easeIn`, `easeInOut`, or any `(t) => number`).
-- `mixColor(a, b, t)` blends two colors into `"#rrggbbaa"`, alpha included and not
-  premultiplied: to fade a color out, mix it with the same color at alpha 0, not `"transparent"`
-  (which passes through gray).
+- `mixColor(a, b, t)` blends two colors into `"#rrggbbaa"`, alpha included, in premultiplied
+  space like CSS: `mixColor("#ff0000", "transparent", 0.5)` is red at half alpha, not gray.
 - `Dialog`, `Select`, `Tooltip` and `Toggle` already animate. Without a window (in tests) every
   animation finishes immediately; `frames()` from `@nodebuilderjs/core/testing` controls time.
 
@@ -811,6 +820,8 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
   accessibility or IME (keyboards for Asian languages).
 - `opacity` is applied to each thing drawn, not to the group: overlapping children
   show through each other.
+- Linear gradients only (no radial or conic ones), as backgrounds and Canvas fills; borders,
+  text and shadows are solid colors.
 - Scrolling without inertia or animation (the wheel and keys jump straight there), without
   auto-scroll when dragging a selection to the edge and without repeat when holding the click
   on the scrollbar track.

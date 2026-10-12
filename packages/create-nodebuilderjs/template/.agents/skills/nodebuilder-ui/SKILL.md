@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: nodebuilder widgets, style props and layout (Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking (zIndex), clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
+description: nodebuilder widgets, style props and layout (gradient backgrounds, Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking (zIndex), clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
 ---
 
 # UI with nodebuilder
@@ -62,6 +62,12 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
 - Visual: `background`, `radius`, `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}`,
   `opacity` (0 to 1, applies to children), `translateX`/`translateY` (shifts after
   layout, without pushing siblings; for animation).
+- **Gradient background** (CSS `linear-gradient`): `background={{ linear: ["#1db954", "#121212"], angle: 180 }}`.
+  `angle` in degrees (0 = to top, 90 = to right, default 180 = to bottom); stops are colors or
+  `[color, offset]` (0..1, missing ones spread evenly). Works with `radius`, borders, `opacity`,
+  `hoverStyle`, and reactively: `background={() => ({ linear: [theme.accent.base, "transparent"] })}`.
+  Interpolated premultiplied (fading to `"transparent"` stays the same hue). Linear only (no
+  radial/conic); `borderColor`, `color` and `shadow` take solid colors only.
 - `clip` cuts the children to the inside of the border, **rounded** (radius `radius - borderWidth`):
   `<Card clip padding={0}>` + an `Image` or a colored header gets the card's rounded corners.
 - `shadow` is the node's rounded box, blurred `blur` px on each side of its edge and moved down
@@ -482,8 +488,7 @@ const stop = animate(0, 300, setX, { duration: 400, easing: easing.linear, onDon
   `opacity`, `translateY`).
 - `easing.linear`, `.easeIn`, `.easeOut`, `.easeInOut`, or any `(t: number) => number`.
 - `mixColor(a, b, t)`: `a` blended toward `b` (t 0..1), as `"#rrggbbaa"`; any hex form works.
-  It mixes the alpha straight, so fading to `"transparent"` passes through gray: fade toward the
-  same color with alpha 0 (`"#1db95400"`), or animate `opacity`.
+  Premultiplied like CSS: `mixColor("#1db954", "transparent", 0.5)` is the same green at half alpha.
 - Animate numbers only (`opacity`, `translateX/Y`, `width`, colors via `mixColor`). For a
   custom loop, `requestAnimationFrame((time) => ...)` runs right before the next frame.
 - `Dialog`, `Select`, `Tooltip` and `Toggle` already animate on their own. Without a window

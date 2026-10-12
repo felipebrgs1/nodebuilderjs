@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### New
+- **Linear gradients:** `background={{ linear: ["#1db954", "#121212"], angle: 180 }}` (CSS
+  angles; stops as colors or `[color, offset]`), with rounded corners, borders, `opacity`,
+  `hoverStyle` and reactive values (theme colors inside an accessor follow `setTheme`). In
+  `<Canvas>`, `g.linearGradient(x0, y0, x1, y1, stops)` fills `rect`, `polygon`, `circle`,
+  `arc`, `line` and `polyline`. Interpolated in premultiplied space like CSS. New draw op
+  `GRADIENT` (10); colors are now premultiplied in the vertex shader.
 - **`zIndex`:** paint and hit-test order among siblings (default 0; ties keep child order).
   Siblings only, no global stacking contexts; overlays stay above everything. The part of a
   child that sticks out of a parent that does not `clip` (an absolute badge) is now clickable.

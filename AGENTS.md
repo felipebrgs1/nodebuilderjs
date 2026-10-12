@@ -120,7 +120,8 @@ What cannot be tested automatically is documented when closing the task:
   (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
   `input` (events), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
   `cli` (the `nodebuilder` command, spawned),
-  `clipboard`, `text-selection`, `testing` (public helpers), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
+  `clipboard`, `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
+  pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
 - Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
   ~0.5 s (most of it: the EGL context of `screenshot` and the spawns of `cli`); a test that
@@ -172,6 +173,7 @@ src/                   one module per folder; relative imports with `.js`
     overflow.ts        overflow warnings: children cut off by a clip or the window (layoutWarnings, run() in dev)
     paint.ts           tree -> CommandBuffer (Float32Array) + parseColor
     shapes.ts          polyline (LINE segments) and fillPolygon (triangulation + AA fringe)
+    gradient.ts        linear gradients: stop offsets (CSS rules), the CSS gradient line of a box
     scrollbar.ts       clamped scroll position and scrollbar geometry (painting and input)
     text-wrap.ts       <Text> line wrapping (greedy, at spaces), maxLines with "…", truncate()
   runtime/
@@ -405,8 +407,11 @@ Keep **`native/include/nb.h`, `src/render/paint.ts` and `native/core/render_gles
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · capStart capEnd (0 butt, 1 round) |
 | TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
 | ARC | 9 | cx cy · outer inner · start sweep (radians; 0 = up, clockwise) · r g b a |
+| GRADIENT | 10 | x0 y0 x1 y1 · n · n × (offset r g b a): a linear gradient that fills the next op only (that op's color multiplies it; paint.ts sends white) |
 
-Colors in 0..1, not premultiplied (the shader premultiplies). A new op also goes into
+Colors in 0..1, not premultiplied (the vertex shader premultiplies, so per-vertex colors
+interpolate premultiplied, like CSS). The renderer cuts the triangles of a gradient-filled op at
+the stop lines and colors their vertices: exact for linear gradients, any shape. A new op also goes into
 `decode()` in `test/helpers.ts`, which the tests use to read the buffer.
 
 ### Layout (render/layout.ts)
@@ -577,6 +582,8 @@ packages, all with the version from the root `package.json`:
   (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms, WebP 105–180 ms); no mipmaps (downscaling
   an image a lot makes it jagged) and no @2x variant.
 - `opacity` multiplies the alpha of each command (it is not group opacity); no `scale`/`rotate`.
+- Gradients: linear only (backgrounds and Canvas fills); no radial/conic; borders, text and
+  shadows are solid.
 - `<ErrorBoundary>` does not cover the event handler's own code (only the effects its
   writes trigger); `<Switch>` does not accept a function child that returns `<Match>`
   (the `Match`es must be in the JSX, so they can be read without running anything).
