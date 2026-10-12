@@ -6,6 +6,7 @@ import { type Child, insert } from "./jsx-runtime.js";
 import { layout } from "./render/layout.js";
 import { type PointerEvent, UINode, setTextMeasurer } from "./render/node.js";
 import { createRoot } from "./reactive/signals.js";
+import { runFrameCallbacks, setAnimating, setFrameClock } from "./runtime/frames.js";
 import { createInput } from "./runtime/input.js";
 
 /** 8 px per character, 20 px lines: layout is deterministic without fonts. */
@@ -16,6 +17,8 @@ export function useFakeTextMetrics() {
 /** Renders `view` into a detached root and lays it out at `width`x`height`. */
 export function mount(view: () => Child, size = { width: 800, height: 600 }) {
   useFakeTextMetrics();
+  setAnimating(false); // animations finish at once unless the test calls frames()
+  setFrameClock(null);
   const root = new UINode("root");
   root.isRoot = true;
   const dispose = createRoot((d) => {
@@ -105,6 +108,25 @@ export function interact(root: UINode) {
     /** Pointer shape the window would show ("default", "pointer", "text"...). */
     get cursor() {
       return cursor;
+    },
+  };
+}
+
+/**
+ * Takes over the frame clock: animations (and requestAnimationFrame) run only as
+ * `advance(ms)` moves time, in 16 ms frames. Call it after mount(), which resets the clock.
+ */
+export function frames() {
+  setAnimating(true);
+  let time = 0;
+  setFrameClock(() => time);
+  return {
+    advance(ms: number) {
+      const end = time + ms;
+      while (time < end) {
+        time = Math.min(end, time + 16);
+        runFrameCallbacks(time);
+      }
     },
   };
 }

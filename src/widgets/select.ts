@@ -4,6 +4,7 @@
 
 import { type Child, jsx } from "../jsx-runtime.js";
 import { type Style, UINode } from "../render/node.js";
+import { createPresence } from "../animation/index.js";
 import { Show } from "../reactive/control.js";
 import { type Accessor, type MaybeAccessor, createEffect, createSignal, read, untrack } from "../reactive/signals.js";
 import { theme } from "../theme.js";
@@ -34,9 +35,9 @@ export function Select<T>(
 ): Child {
   const trigger = new UINode("Select");
   Object.assign(trigger.style, {
-    direction: "row", align: "center", gap: 8, padding: [8, 10, 8, 12], radius: theme.radius, minWidth: 120,
-    background: theme.field.background, borderWidth: 1, borderColor: theme.field.border,
+    direction: "row", align: "center", gap: 8, padding: [8, 10, 8, 12], radius: theme.radius, minWidth: 120, borderWidth: 1,
   } satisfies Style);
+  if (props.background === undefined) createEffect(() => trigger.set("background", theme.field.background));
   applyProps(trigger, props);
   const disabled = disableable(trigger, props);
   const state = interaction(trigger);
@@ -101,6 +102,7 @@ export function Select<T>(
     e.stop();
   };
 
+  const presence = createPresence(open, { enter: 120, exit: 90 });
   const list = () => {
     const rows = options.map((option, i) => {
       const row = Box({
@@ -120,6 +122,8 @@ export function Select<T>(
       anchor: () => trigger,
       matchWidth: true,
       onDismiss: close,
+      opacity: presence.progress,
+      translateY: () => (presence.progress() - 1) * 4,
       children: jsx(Card, {
         padding: 4,
         gap: 0,
@@ -128,5 +132,5 @@ export function Select<T>(
       }),
     });
   };
-  return [trigger, jsx(Show, { when: open, children: () => untrack(list) })];
+  return [trigger, jsx(Show, { when: presence.mounted, children: () => untrack(list) })];
 }

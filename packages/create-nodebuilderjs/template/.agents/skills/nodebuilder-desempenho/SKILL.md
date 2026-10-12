@@ -28,8 +28,10 @@ mudanças antes dele saem juntas no mesmo frame.
   (`text={() => fmt(item.cpu())}`) em vez de um signal gigante com o estado todo.
 - **Várias mudanças juntas:** `batch(() => { setA(1); setB(2); })` gera um único frame e
   roda os effects uma vez.
-- **Animação e dados ao vivo:** use `requestAnimationFrame(cb)` (ritmado pela tela), não
-  `setInterval` curto. Para parar, simplesmente não peça o próximo frame.
+- **Animação e dados ao vivo:** para ir de um valor a outro use `createTween`/`animate`; para
+  um loop, `requestAnimationFrame(cb)` (ritmado pela tela), não `setInterval` curto. Para
+  parar, não peça o próximo frame. `Spinner` e `ProgressBar` sem valor pedem frames enquanto
+  estão na tela: esconda-os quando a espera acabar.
 - **Texto:** medidas ficam em cache; textos que mudam todo frame (contadores, relógios)
   custam pouco, mas evite gerar milhares de strings novas por frame.
 - **Imagens:** decodificar é caro e síncrono; reutilize o mesmo arquivo (é compartilhado) e

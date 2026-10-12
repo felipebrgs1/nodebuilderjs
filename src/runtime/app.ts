@@ -6,6 +6,7 @@ import { setImageBackend } from "../image/source.js";
 import { layout } from "../render/layout.js";
 import { nativeClipboard, setClipboardBackend } from "./clipboard.js";
 import { createInput } from "./input.js";
+import { hasFrameCallbacks, runFrameCallbacks, setAnimating } from "./frames.js";
 import { type Native, type NativeEvent, loadNative } from "./native.js";
 import { UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer, textMetricsChanged } from "../render/node.js";
 import { CommandBuffer, paintTree } from "../render/paint.js";
@@ -47,17 +48,12 @@ export const windowControls = {
   setTitle: (title: string) => native?.setTitle(title),
 };
 
-let frameCallbacks: ((time: number) => void)[] = [];
-
-/** Runs `cb` right before the next frame is laid out (paced by the compositor). */
-export function requestAnimationFrame(cb: (time: number) => void) {
-  frameCallbacks.push(cb);
-  invalidate();
-}
+export { requestAnimationFrame } from "./frames.js";
 
 export function run(app: () => Child, runOptions: RunOptions = {}) {
   native = loadNative();
   const nat = native;
+  setAnimating(true);
 
   const metrics = new Map<string, { width: number; ascent: number; descent: number }>();
   setTextMeasurer((text, size, bold) => {
@@ -125,11 +121,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
     const t0 = performance.now();
     lastRender = t0;
     rendering = true;
-    if (frameCallbacks.length) {
-      const callbacks = frameCallbacks;
-      frameCallbacks = [];
-      batch(() => callbacks.forEach((cb) => cb(t0)));
-    }
+    runFrameCallbacks(t0);
     dirty = false; // everything changed so far is in this frame
     const tState = performance.now();
     layout(root, width(), height());
@@ -142,7 +134,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
     const t3 = performance.now();
     framePending = true;
     rendering = false;
-    if (frameCallbacks.length) dirty = true; // next frame is wanted; sent when the compositor is ready
+    if (hasFrameCallbacks()) dirty = true; // next frame is wanted; sent when the compositor is ready
 
     if (stats) {
       stats.frames++;

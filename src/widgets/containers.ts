@@ -2,6 +2,7 @@
 
 import { insert } from "../jsx-runtime.js";
 import { UINode } from "../render/node.js";
+import { createEffect } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 import { type BoxProps, applyProps } from "./props.js";
 
@@ -63,7 +64,7 @@ export function Scroll(props: ScrollProps) {
 export function Divider() {
   const node = new UINode("Divider");
   node.style.height = 1;
-  node.style.background = theme.divider;
+  createEffect(() => node.set("background", theme.divider));
   return node;
 }
 
@@ -71,11 +72,12 @@ export function Divider() {
 export function Card(props: BoxProps) {
   const node = Column(props);
   node.label = "Card";
-  node.style.background ??= theme.card.background;
   node.style.radius ??= 12;
   node.style.padding ??= 16;
   node.style.gap ??= 8;
   node.style.borderWidth ??= 1;
-  node.style.borderColor ??= theme.card.border;
+  // Theme colors in effects, so they follow setTheme(); the app's own colors win.
+  if (props.background === undefined) createEffect(() => node.set("background", theme.card.background));
+  if (props.borderColor === undefined) createEffect(() => node.set("borderColor", theme.card.border));
   return node;
 }

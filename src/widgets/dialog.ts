@@ -3,6 +3,7 @@
 
 import { type Child, jsx } from "../jsx-runtime.js";
 import { UINode, focusedElement } from "../render/node.js";
+import { createPresence } from "../animation/index.js";
 import { Show } from "../reactive/control.js";
 import { type Accessor, type MaybeAccessor, onCleanup, untrack } from "../reactive/signals.js";
 import { theme } from "../theme.js";
@@ -35,6 +36,8 @@ export function Dialog(props: {
   const marker = new UINode("Dialog");
   marker.style.position = "absolute";
 
+  // Fades in and slides up; on close it fades out before leaving the tree.
+  const presence = createPresence(props.open, { enter: 180, exit: 120 });
   const content = () =>
     untrack(() => {
       const previous = focusedElement(marker);
@@ -46,6 +49,7 @@ export function Dialog(props: {
         gap: 12,
         padding: 20,
         shadow: { color: "#00000040", blur: 24, y: 8 },
+        translateY: () => (1 - presence.progress()) * 16,
         children: [
           props.title !== undefined && jsx(Text, { text: props.title, fontSize: 18, bold: true }),
           props.children,
@@ -55,7 +59,8 @@ export function Dialog(props: {
       queueMicrotask(() => firstFocusable(card)?.focus());
       return jsx(Overlay, {
         modal: true,
-        background: theme.backdrop,
+        opacity: presence.progress,
+        background: () => theme.backdrop,
         align: "center",
         justify: "center",
         padding: 24,
@@ -63,5 +68,5 @@ export function Dialog(props: {
         children: card,
       });
     });
-  return [marker, jsx(Show, { when: props.open, children: content })];
+  return [marker, jsx(Show, { when: presence.mounted, children: content })];
 }

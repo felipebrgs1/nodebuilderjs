@@ -1,12 +1,13 @@
 // The built-in controls side by side, enabled and disabled.
-// OPEN=select|dialogo starts with the list or the dialog open (for screenshots).
+// OPEN=select|dialogo starts with the list or the dialog open; THEME=dark starts dark (for screenshots).
 
 import {
   Button, Card, Checkbox, Column, Dialog, Match, ProgressBar, RadioGroup, Row, Select, Slider, Spinner, Switch, Tabs, Text,
-  TextField, Toggle, Tooltip, Window, createSignal, run, theme,
+  TextField, Toggle, Tooltip, Window, colorScheme, createSignal, run, setTheme, theme,
 } from "@nodebuilderjs/core";
 
 const initial = process.env.OPEN;
+if (process.env.THEME === "dark") setTheme("dark");
 const CITIES = [
   { value: "poa", label: "Porto Alegre" },
   { value: "sp", label: "São Paulo" },
@@ -16,7 +17,6 @@ const CITIES = [
 
 function Controls() {
   const [wifi, setWifi] = createSignal(true);
-  const [dark, setDark] = createSignal(false);
   const [size, setSize] = createSignal("m");
   const [volume, setVolume] = createSignal(40);
   const [name, setName] = createSignal("");
@@ -42,8 +42,9 @@ function Controls() {
         <Card grow={1} gap={14}>
           <Text bold>Ajustes</Text>
           <Toggle checked={wifi} onChange={setWifi} label="Wi-Fi" />
-          <Toggle checked={dark} onChange={setDark} label="Tema escuro (em breve)" disabled />
-          <Text color={theme.text.secondary}>Tamanho</Text>
+          <Toggle checked={() => colorScheme() === "dark"} onChange={(on) => setTheme(on ? "dark" : "light")} label="Tema escuro" />
+          <Toggle checked={() => false} onChange={() => {}} label="Modo avião (indisponível)" disabled />
+          <Text color={() => theme.text.secondary}>Tamanho</Text>
           <RadioGroup
             value={size}
             onChange={setSize}
@@ -53,7 +54,7 @@ function Controls() {
               { value: "g", label: "Grande (esgotado)", disabled: true },
             ]}
           />
-          <Text color={theme.text.secondary}>{() => `Volume: ${volume()}`}</Text>
+          <Text color={() => theme.text.secondary}>{() => `Volume: ${volume()}`}</Text>
           <Slider value={volume} onChange={setVolume} width={220} />
           <Slider value={() => 70} onChange={() => {}} width={220} disabled />
         </Card>
@@ -68,12 +69,12 @@ function Controls() {
             </Tooltip>
             <Button label="Excluir…" variant="danger" onClick={() => setConfirm(true)} />
           </Row>
-          <Text color={theme.text.secondary}>Progresso</Text>
+          <Text color={() => theme.text.secondary}>Progresso</Text>
           <ProgressBar value={() => volume() / 100} />
           <ProgressBar />
           <Row gap={10} align="center">
             <Spinner />
-            <Text color={theme.text.secondary}>Carregando…</Text>
+            <Text color={() => theme.text.secondary}>Carregando…</Text>
           </Row>
         </Card>
       </Row>
@@ -82,7 +83,7 @@ function Controls() {
         <Card gap={12} align="start">
           <Text bold>Cidade</Text>
           <Select value={city} onChange={setCity} options={CITIES} placeholder="Escolha uma cidade" width={240} />
-          <Text color={theme.text.secondary}>{() => `Escolhida: ${city() ?? "nenhuma"}`}</Text>
+          <Text color={() => theme.text.secondary}>{() => `Escolhida: ${city() ?? "nenhuma"}`}</Text>
         </Card>
       </Match>
       </Switch>
@@ -96,7 +97,7 @@ function Controls() {
           <Button label="Excluir" variant="danger" onClick={() => setConfirm(false)} />,
         ]}
       >
-        <Text color={theme.text.secondary}>Esta ação não pode ser desfeita. O arquivo some de todos os dispositivos.</Text>
+        <Text color={() => theme.text.secondary}>Esta ação não pode ser desfeita. O arquivo some de todos os dispositivos.</Text>
       </Dialog>
     </Window>
   );

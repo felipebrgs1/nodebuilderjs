@@ -47,6 +47,9 @@ ui.key("Return");           // dispara o onSubmit
 ui.drag(slider, 80, 0);     // arrasta 80 px para a direita
 ```
 - `debugTree(node)` (de `@nodebuilderjs/core`): árvore com posições, ótimo para ver o layout.
+- Animações terminam na hora nos testes (não há janela): um `Dialog` fechado sai da árvore no
+  mesmo instante. Para testar a animação, `const clock = frames()` depois do `mount()` e
+  `clock.advance(ms)` (frames de 16 ms).
 - `ref={(el) => el.focus()}` (foco ao criar) vale num microtask: crie o `interact(root)` e
   faça `await Promise.resolve()` antes de digitar. `onResize` dispara a cada `relayout()`
   em que o tamanho mudou.

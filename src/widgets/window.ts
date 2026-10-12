@@ -13,7 +13,7 @@ function WindowButton(props: { kind: "minimize" | "maximize" | "close"; onClick:
   const state = interaction(node);
   node.handlers.onClick = props.onClick;
   createEffect(() =>
-    node.set("background", state.pressed() ? "#00000033" : state.hovered() ? "#00000024" : "#00000012"),
+    node.set("background", state.pressed() ? theme.control.pressed : state.hovered() ? theme.control.hover : theme.control.base),
   );
   node.paint = (p, n) => {
     const cx = n.x + n.width / 2;
@@ -43,9 +43,11 @@ export function Window(
   const node = new UINode("Window");
   (node as any)[windowOptionsKey] = props;
   Object.assign(node.style, {
-    direction: "column", background: theme.window.background, borderWidth: 1, borderColor: theme.window.border, clip: true,
+    direction: "column", borderWidth: 1, clip: true,
     padding: 1, // keep children (e.g. the titlebar divider) off the border
   } satisfies Style);
+  if (props.background === undefined) createEffect(() => node.set("background", theme.window.background));
+  if (props.borderColor === undefined) createEffect(() => node.set("borderColor", theme.window.border));
   createEffect(() => node.set("radius", windowState.maximized() || !windowState.transparent() ? 0 : theme.window.radius));
 
   const bar = new UINode("Titlebar");

@@ -7,10 +7,11 @@ import { Text } from "./text.js";
 
 type Variant = "default" | "primary" | "danger" | "flat";
 
+/** Read inside effects, so the colors follow the theme. */
 function palette(variant: Variant) {
   if (variant === "primary") return theme.accent;
   if (variant === "danger") return theme.danger;
-  if (variant === "flat") return { ...theme.control, base: "#00000000" };
+  if (variant === "flat") return { base: "#00000000", hover: theme.control.hover, pressed: theme.control.pressed, text: theme.control.text };
   return theme.control;
 }
 
@@ -24,11 +25,12 @@ export function Button(
   },
 ) {
   const node = new UINode("Button");
-  const colors = palette(props.variant ?? "default");
+  const variant = props.variant ?? "default";
   Object.assign(node.style, {
     direction: "row", align: "center", justify: "center", gap: 6, padding: [8, 16], radius: theme.radius, cursor: "pointer",
-    color: colors.text, bold: props.variant === "primary" || props.variant === "danger",
+    bold: variant === "primary" || variant === "danger",
   } satisfies Style);
+  if (props.color === undefined) createEffect(() => node.set("color", palette(variant).text));
   applyProps(node, props);
   const disabled = disableable(node, props);
 
@@ -42,9 +44,10 @@ export function Button(
     }
   };
   if (props.background === undefined) {
-    createEffect(() =>
-      node.set("background", disabled() ? colors.base : state.pressed() ? colors.pressed : state.hovered() ? colors.hover : colors.base),
-    );
+    createEffect(() => {
+      const colors = palette(variant);
+      node.set("background", disabled() ? colors.base : state.pressed() ? colors.pressed : state.hovered() ? colors.hover : colors.base);
+    });
   }
   createEffect(() => {
     node.set("borderWidth", state.focused() ? 2 : 0);

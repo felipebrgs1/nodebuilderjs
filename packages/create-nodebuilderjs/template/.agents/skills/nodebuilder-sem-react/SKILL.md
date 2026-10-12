@@ -38,6 +38,8 @@ nem Solid**. O JSX parece o de sempre, mas os elementos são os widgets do
 | `ResizeObserver`, media queries | `onResize={(s) => setLargura(s.width)}` + signal |
 | `createPortal`, `position: fixed`, `z-index`, modal/dropdown/tooltip de biblioteca | `<Overlay>` (`modal`, `anchor={() => el}`, `onDismiss`); skill `nodebuilder-ui` |
 | CSS `opacity`, `transform: translate(...)` | props `opacity`, `translateX`, `translateY` (sem `scale`/`rotate`) |
+| `transition`, framer-motion, react-spring, `AnimatePresence` | `createTween`, `createPresence` (+ `<Show when={p.mounted}>`), `animate` |
+| `prefers-color-scheme`, `ThemeProvider` com tema escuro | `setTheme("dark")`, `colorScheme()`, cores em funções: `() => theme.text.primary` |
 | `white-space: nowrap` / `text-overflow: ellipsis` / `-webkit-line-clamp` | `wrap={false}` / `maxLines={1}` / `maxLines={n}` |
 | CSS `text-align`, `line-height` | `textAlign` (`start`/`center`/`end`), `lineHeight` (multiplicador) |
 | CSS `:hover` | `onPointerEnter`/`onPointerLeave` + signal |

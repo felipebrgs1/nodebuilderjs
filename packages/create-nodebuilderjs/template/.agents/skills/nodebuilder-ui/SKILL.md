@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), rolagem (vertical, horizontal, barras, teclado, scrollIntoView), contexto (createContext), ref (focar, rolar, medir), onResize, overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
+description: Widgets, props de estilo e layout do nodebuilder (Window, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), rolagem (vertical, horizontal, barras, teclado, scrollIntoView), contexto (createContext), ref (focar, rolar, medir), onResize, tema escuro (setTheme), animações (createTween, createPresence), overlays (diálogo modal, menu suspenso, dica/tooltip), opacity e translate, texto selecionável e área de transferência (copiar/colar). Use ao criar ou mudar qualquer tela, formulário, lista, barra lateral ou layout de um app nodebuilder, quando o usuário precisa copiar um texto da tela, ou quando um elemento não aparece, não cresce ou não rola como esperado.
 ---
 
 # Interface com nodebuilder
@@ -254,11 +254,16 @@ let botao: ElementRef | undefined;
 ## Tema e janela
 
 - Cores e tamanhos padrão em `theme` (`theme.text.secondary`, `theme.accent.base`,
-  `theme.danger.base`, `theme.divider`...). Mude `theme` antes de `run()` para personalizar.
+  `theme.danger.base`, `theme.divider`...). Tema escuro: `setTheme("dark")` (ou `"light"`, ou
+  `{ ...darkTheme, accent: {...} }`), a qualquer momento; `colorScheme()` diz qual está ativo.
+- **Cor do tema sempre dentro de função** (`color={() => theme.text.secondary}`): assim ela
+  acompanha a troca de tema. `color={theme.text.secondary}` fica com a cor do momento.
 - `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`;
   `windowState.width()`, `.height()`, `.maximized()`, `.activated()` são accessors.
-- Ainda não existem: tema escuro reativo, API de animações (anime `opacity`/`translate` à
-  mão), `scale`/`rotate`, seleção no `TextField`
+- Animação: `createTween(() => alvo)` (número que anda suave), `createPresence(quando)`
+  (`mounted` para o `<Show>`, `progress` 0→1 para `opacity`/`translateY`), `animate(...)`.
+  `Dialog`, `Select`, `Tooltip` e `Toggle` já animam sozinhos.
+- Ainda não existem: tema seguindo o sistema, `scale`/`rotate`, seleção no `TextField`
   (e Ctrl+C nele), IME, várias janelas.
 
 ## Selecionar e copiar texto

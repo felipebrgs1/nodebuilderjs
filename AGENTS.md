@@ -107,7 +107,8 @@ O que não dá para testar automaticamente fica documentado no fechamento da tar
   (`ref`, foco e rolagem por código, `onResize`), `overlay`, `style` (`opacity`, `translate`),
   `text` (quebra de linha, alinhamento, `maxLines`, seleção em várias linhas), `controls`
   (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `popups`
-  (`Select`, `Tabs`, `Tooltip`, `Dialog`), `scroll`
+  (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets seguindo a troca),
+  `animation` (`animate`, tween, presença, transições dos widgets com `frames()`), `scroll`
   (horizontal e dois eixos, barras, roda, teclado, mínimos de quem contém um `Scroll`),
   `input` (eventos),
   `clipboard`, `text-selection`, `testing` (helpers públicos), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
@@ -138,7 +139,8 @@ src/                   um módulo por pasta; imports relativos com `.js`
   index.ts             API pública (reexporta os módulos)
   jsx-runtime.ts       runtime JSX próprio; jsx() só cria descrições (ElementDesc)
   testing.ts           @nodebuilderjs/core/testing: mount, findByText, click, interact
-  theme.ts             cores/tamanhos padrão (tema claro)
+  theme.ts             lightTheme/darkTheme, `theme` (getters reativos), setTheme, colorScheme
+  animation/index.ts   animate, createTween, createPresence, easing, mixColor
   assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts referencia com preserve="true")
   reactive/
     signals.ts         createSignal/Effect/Memo/Root, onCleanup, batch, untrack, read, catchError
@@ -157,6 +159,7 @@ src/                   um módulo por pasta; imports relativos com `.js`
     app.ts             run(): janela, agendamento de frames, NB_STATS; liga o input ao addon
     input.ts           eventos -> UI: hit test, hover, cursor, foco, cliques, captura, rolagem, teclado
     native.ts          carrega native/build/<plataforma>-<arch>/nodebuilder.node (require literais)
+    frames.ts          relógio de frames: fila do requestAnimationFrame, frameNow, animating()
     clipboard.ts       clipboard (texto): em memória sem janela, nativo com run(); leitura por evento
   widgets/             um arquivo por widget; index.ts reexporta
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps, inherited, interaction
@@ -277,7 +280,10 @@ signal muda -> effect atualiza UINode.set(...) / setSlot(...) -> invalidate()
   (o `ref` recebe o `UINode`, tipado como `ElementRef`). Widget novo também.
 - Foco só pelo clique (ex.: `<Text selectable>`, que precisa do foco para o Ctrl+C):
   `focusable = true` e `tabStop = false`, para não entrar na ordem do Tab.
-- Defaults de cor/tamanho vêm de `theme.ts`, não hard-coded nos widgets.
+- Defaults de cor/tamanho vêm de `theme.ts`, não hard-coded nos widgets. Cor do tema vai
+  num effect (ou na pintura), nunca copiada para o estilo na criação, senão não acompanha o
+  `setTheme`; respeite a cor que o app passou (`if (props.background === undefined) ...`).
+- Transições usam `createPresence`/`createTween` (`animation/`): sem janela terminam na hora.
 - Comentários e identificadores em **inglês**; textos de UI, README e este arquivo em
   **português**. Comentários são curtos e explicam o porquê, não o quê.
 - Use `ReturnType<typeof setInterval>`, não `NodeJS.Timeout`.
@@ -483,7 +489,10 @@ todos com a versão do `package.json` da raiz:
 - Rolagem sem inércia nem animação; sem rolagem automática ao arrastar uma seleção até a
   borda; clique segurado na trilha da barra avança uma página só (sem repetição). Shift+roda
   depende dos modificadores do evento: no Wayland só valem com a janela em foco de teclado.
-- Sem acessibilidade (AT-SPI), API de animações/transições, tema escuro, multi-janela, IME
+- Tema escuro não segue o sistema (falta o portal XDG por D-Bus); cor do tema copiada como
+  valor fixo (`color={theme.x}`) não acompanha a troca. Animações sem `scale`/`rotate` nem
+  `transition` declarativo.
+- Sem acessibilidade (AT-SPI), multi-janela, IME
   (text-input-v3), DnD, escala fracionária real (KDE 125% renderiza em 2x e reduz).
 - Janela sempre com decoração própria (CSD): barra de título, mover, maximizar,
   redimensionar pelas bordas (6 px). `xdg-decoration` (SSD no KDE) ainda não.

@@ -2,6 +2,7 @@
 
 import { type Child, insert, jsx } from "../jsx-runtime.js";
 import { type Handlers, type Placement, UINode } from "../render/node.js";
+import { createPresence } from "../animation/index.js";
 import { Show } from "../reactive/control.js";
 import { type MaybeAccessor, createSignal, onCleanup } from "../reactive/signals.js";
 import { theme } from "../theme.js";
@@ -45,18 +46,20 @@ export function Tooltip(
     onPointerUp: (e) => (own.onPointerUp?.(e), hide()),
   } satisfies Handlers);
 
+  const presence = createPresence(open, { enter: 100, exit: 80 });
   const bubble = () =>
     jsx(Overlay, {
       anchor: () => wrap,
       placement: props.placement ?? "top",
       offset: 6,
+      opacity: presence.progress,
       children: jsx(Box, {
         padding: [6, 10],
         radius: 6,
         maxWidth: 280,
-        background: theme.tooltip.background,
-        children: jsx(Text, { text: props.text, color: theme.tooltip.text, fontSize: 12 }),
+        background: () => theme.tooltip.background,
+        children: jsx(Text, { text: props.text, color: () => theme.tooltip.text, fontSize: 12 }),
       }),
     });
-  return [wrap, jsx(Show, { when: open, children: bubble })];
+  return [wrap, jsx(Show, { when: presence.mounted, children: bubble })];
 }

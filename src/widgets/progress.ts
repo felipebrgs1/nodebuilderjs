@@ -2,7 +2,7 @@
 
 import { type Style, UINode, invalidate } from "../render/node.js";
 import { type MaybeAccessor, createEffect, onCleanup, read } from "../reactive/signals.js";
-import { requestAnimationFrame } from "../runtime/app.js";
+import { requestAnimationFrame } from "../runtime/frames.js";
 import { theme } from "../theme.js";
 import { type StyleProps, applyProps } from "./props.js";
 

@@ -98,6 +98,25 @@ Medido sem janela (2026-10-12, mediana de 4 rodadas alternadas): montar e descar
 mais um memo); o `try/catch` no `execute` e a fila sem reentrada não mudaram o custo das
 atualizações (1000 effects × 1000 atualizações em `batch`: ~264 e ~267 ms, dentro do ruído).
 
+## Tema e animações
+
+`theme.ts` guarda dois presets (`lightTheme`, `darkTheme`) e o tema em uso. O objeto `theme`
+tem a forma dos presets, mas cada folha é um getter que lê um signal de versão antes de
+devolver o valor: um effect (ou o `draw` de um `<Canvas>`) que leu `theme.text.primary`
+reexecuta quando `setTheme()` ou uma atribuição (`theme.divider = ...`) incrementa a versão, e
+a pintura, que lê o tema a cada frame, só precisa do `invalidate()`. Os widgets não copiam
+cores do tema para o estilo na criação: põem num effect, e só quando o app não passou a
+própria cor. O custo é uma chamada de função por leitura; na pintura de 1000 textos, dentro
+do ruído (medido em 2026-10-12).
+
+`runtime/frames.ts` é o relógio de frames: a fila do `requestAnimationFrame`, rodada pelo
+`run()` antes de cada layout, e `frameNow()`. `animation/` (`animate`, `createTween`,
+`createPresence`) usa esse relógio; a animação começa a contar na chamada, não no primeiro
+frame. Sem janela nada roda a fila, então `animate` vai direto ao fim quando `animating()` é
+falso: os testes de quem usa `Dialog` ou `Select` não precisam saber das transições. O
+`frames()` de `@nodebuilderjs/core/testing` liga o relógio falso e roda a fila em passos de
+16 ms; o `mount()` volta ao modo sem janela.
+
 ## Um frame
 
 ```

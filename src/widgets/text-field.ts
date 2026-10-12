@@ -16,8 +16,9 @@ export function TextField(
 ) {
   const node = new UINode("TextField");
   Object.assign(node.style, {
-    padding: [9, 12], radius: theme.radius, background: theme.field.background, minWidth: 80,
+    padding: [9, 12], radius: theme.radius, minWidth: 80,
   } satisfies Style);
+  if (props.background === undefined) createEffect(() => node.set("background", theme.field.background));
   applyProps(node, props);
   disableable(node, props, "text");
   const state = interaction(node);

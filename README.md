@@ -329,6 +329,33 @@ const [confirmar, setConfirmar] = createSignal(false);
 - `Dialog` é um `<Overlay modal>` pronto: foca o primeiro controle ao abrir e devolve o foco
   ao fechar; Esc e o fundo chamam `onClose` (`dismissible={false}` desliga).
 
+### Tema escuro e animações
+
+```tsx
+import { Box, Text, Toggle, colorScheme, createPresence, createSignal, createTween, setTheme, theme } from "@nodebuilderjs/core";
+
+// Tema: troca tudo na hora; cores lidas dentro de funções acompanham.
+<Toggle checked={() => colorScheme() === "dark"} onChange={(on) => setTheme(on ? "dark" : "light")} label="Tema escuro" />;
+<Text color={() => theme.text.secondary}>legenda</Text>;
+
+// Um número que anda suave até o alvo; e algo que some com fade antes de sair da árvore.
+const [aberto, setAberto] = createSignal(false);
+const largura = createTween(() => (aberto() ? 240 : 64), { duration: 200 });
+const painel = createPresence(aberto, { enter: 180, exit: 120 });
+<Box width={largura} opacity={painel.progress} />;
+```
+
+- `setTheme("dark" | "light")` ou um tema próprio (`{ ...darkTheme, accent: { ...darkTheme.accent,
+  base: "#9141ac" } }`); `colorScheme()` diz qual está em uso. `theme.x = ...` também atualiza.
+- **Cores do tema dentro de funções:** `color={() => theme.text.secondary}` acompanha a troca;
+  `color={theme.text.secondary}` guarda a cor daquele momento. Os widgets prontos já seguem.
+- `animate(de, para, aoAtualizar, { duration, easing, onDone })` devolve uma função que para;
+  `createTween(fonte)` segue um valor; `createPresence(quando)` dá `mounted` (fica `true` até
+  a saída terminar, para usar no `<Show>`) e `progress` (0 a 1). Curvas em `easing`
+  (`linear`, `easeIn`, `easeOut`, `easeInOut`); `mixColor(a, b, t)` mistura cores.
+- `Dialog`, `Select`, `Tooltip` e `Toggle` já animam. Sem janela (nos testes) toda animação
+  termina na hora; `frames()` de `@nodebuilderjs/core/testing` controla o tempo.
+
 ### Texto
 
 `<Text>` quebra linha nos espaços para caber na largura que recebe, como na web; `\n` sempre
@@ -524,12 +551,13 @@ Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#me
 - Campo de texto sem seleção, cópia e desfazer (colar funciona).
 - SVG só no subconjunto para ícones (sem gradientes, texto, filtros); AVIF/HEIC dependem da
   `libheif` do sistema.
-- `Dialog`, `Select` e `Tooltip` abrem e fecham sem transição (a API de animações é o
-  próximo passo).
+- O tema escuro não segue a preferência do sistema sozinho (no Linux ela vem do portal XDG
+  por D-Bus, ainda não lido): chame `setTheme` a partir de uma opção do app.
 - `ProgressBar` indeterminada e `Spinner` pedem um frame atrás do outro enquanto aparecem
   (CPU baixa, mas não zero); esconda-os quando a espera acabar.
-- Sem API de animações (dá para animar `opacity`/`translate` com `requestAnimationFrame`),
-  sem `scale`/`rotate`, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).
+- Animações só de números (`opacity`, `translate`, tamanhos, cores com `mixColor`): sem
+  `scale`/`rotate`, transição declarativa de estilo (`transition` do CSS) nem molas. Sem
+  acessibilidade e IME (teclados de idiomas asiáticos).
 - `opacity` é aplicada a cada coisa desenhada, não ao grupo: filhos que se sobrepõem
   aparecem um através do outro.
 - Rolagem sem inércia nem animação (a roda e as teclas pulam direto), sem rolagem

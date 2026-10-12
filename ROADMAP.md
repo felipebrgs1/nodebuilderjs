@@ -159,9 +159,13 @@ Depois:
   contexto, campo de número, data, `Select` com busca e com vários valores
 - Imagens: decodificar fora da thread do JS, mipmaps para imagens muito reduzidas, versões
   @2x para HiDPI e animações (GIF, WebP animado)
-- Animações e transições (já dá para animar `opacity`/`translate` à mão); `scale`/`rotate`
-  e opacidade de grupo pedem desenhar a subárvore numa textura
-- Tema escuro, seguindo a preferência do sistema
+- ~~Animações e transições~~ **feito** (2026-10-12): `animate`, `createTween`,
+  `createPresence`, `easing`, `mixColor`; `Dialog`, `Select`, `Tooltip` e `Toggle` animados.
+  Falta `transition` declarativo nas props de estilo, molas e `scale`/`rotate` (com
+  opacidade de grupo, pedem desenhar a subárvore numa textura)
+- ~~Tema escuro~~ **feito** (2026-10-12): `setTheme`, `darkTheme`, `colorScheme`. Falta
+  seguir a preferência do sistema (portal XDG `org.freedesktop.appearance` por D-Bus, com a
+  libdbus via `dlopen` e o fd no `poll()` da thread de bombeamento)
 - **Experimento:** `@nodebuilderjs/react`, um renderer React opcional (via
   `react-reconciler`, como o React Native e o Ink) mapeando para os mesmos widgets e para
   `<svg>`. Traria hooks, bibliotecas só de lógica (TanStack Query, Zustand) e ícones como
