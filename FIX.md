@@ -150,12 +150,6 @@ Bubbling of `onPointerDown` ends at the first node with an `onClick`, even witho
 `stop()`. Decide whether it is intended (buttons own their press) and document it, or make
 it bubble until `stop()`. Test either way in `test/input.test.tsx`.
 
-### F6. `mixColor` interpolates straight alpha - small
-
-Mixing toward `"transparent"` (`#00000000`) passes through translucent gray. Interpolate in
-premultiplied space (as CSS does) and un-premultiply; test that
-`mixColor("#ff0000", "transparent", 0.5)` is `rgba(255,0,0,0.5)`. Same rule for C3 gradients.
-
 ## Suggested order
 
 1. B4 (wrap)

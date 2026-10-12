@@ -72,6 +72,14 @@ test("mixColor blends two colors", () => {
   expect(mixColor("#ff000000", "#ff0000ff", 0.25)).toBe("#ff000040");
 });
 
+test("mixColor interpolates in premultiplied space: toward transparent it fades, never grays", () => {
+  expect(mixColor("#ff0000", "transparent", 0.5)).toBe("#ff000080");
+  expect(mixColor("transparent", "#00ff00", 0.25)).toBe("#00ff0040");
+  expect(mixColor("#ff0000", "transparent", 1)).toBe("#00000000");
+  // Both translucent: the more opaque color weighs more (CSS color-mix in premultiplied space).
+  expect(mixColor("#ff0000ff", "#0000ff40", 0.5)).toBe("#cc0033a0");
+});
+
 test("Dialog fades and slides in and out; it leaves the tree only when the exit ends", () => {
   const [open, setOpen] = createSignal(false);
   const { root, relayout } = mount(() => (

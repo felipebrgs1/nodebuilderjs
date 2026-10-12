@@ -63,6 +63,8 @@
 - **Idle redraw:** since the interactive scrollbars (0.2.5), an idle window redrew at the fps cap
   (~10% CPU for an empty window, ~25% for the dashboard) because the per-frame hover refresh
   invalidated even with no scrollbar to highlight. Idle is back to 0 frames and 0% CPU.
+- **`mixColor` toward a transparent color** passed through translucent gray: it now mixes in
+  premultiplied space like CSS, so `mixColor("#ff0000", "transparent", 0.5)` is red at 50% alpha.
 
 ## 0.2.5 (2026-10-12)
 

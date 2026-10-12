@@ -31,6 +31,17 @@ export function parseColor(c: Color): [number, number, number, number] {
   return rgba;
 }
 
+/**
+ * `a` blended toward `b` by `t`, in premultiplied space like CSS (a fully transparent end
+ * contributes no color, so fading to "transparent" never passes through gray). Straight rgba out.
+ */
+export function mixRgba(a: readonly number[], b: readonly number[], t: number): [number, number, number, number] {
+  const alpha = a[3]! + (b[3]! - a[3]!) * t;
+  if (alpha <= 0) return [0, 0, 0, 0];
+  const ch = (i: number) => (a[i]! * a[3]! + (b[i]! * b[3]! - a[i]! * a[3]!) * t) / alpha;
+  return [ch(0), ch(1), ch(2), alpha];
+}
+
 export class CommandBuffer implements Painter {
   data = new Float32Array(4096);
   length = 0;
