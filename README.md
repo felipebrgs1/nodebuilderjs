@@ -57,7 +57,7 @@ código como o Claude Code.
 
 Exemplos completos em [`examples/`](examples): contador, lista de tarefas, imagens, ícones,
 desenho livre, gráficos, overlays (menu, diálogo e dica), texto (parágrafos, alinhamento,
-reticências) e um painel
+reticências), rolagem (horizontal, nos dois eixos, `scrollIntoView`) e um painel
 com abas, tabela e gráfico.
 
 ### Imagens
@@ -230,9 +230,46 @@ const [largura, setLargura] = createSignal(0);
 - Para um valor que muda, passe um accessor no contexto (`value={tema}`, com `tema` um
   signal) e chame-o onde usa (`useContext(Tema)()`).
 - O `ref` recebe um `ElementRef`: `x`, `y`, `width` e `height` do último layout (coordenadas
-  da janela), `focus()`, `blur()` e, num `Scroll`, `scrollTo(y)` e `scrollY`. O `ref` é
-  chamado quando o widget é criado, antes do layout; um `focus()` nessa hora vale assim que
-  o widget entra na árvore.
+  da janela), `focus()`, `blur()`, `scrollIntoView()` e, num `Scroll`, `scrollTo(y)` ou
+  `scrollTo({ x, y })`, `scrollX` e `scrollY`. O `ref` é chamado quando o widget é criado,
+  antes do layout; um `focus()` ou `scrollIntoView()` nessa hora vale assim que o widget
+  entra na árvore.
+
+### Rolagem
+
+```tsx
+import { Button, Card, For, Row, Scroll, Text } from "@nodebuilderjs/core";
+import type { ElementRef } from "@nodebuilderjs/core";
+
+const itens = Array.from({ length: 200 }, (_, i) => `Item ${i}`);
+const linhas: ElementRef[] = [];
+<>
+  <Scroll horizontal gap={12}>                    {/* faixa que rola para o lado */}
+    <For each={itens}>{(t) => <Card width={160}><Text>{t}</Text></Card>}</For>
+  </Scroll>
+  <Button label="Ir para o 150" onClick={() => linhas[150]?.scrollIntoView()} />
+  <Scroll grow={1}>
+    <For each={itens}>{(t, i) => <Row ref={(el) => (linhas[i()] = el)} padding={8}><Text>{t}</Text></Row>}</For>
+  </Scroll>
+  <Scroll horizontal vertical height={300}>{/* tabela larga e longa */}</Scroll>
+</>;
+```
+
+- `<Scroll>` rola na vertical; `horizontal` faz uma linha cujos filhos mantêm a largura
+  (texto dentro não quebra, a não ser com `width`/`maxWidth`); `horizontal vertical` rola
+  nos dois eixos, numa coluna em que cada filho tem pelo menos a largura visível.
+- Roda do mouse e touchpad nos dois eixos; Shift+roda rola para o lado. As barras são finas,
+  por cima do conteúdo (como no GTK e no macOS), e engrossam sob o mouse: arrastar o polegar
+  rola junto, clicar na trilha avança uma página. Elas só pegam o clique (numa faixa de 14 px
+  na borda) quando há o que rolar.
+- Teclado: PageUp/PageDown, Home/End e as setas rolam o `Scroll` em volta do elemento
+  focado (sem foco, o que está sob o mouse), se nenhum `onKeyDown` chamar `e.stop()`. O
+  `TextField` continua com Home/End e ←/→ para o cursor.
+- `scrollIntoView()` rola cada `Scroll` em volta do elemento o mínimo necessário, no próximo
+  frame (também para um elemento que acabou de ser criado ou que está longe, fora da tela).
+- O conteúdo de um `Scroll` não segura o tamanho de quem o contém: uma coluna com um
+  `Scroll grow={1}` dentro encolhe sem `minHeight={0}`.
+- Um `<Overlay modal>` aberto bloqueia roda, teclas e barras do que está atrás.
 
 ### Texto
 
@@ -433,6 +470,9 @@ Medido em 2026-10-11. Para reproduzir, veja [ARCHITECTURE.md](ARCHITECTURE.md#me
   sem `scale`/`rotate`, tema escuro, acessibilidade e IME (teclados de idiomas asiáticos).
 - `opacity` é aplicada a cada coisa desenhada, não ao grupo: filhos que se sobrepõem
   aparecem um através do outro.
+- Rolagem sem inércia nem animação (a roda e as teclas pulam direto), sem rolagem
+  automática ao arrastar uma seleção até a borda e sem repetição ao segurar o clique na
+  trilha da barra.
 
 ## Contribuir
 

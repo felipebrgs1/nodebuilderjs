@@ -52,6 +52,35 @@ test("interact: scroll over a node", () => {
   expect(root.children[0]!.scrollY).toBe(60);
 });
 
+test("interact: wheel with dx or Shift scrolls sideways", () => {
+  const { root } = mount(() => (
+    <Scroll horizontal height={50}>
+      <Box width={2000} />
+    </Scroll>
+  ));
+  const ui = interact(root);
+  ui.scroll(root.children[0]!, 0, { dx: 25 });
+  ui.scroll(root.children[0]!, 15, { shift: true });
+  expect(root.children[0]!.scrollX).toBe(40);
+});
+
+test("interact: down/up at a window position, and the cursor the window would show", () => {
+  const log: string[] = [];
+  const { root } = mount(() => (
+    <Column align="start">
+      <Box width={100} height={40} cursor="pointer" onClick={() => log.push("click")} />
+    </Column>
+  ));
+  const ui = interact(root);
+  ui.move(10, 10);
+  expect(ui.cursor).toBe("pointer");
+  ui.down(10, 10);
+  ui.up(20, 30);
+  ui.move(150, 10);
+  expect(ui.cursor).toBe("default");
+  expect(log).toEqual(["click"]);
+});
+
 test("findByText and click also reach overlay content", () => {
   const log: string[] = [];
   const { root } = mount(() => (

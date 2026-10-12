@@ -8,7 +8,7 @@ export type NativeEvent =
   | { type: "configure"; width: number; height: number; scale: number; maximized: boolean; activated: boolean; transparent: boolean }
   | { type: "close" | "frame" | "pointerleave" }
   | { type: "pointermove" | "pointerdown" | "pointerup"; x: number; y: number; button: number }
-  | { type: "scroll"; x: number; y: number; dx: number; dy: number }
+  | { type: "scroll"; x: number; y: number; dx: number; dy: number; shift: boolean }
   | NativeKeyEvent
   | { type: "focus"; focused: boolean }
   | { type: "clipboard"; text: string };
