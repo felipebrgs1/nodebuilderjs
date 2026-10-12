@@ -255,6 +255,33 @@ export class UINode implements ElementRef {
   }
 
   set<K extends keyof Style>(key: K, value: Style[K]) {
+    if (this.covered && key in this.covered) {
+      this.covered[key] = value; // shown again when the override ends
+      return;
+    }
+    if (this.style[key] === value) return;
+    this.style[key] = value;
+    invalidate();
+  }
+
+  /** Base values under an override (hoverStyle/pressStyle), kept up to date by set(). */
+  private covered: Partial<Style> | null = null;
+
+  /**
+   * Shows `value` for `key` over whatever set() gives it (widget defaults, the app's props);
+   * `undefined` ends the override and brings the latest base value back.
+   */
+  override<K extends keyof Style>(key: K, value: Style[K] | undefined) {
+    const covered = (this.covered ??= {});
+    const active = key in covered;
+    if (value === undefined) {
+      if (!active) return;
+      const base = covered[key];
+      delete covered[key];
+      this.set(key, base);
+      return;
+    }
+    if (!active) covered[key] = this.style[key];
     if (this.style[key] === value) return;
     this.style[key] = value;
     invalidate();

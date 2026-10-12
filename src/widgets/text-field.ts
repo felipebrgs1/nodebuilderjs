@@ -92,7 +92,9 @@ export function TextField(
     restartBlink();
   };
 
+  const prevDown = node.handlers.onPointerDown; // press state (pressStyle), the app's handler
   node.handlers.onPointerDown = (e) => {
+    prevDown?.(e);
     const [, , , pl] = edges(node.style.padding);
     const x = e.x - node.x - pl + scrollX;
     const cs = chars();

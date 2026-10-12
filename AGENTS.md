@@ -161,7 +161,7 @@ src/                   one module per folder; relative imports with `.js`
     frames.ts          frame clock: requestAnimationFrame queue, frameNow, animating()
     clipboard.ts       clipboard (text): in memory without a window, native with run(); read via event
   widgets/             one file per widget; index.ts re-exports
-    props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps, inherited, interaction
+    props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps (+ hoverStyle/pressStyle), inherited, interaction, createInteraction
     containers.ts      Box, Column, Row, Scroll, Spacer, Divider, Card
     text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
     toggle.ts radio.ts slider.ts progress.ts   controls (Toggle, RadioGroup, Slider, ProgressBar/Spinner)
@@ -281,6 +281,15 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
 - Every widget passes its props through `applyProps`: it is what wires style, handlers,
   `ariaLabel` (into `UINode.ariaLabel`; `UINode.label` is the debug label) and the `ref`
   (the `ref` receives the `UINode`, typed as `ElementRef`). New widgets too.
+- Handlers are **chained, never replaced**: `applyProps` adds the app's handlers (and the
+  ones from spread `createInteraction().props`, carried under a unique symbol key so a later
+  `onPointerEnter={...}` cannot drop them) after the node's; a widget that sets a handler
+  after `applyProps`/`interaction(node)` calls the previous one first (`Slider`, `TextField`).
+  `interaction(node)` is one tracker per node (widgets and `hoverStyle` share it).
+- `hoverStyle`/`pressStyle` use `UINode.override(key, value)`: while it is active, `set()`
+  only updates the base underneath, so theme effects and reactive props do not fight it and
+  the latest base comes back on leave. `hoverStyle` alone attaches only enter/leave (an
+  `onPointerDown` would make the node claim the press and break window drag regions).
 - Focus by click only (e.g. `<Text selectable>`, which needs focus for Ctrl+C):
   `focusable = true` and `tabStop = false`, so it stays out of the Tab order.
 - Color/size defaults come from `theme.ts`, not hard-coded in widgets. Theme colors go

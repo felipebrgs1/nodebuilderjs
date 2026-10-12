@@ -55,13 +55,18 @@ export function Slider(
   });
 
   let dragging = false;
+  // Chained: the press state (pressStyle) and the app's own handlers still run.
+  const prevDown = node.handlers.onPointerDown;
   node.handlers.onPointerDown = (e) => {
+    prevDown?.(e);
     if (disabled() || e.button !== 0) return;
     dragging = true;
     set(valueAt(e.localX));
     e.stop(); // not a window drag
   };
+  const prevMove = node.handlers.onPointerMove;
   node.handlers.onPointerMove = (e) => {
+    prevMove?.(e);
     if (dragging && e.button === 0) set(valueAt(e.localX));
   };
   const prevUp = node.handlers.onPointerUp;
