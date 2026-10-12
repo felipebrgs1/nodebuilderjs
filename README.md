@@ -79,6 +79,46 @@ or grid:
 - `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
   drawn even without a `background` (the blurred box shows through).
 
+### Hover and press
+
+`hoverStyle` and `pressStyle` work on every widget (CSS `:hover` and `:active`). They take
+any style props, static or as accessors, shown over the base style while the pointer is over
+the widget or pressing it:
+
+```tsx
+<Box padding={12} radius={8} background="#ffffff"
+  hoverStyle={{ background: "#f2f2f4" }} pressStyle={{ background: "#e6e6ea", opacity: 0.9 }}>
+  <Text>Row</Text>
+</Box>
+```
+
+- `pressStyle` wins over `hoverStyle`; leaving brings back the base values, which stay
+  reactive underneath (a signal that changed meanwhile shows its latest value).
+- They win over a widget's own hover colors (a `Button`'s theme background); a `disabled`
+  widget ignores them.
+- `hoverStyle` alone leaves presses alone; `pressStyle` (and `createInteraction().props`)
+  make the widget handle the press, so inside a window's drag region it no longer moves the
+  window.
+
+When something else depends on the state, such as a play button that only shows while its card
+is hovered, `createInteraction()` gives `hovered`, `pressed` and `focused` accessors and
+`props` to spread on the widget:
+
+```tsx
+const card = createInteraction();
+<Box {...card.props} padding={12} background={() => (card.hovered() ? "#f2f2f4" : "#ffffff")}>
+  <Text>Song</Text>
+  <Show when={card.hovered}>
+    <Button label="Play" onClick={() => {}} />
+  </Show>
+</Box>;
+```
+
+The pointer is still over the card while it is over the play button. `props` adds to the
+widget's own handlers and to `onPointerEnter`/`onPointerLeave`/... written next to it,
+before or after the spread; nothing is replaced, and several interactions can share a widget.
+`focused` only changes on focusable widgets (`Button`, `TextField`...).
+
 ### Images
 
 ```tsx

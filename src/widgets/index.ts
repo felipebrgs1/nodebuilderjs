@@ -1,7 +1,7 @@
 // Built-in widgets. Each is a plain function component that creates UINodes and
 // binds props to them; there is no special widget base class.
 
-export { type BoxProps, type StyleProps, applyProps } from "./props.js";
+export { type BoxProps, type StyleProps, type Interaction, type InteractionProps, type InteractionState, type StyleValues, applyProps, createInteraction } from "./props.js";
 export { Box, Card, Column, Divider, Row, Scroll, type ScrollProps, Spacer } from "./containers.js";
 export { Text, type TextAlign } from "./text.js";
 export { Image, type ImageFit } from "./image.js";

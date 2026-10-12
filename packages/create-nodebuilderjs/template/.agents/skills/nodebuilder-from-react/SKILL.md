@@ -43,7 +43,7 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | `prefers-color-scheme`, `ThemeProvider` with a dark theme | `setTheme("dark")`, `colorScheme()`, colors in functions: `() => theme.text.primary` |
 | `white-space: nowrap` / `text-overflow: ellipsis` / `-webkit-line-clamp` | `wrap={false}` / `maxLines={1}` / `maxLines={n}` |
 | CSS `text-align`, `line-height`, `text-decoration: underline` | `textAlign` (`start`/`center`/`end`), `lineHeight` (multiplier), `underline` (inherited) |
-| CSS `:hover` | `onPointerEnter`/`onPointerLeave` + signal |
+| CSS `:hover` / `:active`, `.card:hover .play` | `hoverStyle={{ background: "#..." }}` / `pressStyle={{...}}` on any widget; state read elsewhere: `const card = createInteraction()`, `<Box {...card.props}>`, `<Show when={card.hovered}>` |
 | selectable text (the default on the web) | only with `<Text selectable>`; without the prop it does not select (like `user-select: none`) |
 | `navigator.clipboard.writeText/readText` | `clipboard.writeText(t)` / `await clipboard.readText()` |
 | `fetch`, `fs`, timers | they work (Bun/Node APIs); update signals with the result |

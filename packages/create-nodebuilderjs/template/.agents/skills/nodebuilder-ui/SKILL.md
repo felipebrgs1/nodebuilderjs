@@ -100,6 +100,42 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
 - `ariaLabel="Play"` on any widget names an element without text (an icon-only button);
   tests find it with `findByLabel`. A `Tooltip` gives its tip to a trigger that has none.
 
+## Hover and press
+
+Do not write `onPointerEnter`/`onPointerLeave` + a signal for hover effects. Use
+`hoverStyle`/`pressStyle` (any widget, any style prop, values fixed or functions), and
+`createInteraction()` when something else depends on the state (a child shown while its
+parent is hovered):
+
+```tsx
+import { Box, Button, Column, Show, Text, createInteraction } from "@nodebuilderjs/core";
+
+function SongCard(props: { title: string; onPlay: () => void }) {
+  const card = createInteraction();
+  return (
+    <Box {...card.props} direction="row" align="center" gap={12} padding={12} radius={8}
+      background="#181818" hoverStyle={{ background: "#282828" }} pressStyle={{ opacity: 0.85 }}>
+      <Column grow={1}>
+        <Text color="#ffffff">{props.title}</Text>
+      </Column>
+      <Show when={card.hovered}>
+        <Button label="Play" variant="primary" onClick={props.onPlay} />
+      </Show>
+    </Box>
+  );
+}
+```
+
+- `pressStyle` wins over `hoverStyle`; on leave the base values come back (a base given as a
+  function keeps updating underneath). They win over a widget's own hover colors (`Button`);
+  a `disabled` control ignores them.
+- `createInteraction()` returns `hovered`, `pressed`, `focused` (accessors) and `props`.
+  `{...card.props}` adds to the widget's handlers and to your own `onPointerEnter`... written
+  before or after it (nothing is overwritten); the card stays hovered while the pointer is
+  over its children. `focused` only changes on focusable widgets (`Button`, `TextField`).
+- `hoverStyle` alone does not take the press; `pressStyle` and `card.props` do, so inside a
+  window's drag region (title bar) such a widget no longer drags the window.
+
 ## Conditions, lists and errors
 
 ```tsx
@@ -382,14 +418,13 @@ const [query, setQuery] = createSignal("");
 ## Animation
 
 ```tsx
-import { Box, animate, createSignal, createTween, easing, mixColor, theme } from "@nodebuilderjs/core";
+import { Box, animate, createInteraction, createSignal, createTween, easing, mixColor, theme } from "@nodebuilderjs/core";
 
-const [hover, setHover] = createSignal(false);
+const row = createInteraction();
 // Moves smoothly toward its source; a new target starts from wherever it is now.
-const t = createTween(() => (hover() ? 1 : 0), { duration: 150, easing: easing.easeInOut });
+const t = createTween(() => (row.hovered() ? 1 : 0), { duration: 150, easing: easing.easeInOut });
 <Box
-  height={56} radius={8}
-  onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}
+  {...row.props} height={56} radius={8}
   background={() => mixColor(theme.card.background, "#1db954", t() * 0.2)}
   translateY={() => -2 * t()}
 />;

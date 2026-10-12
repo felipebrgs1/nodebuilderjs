@@ -286,6 +286,21 @@ describe("custom title bar", () => {
     expect(host.calls).toEqual(["move"]);
   });
 
+  test("a hoverStyle child keeps dragging the window; a pressStyle child keeps the press", () => {
+    const { root, input, host } = setup(() => (
+      <Row dragRegion height={40}>
+        <Box width={40} hoverStyle={{ background: "#111111" }} />
+        <Box width={40} pressStyle={{ background: "#222222" }} />
+      </Row>
+    ));
+    const [hover, press] = root.children[0]!.children;
+    input.pointerDown(...center(hover!), 0);
+    now += 1000;
+    input.pointerDown(...center(press!), 0);
+    expect(host.calls.filter((c) => c === "move")).toEqual(["move"]);
+    expect(press!.style.background).toBe("#222222");
+  });
+
   test("the press still bubbles past a control to the dragRegion's own handler, without moving", () => {
     const { root, input, host } = setup(() => (
       <Row dragRegion height={40} onPointerDown={() => log.push("row")}>
