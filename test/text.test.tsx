@@ -341,19 +341,26 @@ test("letterSpacing (inherited, may be negative) widens the text, its wrapping a
   expect(commandsOf(column!, "text").map((t) => t.text)).toEqual(["aaa bbb", "ccc"]);
 });
 
-test("the addon measurer caches by text, size, weight, italic and spacing, and passes them as a font id", () => {
+test("the addon measurer caches by text, size and font, and passes a font id and a font spec", () => {
   const calls: unknown[][] = [];
   const nat = { measureText: (...args: unknown[]) => (calls.push(args), [10, 15, 5]) } as unknown as Native;
   const measure = nativeTextMeasurer(nat, 2);
-  const regular = { weight: 400, italic: false, letterSpacing: 0 };
+  const regular = { weight: 400, italic: false, letterSpacing: 0, family: "", features: "", variations: "" };
   measure("a", 14, regular);
   measure("a", 14, { ...regular });
   measure("a", 14, { ...regular, weight: 700 });
   measure("a", 14, { ...regular, italic: true });
   measure("a", 14, { ...regular, letterSpacing: 1 });
   measure("a", 14, { ...regular, letterSpacing: 1 });
-  // font id = weight * 2 + italic
-  expect(calls).toEqual([["a", 14, 800, 2, 0], ["a", 14, 1400, 2, 0], ["a", 14, 801, 2, 0], ["a", 14, 800, 2, 1]]);
+  measure("a", 14, { ...regular, family: "Inter" });
+  measure("a", 14, { ...regular, family: "Inter" });
+  measure("a", 14, { ...regular, features: "tnum" });
+  measure("a", 14, { ...regular, variations: "wdth 75" });
+  // font id = weight * 2 + italic; spec = family, features, variations joined by U+001F ("" for none)
+  expect(calls).toEqual([
+    ["a", 14, 800, 2, 0, ""], ["a", 14, 1400, 2, 0, ""], ["a", 14, 801, 2, 0, ""], ["a", 14, 800, 2, 1, ""],
+    ["a", 14, 800, 2, 0, "Inter\x1f\x1f"], ["a", 14, 800, 2, 0, "\x1ftnum\x1f"], ["a", 14, 800, 2, 0, "\x1f\x1fwdth 75"],
+  ]);
   expect(fontId(700, true)).toBe(1401);
 });
 

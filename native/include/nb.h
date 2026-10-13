@@ -58,22 +58,44 @@ typedef void (*nb_glyph_emit)(void *ud, float x0, float y0, float x1, float y1,
                               float u0, float v0, float u1, float v1, bool color);
 
 bool nb_text_init(void);
-// All values in physical pixels. `font`: a font id. `spacing`: letter spacing, added after every
-// grapheme cluster (the last one too); nonzero turns ligatures off.
-float nb_text_measure(int font, const char *utf8, int px, float spacing, float *ascent, float *descent);
-void nb_text_draw(int font, const char *utf8, int px, float spacing, float x, float top, nb_glyph_emit emit, void *ud);
+// All values in physical pixels. `font`: a font id. `spec`: the family list, OpenType features and
+// variation axes joined by U+001F (src/render/node.ts fontSpec), or NULL/"" for the UI font.
+// `spacing`: letter spacing, added after every grapheme cluster (the last one too); nonzero turns
+// ligatures off.
+float nb_text_measure(int font, const char *spec, const char *utf8, int px, float spacing, float *ascent, float *descent);
+void nb_text_draw(int font, const char *spec, const char *utf8, int px, float spacing, float x, float top,
+                  nb_glyph_emit emit, void *ud);
 const uint8_t *nb_text_atlas(int *size, bool *dirty);
 void nb_text_atlas_uploaded(void);
 /** Premultiplied RGBA color-glyph atlas; NULL (and not dirty) until a color glyph is drawn. */
 const uint8_t *nb_text_color_atlas(int *size, bool *dirty);
 void nb_text_color_atlas_uploaded(void);
 
+// ---- core/faces.c: app fonts -------------------------------------------------
+
+typedef struct {
+  char family[256];
+  int weight_min, weight_max;  // one weight, or a variable font's wght range
+  bool italic, variable;
+} nb_font_info;
+
+/**
+ * Adds the faces of a font file (copied; every face of a collection) to the app's families.
+ * `family` NULL: the file's own name; `weight_min` 0: the file's weight (a variable font, its wght
+ * range); `italic` < 0: the file's slant. Writes up to `max` faces to `out` and returns how many
+ * were added, or -1 with the reason in `error` (not a font, or a format FreeType can't read).
+ */
+int nb_fonts_register(const uint8_t *data, size_t size, const char *family, int weight_min, int weight_max, int italic,
+                      nb_font_info *out, int max, char *error, size_t error_size);
+/** Calls `fn` with every family `spec` can name: the registered ones, then the installed ones. */
+void nb_fonts_families(void (*fn)(const char *family, void *ud), void *ud);
+
 // ---- core/render_gles2.c ----------------------------------------------------
 
 // Command buffer opcodes (producer: src/render/paint.ts; keep both in sync).
 enum {
   NB_OP_RECT = 1,
-  NB_OP_TEXT = 2 /* x y(line top) size font(id)  r g b a  text_index  letter_spacing */,
+  NB_OP_TEXT = 2 /* x y(line top) size font(id)  r g b a  text_index  letter_spacing  spec_index (-1: none) */,
   NB_OP_CLIP = 3 /* x y w h radius */,
   NB_OP_UNCLIP = 4,
   NB_OP_SHADOW = 5,

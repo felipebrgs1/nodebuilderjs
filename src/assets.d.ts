@@ -1,5 +1,6 @@
 // Bun imports files as their path: `import logo from "./logo.png" with { type: "file" }`.
-// With that attribute `bun build --compile` embeds the file, so pass the path to <Image src>.
+// With that attribute `bun build --compile` embeds the file, so pass the path to <Image src>
+// (or a font's to registerFont).
 declare module "*.png" {
   const path: string;
   export default path;
@@ -28,4 +29,24 @@ declare module "*.svg" {
   /** The file's path with `with { type: "file" }`, its markup with `with { type: "text" }`. */
   const value: string;
   export default value;
+}
+declare module "*.ttf" {
+  const path: string;
+  export default path;
+}
+declare module "*.otf" {
+  const path: string;
+  export default path;
+}
+declare module "*.ttc" {
+  const path: string;
+  export default path;
+}
+declare module "*.woff" {
+  const path: string;
+  export default path;
+}
+declare module "*.woff2" {
+  const path: string;
+  export default path;
 }

@@ -30,7 +30,7 @@ const STYLE_KEYS: (keyof Style)[] = [
   "align", "justify", "position", "left", "top", "clip", "background", "radius", "borderWidth", "borderColor",
   "shadow", "color", "fontSize", "bold", "underline", "cursor", "opacity", "translateX", "translateY",
   "alignSelf", "right", "bottom", "zIndex", "columns", "rowGap", "aspectRatio", "wrap", "margin",
-  "fontWeight", "italic", "letterSpacing",
+  "fontWeight", "italic", "letterSpacing", "fontFamily", "fontFeatures", "fontVariations",
 ];
 const HANDLER_KEYS: (keyof Handlers)[] = [
   "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur", "onResize",
@@ -91,7 +91,7 @@ function stateStyles(node: UINode, props: { hoverStyle?: StyleValues; pressStyle
   }
 }
 
-export function inherited<K extends "color" | "fontSize" | "bold" | "underline" | "fontWeight" | "italic" | "letterSpacing">(node: UINode, key: K): Style[K] | undefined {
+export function inherited<K extends "color" | "fontSize" | "bold" | "underline" | "fontWeight" | "italic" | "letterSpacing" | "fontFamily" | "fontFeatures" | "fontVariations">(node: UINode, key: K): Style[K] | undefined {
   for (let n: UINode | null = node; n; n = n.parent) if (n.style[key] !== undefined) return n.style[key];
   return undefined;
 }
@@ -105,14 +105,20 @@ function inheritedWeight(node: UINode): number {
   return 400;
 }
 
-/** The font of the node's text (weight, italic, letter spacing), inherited; `last` is returned while nothing changed. */
+/** The font of the node's text (weight, italic, letter spacing, family...), inherited; `last` is returned while nothing changed. */
 export function inheritedFont(node: UINode, last?: FontStyle): FontStyle {
   const weight = inheritedWeight(node);
   const italic = inherited(node, "italic") ?? false;
   const letterSpacing = inherited(node, "letterSpacing") ?? 0;
-  if (last && last.weight === weight && last.italic === italic && last.letterSpacing === letterSpacing) return last;
-  if (weight === 400 && !italic && !letterSpacing) return REGULAR;
-  return { weight, italic, letterSpacing };
+  const family = inherited(node, "fontFamily") ?? "";
+  const features = inherited(node, "fontFeatures") ?? "";
+  const variations = inherited(node, "fontVariations") ?? "";
+  if (
+    last && last.weight === weight && last.italic === italic && last.letterSpacing === letterSpacing &&
+    last.family === family && last.features === features && last.variations === variations
+  ) return last;
+  if (weight === 400 && !italic && !letterSpacing && !family && !features && !variations) return REGULAR;
+  return { weight, italic, letterSpacing, family, features, variations };
 }
 
 /** Hover, press and focus state, and the handlers that keep it. */

@@ -1,23 +1,19 @@
-// Text: shaping (HarfBuzz), rasterisation (FreeType), font fallback and two glyph atlases
-// shared by every font and size: alpha (A8, tinted by the text color) and color (premultiplied
-// RGBA, for emoji). Which font files to use is the platform's call.
-//
-// A font id is weight (1..1000) * 2 + italic. Each id gets its UI face from the platform the
-// first time it is used (a variable font gets its `wght` axis set; an upright face standing in
-// for italic is slanted), and its own fallback order.
+// Text: shaping (HarfBuzz), rasterisation (FreeType) and two glyph atlases shared by every
+// font and size: alpha (A8, tinted by the text color) and color (premultiplied RGBA, for
+// emoji). Which face draws what is faces.c's call (family lists, app fonts, fallback).
 //
 // A string is cut into grapheme-ish clusters (a base plus its marks, variation selectors,
-// skin tones, ZWJ-joined parts, flag pairs); each cluster goes to one face (the UI font if it
-// has the base, else a fallback the platform names), consecutive clusters with the same face
-// form a run, and each run is shaped with its own font. measure and draw walk the same runs,
-// so they always agree. ASCII-only strings skip all of this.
+// skin tones, ZWJ-joined parts, flag pairs); each cluster goes to one face (the first of the
+// style's faces that has the base, else a fallback), consecutive clusters with the same face
+// form a run, and each run is shaped with its own font and the style's features. measure and
+// draw walk the same runs, so they always agree. ASCII-only strings skip the clustering when
+// the first face has all of ASCII.
 #include "nb.h"
 
-#include <ft2build.h>
-#include FT_FREETYPE_H
-#include FT_MULTIPLE_MASTERS_H
+#include "faces.h"
+
+#include FT_OUTLINE_H
 #include <hb-ft.h>
-#include <hb.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,32 +22,15 @@
 #define ATLAS_SIZE 1024
 #define COLOR_ATLAS_SIZE 1024
 #define MAX_SIZES 64
-#define MAX_FACES 64      // UI fonts + fallbacks loaded at once (the rest draws as tofu)
-#define MAX_STYLES 64     // font ids whose UI face is remembered
 #define GLYPH_SLOTS 8192  // power of two
-#define FALLBACK_SLOTS 4096  // power of two
-
-// A font file as drawn: face 0 is the regular UI font; other weights, italics and fallbacks
-// are added as they are needed.
-typedef struct {
-  char *path;
-  int index;      // face inside the file (collections, named instances)
-  bool oblique;   // slant the upright glyphs (italic asked, the family has none)
-  bool variable;  // has a `wght` axis, set to `weight`
-  int weight;
-  FT_Face probe;  // unsized, for coverage checks
-} face_entry;
-
-typedef struct {
-  int font;  // font id
-  int face;
-} style_entry;
+#define MAX_FEATURES 34   // a spec's (faces.c: 32) + the two letter spacing turns off
 
 typedef struct {
   int face, px;
   FT_Face ft;
   hb_font_t *hb;
   float bitmap_scale;  // fixed-size (bitmap) fonts: px / strike size; 1 otherwise
+  FT_Pos embolden;     // synthetic bold: outline strength (26.6), 0 for none
 } sized_font;
 
 typedef struct {
@@ -61,16 +40,6 @@ typedef struct {
   int left, top;   // bitmap bearing
 } glyph_slot;
 
-typedef struct {
-  uint64_t key;  // codepoint | font id << 21 | emoji << 33, + 1 (0 = empty)
-  int face;      // -1: no font has it
-} fallback_slot;
-
-static FT_Library ft;
-static face_entry faces[MAX_FACES];
-static int face_count;
-static style_entry styles[MAX_STYLES];
-static int style_count;
 static sized_font sizes[MAX_SIZES];
 static int size_count;
 static glyph_slot glyphs[GLYPH_SLOTS];
@@ -78,106 +47,19 @@ static uint8_t atlas[ATLAS_SIZE * ATLAS_SIZE];
 static uint8_t *color_atlas;  // allocated on the first color glyph
 static int shelf_x, shelf_y, shelf_h, cshelf_x, cshelf_y, cshelf_h;
 static bool atlas_dirty, color_dirty;
-static fallback_slot fallbacks[FALLBACK_SLOTS];
-static int fallback_count;
 static hb_buffer_t *buffer;
-
-static int add_face(char *path, int index, bool oblique, int weight);
 
 bool nb_text_init(void) {
   if (buffer) return true;
-  if (FT_Init_FreeType(&ft)) return false;
-  int index = 0;
-  bool oblique = false;
-  char *path = nb_platform_font_path(400, false, &index, &oblique);
-  if (!path) {
-    fprintf(stderr, "nodebuilder: no UI font found\n");
-    return false;
-  }
-  add_face(path, index, false, 400);  // face 0
-  styles[style_count++] = (style_entry){.font = NB_FONT_REGULAR, .face = 0};
+  if (!nb_fonts_init()) return false;
   buffer = hb_buffer_create();
   return true;
 }
 
-// ---- faces and sizes --------------------------------------------------------------
-
-static FT_Face probe(int face) {
-  face_entry *f = &faces[face];
-  if (!f->probe && FT_New_Face(ft, f->path, f->index, &f->probe)) f->probe = NULL;
-  return f->probe;
-}
-
-static bool has_weight_axis(FT_Face f) {
-  FT_MM_Var *mm;
-  if (!f || !FT_HAS_MULTIPLE_MASTERS(f) || FT_Get_MM_Var(f, &mm)) return false;
-  bool found = false;
-  for (FT_UInt a = 0; a < mm->num_axis; a++)
-    if (mm->axis[a].tag == FT_MAKE_TAG('w', 'g', 'h', 't')) found = true;
-  FT_Done_MM_Var(ft, mm);
-  return found;
-}
-
-// A variable face is opened at its base index, because HarfBuzz ignores the coordinates
-// FreeType gives a named instance (index >> 16); the instance's coordinates come from the
-// probe, opened with the full index, with `wght` set to the weight (clamped to the axis).
-static void set_variations(FT_Face f, int face) {
-  FT_Face named = probe(face);
-  FT_MM_Var *mm;
-  if (!named || FT_Get_MM_Var(f, &mm)) return;
-  FT_Fixed coords[16];
-  FT_UInt n = mm->num_axis < 16 ? mm->num_axis : 16;
-  if (!FT_Get_Var_Design_Coordinates(named, n, coords)) {
-    for (FT_UInt a = 0; a < n; a++) {
-      const FT_Var_Axis *axis = &mm->axis[a];
-      if (axis->tag != FT_MAKE_TAG('w', 'g', 'h', 't')) continue;
-      FT_Fixed w = (FT_Fixed)faces[face].weight << 16;
-      coords[a] = w < axis->minimum ? axis->minimum : w > axis->maximum ? axis->maximum : w;
-    }
-    FT_Set_Var_Design_Coordinates(f, n, coords);
-  }
-  FT_Done_MM_Var(ft, mm);
-}
-
-// The face for (path, index), taking ownership of `path`. A static file is shared by every
-// weight that maps to it; a variable one gets an entry per weight. `weight` 0: leave the axes.
-static int add_face(char *path, int index, bool oblique, int weight) {
-  bool variable = false;
-  for (int i = 0; i < face_count; i++) {
-    if (faces[i].index != index || faces[i].oblique != oblique || strcmp(faces[i].path, path) != 0) continue;
-    if (!faces[i].variable || faces[i].weight == weight) {
-      free(path);
-      return i;
-    }
-    variable = true;  // the same variable file at another weight
-  }
-  if (face_count == MAX_FACES) {
-    free(path);
-    return -1;
-  }
-  int i = face_count++;
-  faces[i] = (face_entry){.path = path, .index = index, .oblique = oblique, .weight = weight};
-  faces[i].variable = weight > 0 && (variable || has_weight_axis(probe(i)));
-  return i;
-}
-
-// The UI face of a font id, asked of the platform once.
-static int primary_face(int font) {
-  for (int i = 0; i < style_count; i++)
-    if (styles[i].font == font) return styles[i].face;
-  int index = 0;
-  bool oblique = false;
-  char *path = nb_platform_font_path(font >> 1, font & 1, &index, &oblique);
-  int face = path ? add_face(path, index, oblique, font >> 1) : -1;
-  if (face < 0) face = 0;
-  if (style_count < MAX_STYLES) styles[style_count++] = (style_entry){.font = font, .face = face};
-  return face;
-}
-
-static int valid_font(int font) { return font >= 2 && font <= 2001 ? font : NB_FONT_REGULAR; }
+// ---- sizes ------------------------------------------------------------------------
 
 static sized_font *get_font(int face, int px) {
-  if (face < 0 || face >= face_count) face = 0;
+  if (face < 0 || face >= NB_MAX_FACES) face = 0;
   if (px < 1) px = 1;
   for (int i = 0; i < size_count; i++)
     if (sizes[i].face == face && sizes[i].px == px) return &sizes[i];
@@ -188,9 +70,8 @@ static sized_font *get_font(int face, int px) {
     memmove(&sizes[0], &sizes[1], sizeof(sized_font) * (MAX_SIZES - 1));
     size_count--;
   }
-  FT_Face f;
-  int index = faces[face].variable ? faces[face].index & 0xFFFF : faces[face].index;
-  if (FT_New_Face(ft, faces[face].path, index, &f)) return NULL;
+  FT_Face f = nb_face_open(face);
+  if (!f) return NULL;
   hb_font_t *hb;
   float bitmap_scale = 1;
   if (!FT_IS_SCALABLE(f) && f->num_fixed_sizes > 0) {
@@ -209,56 +90,14 @@ static sized_font *get_font(int face, int px) {
     hb_face_destroy(hface);
     hb_font_set_scale(hb, px * 64, px * 64);
   } else {
-    if (faces[face].variable) set_variations(f, face);
-    if (faces[face].oblique) {  // ~11 degrees, about what browsers use for synthetic italics
-      FT_Matrix shear = {.xx = 0x10000, .xy = 0x3333, .yx = 0, .yy = 0x10000};
-      FT_Set_Transform(f, &shear, NULL);
-    }
     FT_Set_Pixel_Sizes(f, 0, px);
     hb = hb_ft_font_create_referenced(f);
     hb_ft_font_set_load_flags(hb, FT_LOAD_DEFAULT | FT_LOAD_TARGET_LIGHT);
   }
-  sizes[size_count] = (sized_font){.face = face, .px = px, .ft = f, .hb = hb, .bitmap_scale = bitmap_scale};
+  // Synthetic bold, as FreeType's FT_GlyphSlot_Embolden: 1/24 em thicker (advances unchanged).
+  FT_Pos embolden = nb_face_embolden(face) && FT_IS_SCALABLE(f) ? FT_MulFix(f->units_per_EM, f->size->metrics.y_scale) / 24 : 0;
+  sizes[size_count] = (sized_font){.face = face, .px = px, .ft = f, .hb = hb, .bitmap_scale = bitmap_scale, .embolden = embolden};
   return &sizes[size_count++];
-}
-
-// ---- fallback ---------------------------------------------------------------------
-
-static int platform_fallback(uint32_t cp, int font, bool emoji) {
-  int index = 0, weight = emoji ? 0 : font >> 1;
-  char *path = nb_platform_font_fallback(cp, font >> 1, font & 1, emoji, &index);
-  return path ? add_face(path, index, false, weight) : -1;
-}
-
-static bool covers(int face, uint32_t cp) {
-  FT_Face f = probe(face);
-  return f && FT_Get_Char_Index(f, cp) != 0;
-}
-
-static uint32_t fallback_hash(uint64_t key) { return (uint32_t)((key * 0x9E3779B97F4A7C15ull) >> 40) & (FALLBACK_SLOTS - 1); }
-
-// The face for a cluster whose base is `cp`, in font id `font` (UI face `primary`): emoji
-// presentation prefers a color font, otherwise the UI face when it has the glyph, then the
-// system's fallback for that weight and slant. Cached per codepoint and font id.
-static int face_for(int font, int primary, uint32_t cp, bool emoji) {
-  uint64_t key = (cp | (uint64_t)font << 21 | (uint64_t)emoji << 33) + 1;
-  uint32_t h = fallback_hash(key);
-  for (;; h = (h + 1) & (FALLBACK_SLOTS - 1)) {
-    if (fallbacks[h].key == key) return fallbacks[h].face < 0 ? primary : fallbacks[h].face;
-    if (!fallbacks[h].key) break;
-  }
-  int face = -1;
-  if (emoji) face = platform_fallback(cp, font, true);
-  if (face < 0 && covers(primary, cp)) face = primary;
-  if (face < 0) face = platform_fallback(cp, font, false);
-  if (fallback_count * 4 >= FALLBACK_SLOTS * 3) {  // mostly full: start over
-    memset(fallbacks, 0, sizeof fallbacks);
-    fallback_count = 0;
-    h = fallback_hash(key);
-  }
-  fallbacks[h] = (fallback_slot){.key = key, .face = face};
-  fallback_count++;
-  return face < 0 ? primary : face;
 }
 
 static uint32_t next_codepoint(const unsigned char *s, int len, int *i) {
@@ -313,11 +152,11 @@ static bool extends(uint32_t cp) {
 }
 
 // Ends the cluster starting at byte `start`; returns its end and the face to use.
-static int cluster(const unsigned char *s, int len, int start, int font, int primary, int *face) {
+static int cluster(const unsigned char *s, int len, int start, int style, int primary, int *face) {
   int i = start;
   uint32_t base = next_codepoint(s, len, &i);
   if (base < 0x80 && (i >= len || s[i] < 0x80)) {  // plain ASCII
-    *face = primary;
+    *face = base < 0x20 || nb_font_ascii(style) ? primary : nb_font_face_for(style, base, false);
     return i;
   }
   bool emoji = emoji_by_default(base), text = false, ri = regional_indicator(base);
@@ -339,7 +178,7 @@ static int cluster(const unsigned char *s, int len, int start, int font, int pri
       break;
     }
   }
-  *face = base < 0x20 ? primary : face_for(font, primary, base, emoji && !text);
+  *face = base < 0x20 ? primary : nb_font_face_for(style, base, emoji && !text);
   return i;
 }
 
@@ -406,8 +245,14 @@ static glyph_slot *get_glyph(sized_font *sf, uint32_t gid) {
 
   FT_Int32 flags = FT_LOAD_RENDER | FT_LOAD_TARGET_LIGHT;
   if (FT_HAS_COLOR(sf->ft)) flags = FT_LOAD_RENDER | FT_LOAD_COLOR;
+  if (sf->embolden) flags &= ~FT_LOAD_RENDER;  // thicken the outline, then render it
   if (FT_Load_Glyph(sf->ft, gid, flags)) return NULL;
   FT_GlyphSlot g = sf->ft->glyph;
+  if (sf->embolden && g->format == FT_GLYPH_FORMAT_OUTLINE) {
+    FT_Outline_Embolden(&g->outline, sf->embolden);
+    FT_Outline_Translate(&g->outline, -sf->embolden / 2, 0);  // grow around the stem, not to the right only
+  }
+  if (g->format != FT_GLYPH_FORMAT_BITMAP && FT_Render_Glyph(g, FT_RENDER_MODE_LIGHT)) return NULL;
   FT_Bitmap *bm = &g->bitmap;
   int x = 0, y = 0, w = bm->width, hgt = bm->rows, left = g->bitmap_left, top = g->bitmap_top;
   bool color = bm->pixel_mode == FT_PIXEL_MODE_BGRA;
@@ -450,23 +295,29 @@ static const hb_feature_t no_ligatures[] = {
     {HB_TAG('c', 'l', 'i', 'g'), 0, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END},
 };
 
-// Shapes `utf8` run by run (one face each) and calls `fn` per glyph with its pen position;
-// returns the total advance. `spacing` goes after every cluster (the last one too, as in
-// browsers), so the width of a string is the sum of the widths of its parts.
-static float layout_runs(sized_font *primary, int font, const char *utf8, float spacing, glyph_fn fn, void *ud) {
+// Shapes `utf8` run by run (one face each) with the style's features and calls `fn` per glyph
+// with its pen position; returns the total advance. `spacing` goes after every cluster (the
+// last one too, as in browsers), so the width of a string is the sum of the widths of its parts.
+static float layout_runs(sized_font *primary, int style, const char *utf8, float spacing, glyph_fn fn, void *ud) {
   const unsigned char *s = (const unsigned char *)utf8;
   unsigned char high = 0;
   int len = 0, ui = primary->face, px = primary->px;
   for (; s[len]; len++) high |= s[len];
-  bool ascii = high < 0x80;
+  bool ascii = high < 0x80 && nb_font_ascii(style);  // all in the first face: one run
+  // The spec's features go after the ones letter spacing turns off, so an explicit "liga" wins.
+  hb_feature_t features[MAX_FEATURES];
+  int nfeatures = 0, nspec;
+  const hb_feature_t *spec = nb_font_features(style, &nspec);
+  if (spacing != 0) features[nfeatures++] = no_ligatures[0], features[nfeatures++] = no_ligatures[1];
+  for (int i = 0; i < nspec && nfeatures < MAX_FEATURES; i++) features[nfeatures++] = spec[i];
   float pen = 0;
   int start = 0;
   while (start < len) {
     int face = ui, end = len;
     if (!ascii) {  // extend the run while clusters keep the same face
-      int f, i = cluster(s, len, start, font, ui, &face);
+      int f, i = cluster(s, len, start, style, ui, &face);
       while (i < len) {
-        int next = cluster(s, len, i, font, ui, &f);
+        int next = cluster(s, len, i, style, ui, &f);
         if (f != face) break;
         i = next;
       }
@@ -483,7 +334,7 @@ static float layout_runs(sized_font *primary, int font, const char *utf8, float 
       hb_buffer_clear_contents(buffer);
       hb_buffer_add_utf8(buffer, utf8, len, start, end - start);
       hb_buffer_guess_segment_properties(buffer);
-      hb_shape(sf->hb, buffer, spacing != 0 ? no_ligatures : NULL, spacing != 0 ? 2 : 0);
+      hb_shape(sf->hb, buffer, features, (unsigned)nfeatures);
       unsigned n;
       hb_glyph_info_t *info = hb_buffer_get_glyph_infos(buffer, &n);
       hb_glyph_position_t *pos = hb_buffer_get_glyph_positions(buffer, &n);
@@ -498,13 +349,13 @@ static float layout_runs(sized_font *primary, int font, const char *utf8, float 
   return pen;
 }
 
-float nb_text_measure(int font, const char *utf8, int px, float spacing, float *ascent, float *descent) {
-  font = valid_font(font);
-  sized_font *sf = get_font(primary_face(font), px);
+float nb_text_measure(int font, const char *spec, const char *utf8, int px, float spacing, float *ascent, float *descent) {
+  int style = nb_font_style(spec, font);
+  sized_font *sf = get_font(nb_font_primary(style), px);
   if (!sf) return 0;
   if (ascent) *ascent = sf->ft->size->metrics.ascender / 64.0f;
   if (descent) *descent = -sf->ft->size->metrics.descender / 64.0f;
-  return layout_runs(sf, font, utf8, spacing, NULL, NULL);
+  return layout_runs(sf, style, utf8, spacing, NULL, NULL);
 }
 
 typedef struct {
@@ -523,12 +374,13 @@ static void draw_glyph(void *ud, sized_font *sf, const hb_glyph_info_t *info, co
   d->emit(d->ud, gx, gy, gx + g->w, gy + g->h, g->x * inv, g->y * inv, (g->x + g->w) * inv, (g->y + g->h) * inv, g->color);
 }
 
-void nb_text_draw(int font, const char *utf8, int px, float spacing, float x, float top, nb_glyph_emit emit, void *ud) {
-  font = valid_font(font);
-  sized_font *sf = get_font(primary_face(font), px);
+void nb_text_draw(int font, const char *spec, const char *utf8, int px, float spacing, float x, float top,
+                  nb_glyph_emit emit, void *ud) {
+  int style = nb_font_style(spec, font);
+  sized_font *sf = get_font(nb_font_primary(style), px);
   if (!sf) return;
   draw_ctx d = {.x = x, .baseline = roundf(top + sf->ft->size->metrics.ascender / 64.0f), .emit = emit, .ud = ud};
-  layout_runs(sf, font, utf8, spacing, draw_glyph, &d);
+  layout_runs(sf, style, utf8, spacing, draw_glyph, &d);
 }
 
 const uint8_t *nb_text_atlas(int *size, bool *dirty) {

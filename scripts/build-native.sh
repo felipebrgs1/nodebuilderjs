@@ -25,7 +25,7 @@ fi
 
 export NAPI_INCLUDE
 export OUT_DIR="native/build/$PLATFORM-$ARCH"
-export CORE_SOURCES="native/core/addon.c native/core/text.c native/core/render_gles2.c"
+export CORE_SOURCES="native/core/addon.c native/core/text.c native/core/faces.c native/core/render_gles2.c"
 export CORE_INCLUDE="native/include"
 mkdir -p "$OUT_DIR"
 sh "native/platform/$PLATFORM/build.sh"

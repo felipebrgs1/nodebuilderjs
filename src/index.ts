@@ -10,6 +10,7 @@ export { createContext, useContext, type Context } from "./reactive/context.js";
 export { type Child, type Component, Fragment } from "./jsx-runtime.js";
 export { run, requestAnimationFrame, windowControls, windowState } from "./runtime/app.js";
 export { clipboard } from "./runtime/clipboard.js";
+export { registerFont, fontFamilies, type FontOptions, type RegisteredFont } from "./runtime/fonts.js";
 export * from "./widgets/index.js";
 export { theme, lightTheme, darkTheme, setTheme, colorScheme, type Theme } from "./theme.js";
 export { animate, createTween, createPresence, easing, mixColor, type AnimateOptions, type Easing, type PresenceOptions } from "./animation/index.js";

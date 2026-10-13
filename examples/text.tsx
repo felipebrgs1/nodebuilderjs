@@ -1,8 +1,9 @@
 // Text: paragraphs that wrap, alignment, line spacing, one-line truncation with an
 // ellipsis, underlines (and a link underlined on hover), font weights, italics, letter
-// spacing and a selectable paragraph cut at two lines.
+// spacing, font families (generic ones and a picker of the installed ones), OpenType features
+// and a selectable paragraph cut at two lines.
 
-import { Card, Column, Row, Text, Window, createSignal, run, theme } from "@nodebuilderjs/core";
+import { Card, Column, Row, Select, Text, Window, createSignal, fontFamilies, run, theme } from "@nodebuilderjs/core";
 
 const paragraph =
   "O nodebuilder desenha a interface com a GPU, sem navegador. Este parágrafo é longo de propósito, para quebrar em várias linhas dentro do card.";
@@ -17,8 +18,11 @@ function Link(props: { children: string }) {
   );
 }
 
+const installed = fontFamilies().map((family) => ({ value: family, label: family }));
+const [family, setFamily] = createSignal<string | undefined>(installed.find((f) => /^(DejaVu Serif|Noto Serif|Liberation Serif)$/.test(f.value))?.value);
+
 run(() => (
-  <Window title="Text" width={560} height={600}>
+  <Window title="Text" width={560} height={760}>
     <Column grow={1} padding={20} gap={12}>
       <Card>
         <Text>{paragraph}</Text>
@@ -60,6 +64,23 @@ run(() => (
         <Text fontSize={12} bold letterSpacing={2} color={theme.text.secondary}>SECTION LABEL</Text>
         <Text fontSize={22} fontWeight={700} letterSpacing={-0.5}>Tight headline</Text>
         <Text italic letterSpacing={4} underline>spaced out</Text>
+      </Row>
+      <Row gap={16} align="center">
+        <Text fontFamily="serif" fontSize={18}>Serif</Text>
+        <Text fontFamily="monospace" fontSize={18}>Monospace</Text>
+        <Text fontFamily="'No Such Font', cursive, sans-serif" fontSize={18}>Fallback list</Text>
+      </Row>
+      <Row gap={16} align="end">
+        {["", "smcp", "onum", "frac, zero"].map((features) => (
+          <Column gap={2}>
+            <Text fontSize={18} fontFeatures={features}>Caps 1/2 1890</Text>
+            <Text fontSize={11} color={theme.text.secondary}>{features || "no features"}</Text>
+          </Column>
+        ))}
+      </Row>
+      <Row gap={12} align="center">
+        <Select width={220} value={family} onChange={setFamily} options={installed} placeholder="Installed family" />
+        <Text grow={1} maxLines={1} fontSize={20} fontFamily={() => family() ?? ""}>The quick brown fox, 0123</Text>
       </Row>
       <Text selectable maxLines={2}>{`${paragraph} ${paragraph}`}</Text>
     </Column>

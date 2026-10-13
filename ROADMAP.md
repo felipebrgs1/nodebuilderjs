@@ -118,11 +118,14 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
   `<Canvas>` text cut to a `maxWidth` with "…".
 - ~~Font weights, italics, letter spacing~~ **done** (2026-10-12): `fontWeight` (closest
   face via fontconfig, the `wght` axis of variable fonts), `italic` (slanted upright face when
-  there is no italic), `letterSpacing` per cluster in `text.c`. Still missing: synthetic bold
-  and choosing the font family.
+  there is no italic), `letterSpacing` per cluster in `text.c`.
 - ~~Font fallback (emoji, CJK)~~ **done** (2026-10-12): fontconfig's fallback order per
-  codepoint, clusters kept whole, color emoji in an RGBA atlas. Still missing: choosing the
-  font family, COLRv1 and bidi.
+  codepoint, clusters kept whole, color emoji in an RGBA atlas. Still missing: COLRv1 and bidi.
+- ~~Font families and app fonts~~ **done** (2026-10-12): `fontFamily` (CSS lists: app,
+  installed and generic families, per-character fallback through the list), `registerFont`
+  (TTF, OTF/CFF, TTC, WOFF, WOFF2, variable; CSS weight/slant matching), synthetic bold and
+  italic, `fontFeatures`, `fontVariations`, `fontFamilies()`. Everything still missing for
+  fonts (bugs, core, API, CLI, tests, order of work) is mapped in [FONTS.md](FONTS.md).
 - Seleção no `TextField` (com Ctrl+C/Ctrl+X); seleção primária (colar com o botão do meio);
   Shift+clique e setas para estender a seleção do `<Text selectable>`
 - `TextField`: desfazer/refazer, campo de várias linhas

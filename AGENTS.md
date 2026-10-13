@@ -16,6 +16,7 @@ well, so as much of the framework as possible lives in TS, and the C stays small
 | `README.md` | framework users (it is also the npm package README) and the benchmarks |
 | `ARCHITECTURE.md` | how it works inside and how to measure performance |
 | `ROADMAP.md` | priorities and what has been done (still in Portuguese) |
+| `FONTS.md` | the fonts roadmap: what is done and everything left to make fonts complete |
 | `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps |
 
 ## Non-negotiable rules
@@ -116,7 +117,9 @@ What cannot be tested automatically is documented when closing the task:
   (`ref`, programmatic focus and scrolling, `onResize`), `overlay`, `style` (`opacity`, `translate`),
   `text` (line wrapping, alignment, `maxLines`, multi-line selection), `font-fallback`
   (fallback fonts and color emoji with real fonts, `skipIf` they are missing), `font-style`
-  (weights, italics and letter spacing with real fonts and pixels), `controls`
+  (weights, italics and letter spacing with real fonts and pixels), `fonts` (`registerFont`,
+  `fontFamily` lists, CSS weight/slant matching, synthetic bold/italic, features, variations,
+  with the box fonts of `fixtures/fonts/` whose advances are known), `controls`
   (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `popups`
   (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets following the switch),
   `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
@@ -185,6 +188,7 @@ src/                   one module per folder; relative imports with `.js`
     native.ts          loads native/build/<platform>-<arch>/nodebuilder.node (literal requires)
     frames.ts          frame clock: requestAnimationFrame queue, frameNow, animating()
     clipboard.ts       clipboard (text): in memory without a window, native with run(); read via event
+    fonts.ts           registerFont (app font files -> addon), fontFamilies
     screenshot.ts      captureTree: real metrics + native images, layout, paint, renderOffscreen
   widgets/             one file per widget; index.ts re-exports
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps (+ hoverStyle/pressStyle), inherited, interaction, createInteraction
@@ -219,7 +223,9 @@ native/
   include/nb_platform.h CONTRACT each OS implements (window, event pump, fonts, codecs)
   core/                 portable, nothing OS-specific
     addon.c             N-API surface, event queue, threadsafe function
-    text.c              HarfBuzz + FreeType; font fallback by cluster, alpha atlas + RGBA color-emoji atlas
+    text.c              HarfBuzz + FreeType; runs by cluster, features, alpha atlas + RGBA color-emoji atlas
+    faces.c             font faces (files, variations, synthetic bold/italic), app fonts, specs
+                        (CSS family lists, features, variations), styles, CSS matching, fallback
     render_gles2.c      GLES2 renderer: one shader, one vertex format, single batch; textures
   platform/linux/       Linux backend
     linux.h             nb_linux_backend vtable (internal to Linux)
@@ -227,7 +233,7 @@ native/
     wayland.c           Wayland (xdg-shell), EGL, pointer, keyboard (xkb + compose), cursor
     x11.c               X11 (Xlib + EWMH), EGL, XIM (dead keys), Xcursor, XRandR
     pump.c              poll() thread over the active backend's fds + exit eventfd
-    fonts.c             font discovery via fontconfig: UI font + fallback (FcFontSort, per codepoint)
+    fonts.c             font discovery via fontconfig: families by name, UI font, fallback (FcFontSort), list
     codecs.c            AVIF/HEIC via libheif (dlopen; own declarations, no header)
     offscreen.c         EGL context with no display server (surfaceless/device) + FBO, for screenshots
     build.sh            backend build (called by scripts/build-native.sh)
@@ -300,7 +306,7 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
 - **When adding a field to `Style`**, also add it to `STYLE_KEYS` (`widgets/props.ts`);
   new handlers go in `Handlers` (`render/node.ts`) and `HANDLER_KEYS`.
 - Inherited through the tree: `color`, `fontSize`, `bold`, `fontWeight`, `italic`,
-  `letterSpacing`, `underline` (the `inherited` function; `inheritedFont()` resolves the
+  `letterSpacing`, `fontFamily`, `fontFeatures`, `fontVariations`, `underline` (the `inherited` function; `inheritedFont()` resolves the
   weight, where the nearest `fontWeight` or `bold` wins and `fontWeight` beats `bold` on the
   same node). Text widgets measure and paint with that `FontStyle`.
 - A widget that opens something on top returns `[node, <Show><Overlay>]` (the `Overlay` stays
@@ -376,13 +382,18 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   `nb_render_frame`, and `nb_render_read_pixels` returns straight alpha, top row first. The
   renderer's GL objects belong to one context, so `addon.c` refuses a window after a shot and
   a shot while a window is open.
-- **Fonts:** `nb_platform_font_path(weight, italic, &index, &oblique)` gives the UI font
-  closest to a CSS weight and slant (`oblique`: an upright face stands in for italic, the core
-  slants it), `nb_platform_font_fallback(cp, weight, italic, emoji, &index)` a file (and face
-  index) that has `cp`, color fonts only when `emoji` (JS thread, may be slow: `text.c` asks
-  once per font id, caches fallbacks per codepoint and font id, and never calls it for
-  ASCII-only strings). Font ids are `weight * 2 + italic`; variable fonts get their `wght`
-  axis set in the core (FreeType). Letter spacing is added per HarfBuzz cluster in
+- **Fonts:** `nb_platform_font_path(family, generic, weight, italic, &match)` gives the file
+  of an installed family (NULL: the UI font; a named family that is not installed: NULL)
+  closest to a CSS weight and slant (`match.oblique`/`match.embolden`: the core slants or
+  thickens it), `nb_platform_font_fallback(cp, family, generic, weight, italic, emoji, &index)`
+  a file (and face index) that has `cp`, color fonts only when `emoji`, and
+  `nb_platform_font_families` the installed names (JS thread, may be slow: `faces.c` asks once
+  per style, caches fallbacks per codepoint and style). App fonts (`nb_fonts_register`) are
+  portable: FreeType reads them from memory in `faces.c`, which also does the CSS matching.
+  A TEXT command's font is a font id (`weight * 2 + italic`) plus a spec (family list,
+  features, variations joined by U+001F); `faces.c` resolves the pair to a style (a stack of
+  faces) and drops all styles when a font is registered; faces are never freed. Variable fonts
+  get their axes set in the core (FreeType). Letter spacing is added per HarfBuzz cluster in
   `layout_runs`, shared by measure and draw. `text.c` keeps `measure` and `draw` on the same run itemization; color
   glyphs go to the RGBA atlas and are drawn with `MODE_COLOR_GLYPH` (texture unit 2, only the
   alpha of the text color applies).
@@ -413,7 +424,7 @@ Keep **`native/include/nb.h`, `src/render/paint.ts` and `native/core/render_gles
 | Op | Code | Following floats |
 |---|---|---|
 | RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
-| TEXT | 2 | x y(line top) size font id (weight * 2 + italic, `fontId()`) · r g b a · index into `texts[]` · letterSpacing |
+| TEXT | 2 | x y(line top) size font id (weight * 2 + italic, `fontId()`) · r g b a · index into `texts[]` · letterSpacing · font spec index into `texts[]` (`fontSpec()`; -1: none) |
 | CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
@@ -597,10 +608,10 @@ packages, all with the version from the root `package.json`:
 ## Current limitations
 
 - TextField: no selection, copy, undo (paste exists); Text: a word longer than the line
-  overflows (selection only with `selectable`, no Shift+click or keyboard); weights only as
-  the system font has them (no synthetic bold; italic falls back to a slanted upright face),
-  no font family choice; `underline` is painted in TS and
-  `TextField` ignores it. Font fallback and color emoji work (CBDT/sbix/COLRv0), but COLRv1
+  overflows (selection only with `selectable`, no Shift+click or keyboard); a family without a
+  weight or slant gets the closest face, emboldened or slanted (synthetic); app fonts are
+  registered synchronously (no `unicode-range`, no async loading); `underline` is painted in
+  TS and `TextField` ignores it. Font fallback and color emoji work (CBDT/sbix/COLRv0), but COLRv1
   fonts are not drawn in color and there is no bidi reordering.
 - `<Canvas>`: a self-intersecting polygon is not drawn; translucent lines get darker at the
   joins (each segment is drawn separately); adjacent pie slices show a thin light seam

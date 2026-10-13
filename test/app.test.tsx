@@ -37,6 +37,8 @@ function fakeNative() {
     requestFrame: () => void calls.requestFrame++,
     writeClipboard: () => {},
     readClipboard: () => {},
+    registerFont: () => [],
+    fontFamilies: () => [],
   };
   return { native, calls, emit: (...events: NativeEvent[]) => emitEvents(events) };
 }

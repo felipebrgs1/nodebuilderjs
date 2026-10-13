@@ -13,7 +13,7 @@ import { truncate } from "../render/text-wrap.js";
 import { createEffect, createSignal } from "../reactive/signals.js";
 import { displayScale } from "../render/node.js";
 import { theme } from "../theme.js";
-import { type StyleProps, applyProps } from "./props.js";
+import { type StyleProps, applyProps, inherited } from "./props.js";
 
 /**
  * What `<Canvas draw>` draws with. Coordinates are local to the canvas (inside its padding).
@@ -48,6 +48,12 @@ export interface CanvasFontOptions {
   italic?: boolean;
   /** Extra px after every character, the last one too; may be negative. */
   letterSpacing?: number;
+  /** A CSS font family list (`"Inter, sans-serif"`), like `fontFamily`. */
+  family?: string;
+  /** OpenType features (`"tnum, -liga"`), like `fontFeatures`. */
+  features?: string;
+  /** Variable font axes (`"wdth 75"`), like `fontVariations`. */
+  variations?: string;
 }
 
 export interface CanvasTextOptions extends CanvasFontOptions {
@@ -62,9 +68,15 @@ type Op = (p: Painter, ox: number, oy: number) => void;
 /** A paint moved with the canvas (gradients are in canvas coordinates). */
 const at = (paint: Paint, ox: number, oy: number): Paint => (isGradient(paint) ? offsetGradient(paint, ox, oy) : paint);
 
-function canvasFont(bold: boolean, options: CanvasFontOptions | undefined): FontStyle {
-  if (!options) return fontStyle(bold);
-  return fontStyle({ weight: options.weight ?? (bold ? 700 : 400), italic: options.italic ?? false, letterSpacing: options.letterSpacing ?? 0 });
+/** The family, features and variations the canvas inherits from the tree (text options win). */
+type InheritedFont = Pick<FontStyle, "family" | "features" | "variations">;
+
+function canvasFont(bold: boolean, options: CanvasFontOptions | undefined, base: InheritedFont): FontStyle {
+  if (!options && !base.family && !base.features && !base.variations) return fontStyle(bold);
+  return fontStyle({
+    weight: options?.weight ?? (bold ? 700 : 400), italic: options?.italic ?? false, letterSpacing: options?.letterSpacing ?? 0,
+    family: options?.family ?? base.family, features: options?.features ?? base.features, variations: options?.variations ?? base.variations,
+  });
 }
 
 /**
@@ -93,7 +105,7 @@ function geometry(build: (p: Pick<Painter, "line" | "triangles">) => void): Op {
   };
 }
 
-function record(width: number, height: number, scale: number, ops: Op[]): DrawContext {
+function record(width: number, height: number, scale: number, base: InheritedFont, ops: Op[]): DrawContext {
   return {
     width,
     height,
@@ -105,13 +117,13 @@ function record(width: number, height: number, scale: number, ops: Op[]): DrawCo
     circle: (cx, cy, radius, color) => ops.push((p, ox, oy) => p.arc(cx + ox, cy + oy, radius, 0, 0, 2 * Math.PI, at(color, ox, oy))),
     arc: (cx, cy, outer, inner, start, sweep, color) => ops.push((p, ox, oy) => p.arc(cx + ox, cy + oy, outer, inner, start, sweep, at(color, ox, oy))),
     text: (text, x, y, color, size = theme.font.size, bold = false, options) => {
-      const face = canvasFont(bold, options);
+      const face = canvasFont(bold, options, base);
       const shown = options?.maxWidth === undefined ? text : truncate(text, options.maxWidth, (s) => measureText(s, size, face).width, options.ellipsis ?? true).text;
       if (shown) ops.push((p, ox, oy) => p.text(x + ox, y + oy, shown, size, color, face));
     },
     linearGradient: (x0, y0, x1, y1, stops) => ({ x0, y0, x1, y1, stops: [...stops] }),
     measureText: (text, size = theme.font.size, bold = false, options) => {
-      const m = measureText(text, size, canvasFont(bold, options));
+      const m = measureText(text, size, canvasFont(bold, options, base));
       return { width: m.width, height: m.ascent + m.descent };
     },
   };
@@ -122,19 +134,26 @@ export function Canvas(props: StyleProps & Handlers & { draw: (g: DrawContext) =
   applyProps(node, props);
   let ops: Op[] = [];
   let painting = false;
-  // The scale is part of it: polygon edges are antialiased over one device pixel.
-  const [size, setSize] = createSignal({ width: 0, height: 0, scale: 1 }, { equals: (a, b) => a.width === b.width && a.height === b.height && a.scale === b.scale });
+  // The scale is part of it: polygon edges are antialiased over one device pixel; so is the
+  // inherited font, read when painting (style is not reactive), so text follows the app's font.
+  const [size, setSize] = createSignal(
+    { width: 0, height: 0, scale: 1, family: "", features: "", variations: "" },
+    { equals: (a, b) => a.width === b.width && a.height === b.height && a.scale === b.scale && a.family === b.family && a.features === b.features && a.variations === b.variations },
+  );
   createEffect(() => {
-    const { width, height, scale } = size();
+    const { width, height, scale, ...base } = size();
     const next: Op[] = [];
-    if (width > 0 && height > 0) props.draw(record(width, height, scale, next));
+    if (width > 0 && height > 0) props.draw(record(width, height, scale, base, next));
     ops = next;
     if (!painting) invalidate(); // a resize during paint is drawn in this same frame
   });
   node.paint = (p, n) => {
     const [pt, pr, pb, pl] = edges(n.style.padding);
     painting = true;
-    setSize({ width: Math.max(0, n.width - pl - pr), height: Math.max(0, n.height - pt - pb), scale: displayScale() });
+    setSize({
+      width: Math.max(0, n.width - pl - pr), height: Math.max(0, n.height - pt - pb), scale: displayScale(),
+      family: inherited(n, "fontFamily") ?? "", features: inherited(n, "fontFeatures") ?? "", variations: inherited(n, "fontVariations") ?? "",
+    });
     painting = false;
     for (const op of ops) op(p, n.x + pl, n.y + pt);
   };

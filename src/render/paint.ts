@@ -3,7 +3,7 @@
 
 import { type ImageSource, imageHandle } from "../image/source.js";
 import { boxGradient, isGradient, isLinearGradient, resolveStops } from "./gradient.js";
-import { type Color, type FontInput, type LineCap, type Paint, type Painter, type UINode, fontId, fontStyle, scrolls, stacked } from "./node.js";
+import { type Color, type FontInput, type LineCap, type Paint, type Painter, type UINode, fontId, fontSpec, fontStyle, scrolls, stacked } from "./node.js";
 import { scrollbar } from "./scrollbar.js";
 import { theme } from "../theme.js";
 
@@ -52,10 +52,13 @@ export class CommandBuffer implements Painter {
   length = 0;
   texts: string[] = [];
   opacity = 1;
+  /** Font spec -> its index in `texts`, so a frame sends each spec once. */
+  private specs = new Map<string, number>();
 
   reset() {
     this.length = 0;
     this.texts = [];
+    this.specs.clear();
   }
 
   /** Makes room for `n` more floats. */
@@ -112,8 +115,20 @@ export class CommandBuffer implements Painter {
   text(x: number, y: number, text: string, size: number, color: Color, font?: FontInput) {
     if (!text) return;
     this.texts.push(text);
+    const index = this.texts.length - 1;
     const f = fontStyle(font);
-    this.push(OP_TEXT, x, y, size, fontId(f.weight, f.italic), ...this.rgba(color), this.texts.length - 1, f.letterSpacing);
+    this.push(OP_TEXT, x, y, size, fontId(f.weight, f.italic), ...this.rgba(color), index, f.letterSpacing, this.spec(fontSpec(f)));
+  }
+
+  /** The index in `texts` of a font spec, or -1 for none. */
+  private spec(spec: string): number {
+    if (!spec) return -1;
+    let index = this.specs.get(spec);
+    if (index === undefined) {
+      index = this.texts.push(spec) - 1;
+      this.specs.set(spec, index);
+    }
+    return index;
   }
 
   image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius = 0, opacity = 1, tint: Color = "#ffffff") {

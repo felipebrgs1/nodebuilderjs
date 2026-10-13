@@ -88,6 +88,17 @@ export interface Style {
   italic?: boolean;
   /** Extra px after every character (grapheme cluster), the last one too, as in browsers; may be negative. Inherited. */
   letterSpacing?: number;
+  /**
+   * A CSS font family list, e.g. `"Inter, 'Noto Sans', sans-serif"`: families added with
+   * `registerFont`, installed ones by name, or generic ones (`sans-serif`, `serif`, `monospace`,
+   * `system-ui`, `emoji`...). Each character uses the first family that has it, then the system's
+   * fallback; missing families are skipped. Default: the system UI font. Inherited.
+   */
+  fontFamily?: string;
+  /** OpenType features, CSS `font-feature-settings` or HarfBuzz syntax: `"tnum, ss01, -liga"`, `'"liga" 0'`. Inherited. */
+  fontFeatures?: string;
+  /** Variable font axes, CSS `font-variation-settings` or HarfBuzz syntax: `"wdth 75, opsz 12"`; `wght` wins over `fontWeight`. Inherited. */
+  fontVariations?: string;
   /** A line under the text of <Text> (inherited, like `bold`). */
   underline?: boolean;
   // interaction
@@ -179,23 +190,40 @@ export interface TextMetrics {
   descent: number;
 }
 
-/** The face text is drawn with, resolved: weight 1..1000, italic, and letterSpacing in px. */
+/**
+ * The face text is drawn with, resolved: weight 1..1000, italic, letterSpacing in px, and the
+ * family list, features and variations as written in the style ("" = none).
+ */
 export interface FontStyle {
   weight: number;
   italic: boolean;
   letterSpacing: number;
+  family: string;
+  features: string;
+  variations: string;
 }
 /** `true`/`false` = bold or regular (the old flag); an object fills in the rest from regular. */
 export type FontInput = boolean | Partial<FontStyle>;
 
-export const REGULAR: FontStyle = Object.freeze({ weight: 400, italic: false, letterSpacing: 0 });
-const BOLD: FontStyle = Object.freeze({ weight: 700, italic: false, letterSpacing: 0 });
+export const REGULAR: FontStyle = Object.freeze({ weight: 400, italic: false, letterSpacing: 0, family: "", features: "", variations: "" });
+const BOLD: FontStyle = Object.freeze({ ...REGULAR, weight: 700 });
 
 export function fontStyle(font: FontInput | undefined): FontStyle {
   if (font === undefined || font === false) return REGULAR;
   if (font === true) return BOLD;
-  if (font.weight !== undefined && font.italic !== undefined && font.letterSpacing !== undefined) return font as FontStyle;
-  return { weight: font.weight ?? 400, italic: font.italic ?? false, letterSpacing: font.letterSpacing ?? 0 };
+  if (font.weight !== undefined && font.italic !== undefined && font.letterSpacing !== undefined && font.family !== undefined && font.features !== undefined && font.variations !== undefined) return font as FontStyle;
+  return {
+    weight: font.weight ?? 400, italic: font.italic ?? false, letterSpacing: font.letterSpacing ?? 0,
+    family: font.family ?? "", features: font.features ?? "", variations: font.variations ?? "",
+  };
+}
+
+/**
+ * The addon's font spec (TEXT command, measureText): family, features and variations joined by
+ * U+001F, or "" when all are empty (the UI font, nothing else).
+ */
+export function fontSpec(font: FontStyle): string {
+  return font.family || font.features || font.variations ? `${font.family}\x1f${font.features}\x1f${font.variations}` : "";
 }
 
 /** The addon's font id (TEXT command, measureText): the weight, rounded into 1..1000, times 2, plus 1 if italic. */

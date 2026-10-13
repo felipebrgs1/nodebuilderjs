@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### New
+- **Fonts:**
+  - `fontFamily` on every widget, inherited: a CSS family list (`"Inter, 'Noto Sans',
+    sans-serif"`) of app fonts, installed families and generic ones (`serif`, `monospace`,
+    `system-ui`...). Each character uses the first family that has it, then the system's
+    fallback; missing families are skipped.
+  - `registerFont(pathOrBytes, { family?, weight?, italic? })` adds a font file (TTF,
+    OTF/CFF, TTC collections, WOFF, WOFF2, variable fonts) like CSS `@font-face`; an import
+    `with { type: "file" }` works in packaged executables. Faces are picked with the CSS
+    matching rules; a missing bold is synthesized (thicker outlines), like a missing italic.
+  - `fontFeatures` (`"tnum, smcp, -liga"`) and `fontVariations` (`"wdth 75"`), inherited.
+  - `fontFamilies()`: installed and registered families, for font pickers.
+  - `<Canvas>` text takes `{ family, features, variations }` and otherwise follows the
+    `fontFamily`/`fontFeatures`/`fontVariations` around it, so charts use the app's font.
+  - Font files (`*.ttf`, `*.otf`, `*.ttc`, `*.woff`, `*.woff2`) can be imported as paths in
+    TypeScript.
+
+### Changed
+- Command buffer: TEXT has one more float, the index in `texts[]` of the font spec (family,
+  features, variations; -1 for none). `FontStyle` has `family`, `features` and `variations`
+  (`""` for none); a custom `TextMeasurer` receives them. `Native.measureText` takes the spec
+  as a sixth argument.
+
 ## 0.3.0 (2026-10-12)
 
 ### New

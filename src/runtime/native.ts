@@ -2,7 +2,7 @@
 
 import { createRequire } from "node:module";
 import type { ImageBackend } from "../image/source.js";
-import { type TextMeasurer, fontId } from "../render/node.js";
+import { type TextMeasurer, fontId, fontSpec, metricsGeneration } from "../render/node.js";
 
 export { fontId };
 
@@ -23,9 +23,18 @@ export interface Native {
   render(commands: Float32Array, texts: string[]): void;
   /**
    * Logical px. `font` is a font id (`fontId(weight, italic)`); `scale` (default: the window's) is the
-   * device scale the text is hinted for; `letterSpacing` (logical px) goes after every character.
+   * device scale the text is hinted for; `letterSpacing` (logical px) goes after every character;
+   * `spec` (`fontSpec()`) the family list, features and variations.
    */
-  measureText(text: string, size: number, font: number, scale?: number, letterSpacing?: number): [width: number, ascent: number, descent: number];
+  measureText(text: string, size: number, font: number, scale?: number, letterSpacing?: number, spec?: string): [width: number, ascent: number, descent: number];
+  /**
+   * Adds the faces of a font file (any format FreeType reads; every face of a collection) to the
+   * app's families. `family` null: the file's own; weight 0: the file's (a variable font, its wght
+   * range); italic -1: the file's. Throws when the bytes are not a font. Copies the bytes.
+   */
+  registerFont(bytes: Uint8Array, family: string | null, weightMin: number, weightMax: number, italic: number): { family: string; weightMin: number; weightMax: number; italic: boolean; variable: boolean }[];
+  /** The registered font families and the installed ones, unsorted, possibly with duplicates. */
+  fontFamilies(): string[];
   /**
    * Draws `commands` without a window (no display needed) into a `width*scale` x `height*scale`
    * target and returns its pixels: RGBA8, straight alpha, rows top to bottom. Throws
@@ -101,16 +110,25 @@ export function loadNative(): Native {
   );
 }
 
-/** Real text metrics from the addon (FreeType + HarfBuzz) at device `scale`, cached by text, size, font and letter spacing. */
+/**
+ * Real text metrics from the addon (FreeType + HarfBuzz) at device `scale`, cached by text, size and
+ * font; the cache is dropped when the metrics generation changes (e.g. a font was registered).
+ */
 export function nativeTextMeasurer(nat: Native, scale: number): TextMeasurer {
   const metrics = new Map<string, { width: number; ascent: number; descent: number }>();
+  let generation = metricsGeneration();
   return (text, size, font) => {
+    if (generation !== metricsGeneration()) {
+      metrics.clear();
+      generation = metricsGeneration();
+    }
     const id = fontId(font.weight, font.italic);
-    const key = `${id}|${font.letterSpacing}|${size}|${text}`;
+    const spec = fontSpec(font);
+    const key = `${id}|${font.letterSpacing}|${size}|${spec}|${text}`;
     let m = metrics.get(key);
     if (!m) {
       if (metrics.size > 20_000) metrics.clear();
-      const [width, ascent, descent] = nat.measureText(text, size, id, scale, font.letterSpacing);
+      const [width, ascent, descent] = nat.measureText(text, size, id, scale, font.letterSpacing, spec);
       m = { width, ascent, descent };
       metrics.set(key, m);
     }

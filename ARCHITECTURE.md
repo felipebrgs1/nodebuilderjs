@@ -17,11 +17,12 @@ for the rules and conventions for anyone changing the code, see [AGENTS.md](AGEN
 │ render/       node: retained tree · layout: flexbox · paint: command buffer  │
 │ runtime/      frame loop, events, focus, hover, NB_STATS; native addon       │
 └────┬─────────────────────────────────────────────────────────────────────────┘
-     │  N-API: render(commands, texts), measureText, createImage, decodeImage, events
+     │  N-API: render(commands, texts), measureText, registerFont, createImage, events
 ┌────▼──────────────────────────── portable core (native/core/) ───────────────┐
 │ addon.c         N-API surface, event queue, threadsafe function              │
 │ render_gles2.c  one shader, one vertex format, one batch per frame           │
-│ text.c          HarfBuzz + FreeType, font fallback, alpha and color atlases  │
+│ text.c          HarfBuzz + FreeType shaping, runs, alpha and color atlases   │
+│ faces.c         font faces, app fonts, family lists, CSS matching, fallback  │
 └────┬─────────────────────────────────────────────────────────────────────────┘
      │  nb_platform.h contract (window, events, fonts)
 ┌────▼──────────────────────── OS backend (native/platform/linux/) ────────────┐
@@ -29,7 +30,7 @@ for the rules and conventions for anyone changing the code, see [AGENTS.md](AGEN
 │ wayland.c    xdg-shell, EGL, pointer, keyboard (xkb + compose), cursor       │
 │ x11.c        Xlib + EWMH, EGL, XIM, Xcursor, XRandR                          │
 │ pump.c       poll() thread that signals when there are events                │
-│ fonts.c      fontconfig: UI font, fallback order per codepoint               │
+│ fonts.c      fontconfig: families by name, fallback order, installed list    │
 │ codecs.c     AVIF/HEIC via libheif (dlopen, optional)                        │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -237,17 +238,35 @@ uses. `underline` needs no opcode: `Text` paints a RECT under each line it drew,
 that line, a third of the descent below the baseline (ascent from the font metrics), with a
 thickness of `max(1, fontSize / 14)` and both snapped to device pixels so it stays sharp.
 
-**Weights, italics, letter spacing.** `inheritedFont()` (`widgets/props.ts`) resolves a
-node's `FontStyle` (`{ weight, italic, letterSpacing }`; the nearest `fontWeight` or `bold`
-up the tree gives the weight) and keeps the same object while nothing changed, so the
-per-node layout caches compare it by identity. The measurer receives it, and the TEXT
-command carries it as a font id (`weight * 2 + italic`, `fontId()`) plus the spacing. In
-`text.c` each font id gets its UI face from `nb_platform_font_path(weight, italic, ...)` the
-first time it is used (fontconfig's closest match; an upright match for italic comes back
-with `oblique` and gets a FreeType shear). A variable font is opened at its base index with
-the `wght` axis set (HarfBuzz ignores the coordinates FreeType gives a named instance), and
-gets one face per weight; a static file is shared by every weight that maps to it. Fallback
-fonts are asked per (weight, italic) too. Letter spacing is added in `layout_runs` after the
+**Fonts: weights, italics, families, features, letter spacing.** `inheritedFont()`
+(`widgets/props.ts`) resolves a node's `FontStyle` (`{ weight, italic, letterSpacing, family,
+features, variations }`; the nearest `fontWeight` or `bold` up the tree gives the weight) and
+keeps the same object while nothing changed, so the per-node layout caches compare it by
+identity. The measurer receives it, and the TEXT command carries it as a font id (`weight * 2
++ italic`, `fontId()`), the spacing, and a *spec*: family list, features and variations
+joined by U+001F (`fontSpec()`, "" when all are empty), sent once per frame in `texts[]`.
+
+`core/faces.c` turns (spec, font id) into a *style*: specs are interned and parsed once (the
+CSS family list, with quotes and generic names; features and variations with HarfBuzz's
+parsers, which take CSS syntax), and each style resolves, the first time it is used, to a
+stack of faces: for each family of the list, the app's faces registered under that name (CSS
+font matching: slant first, then the weight rules; faces with the same descriptors all join,
+in registration order) or else the installed family (`nb_platform_font_path(family, ...)`,
+NULL when not installed; generic names always resolve), then the UI font. A cluster's face
+is the first of the stack that has its base, else the platform's fallback after the list's
+first system family (cached per codepoint and style). A style whose first face has all of
+printable ASCII keeps the ASCII fast path. Registering a font drops styles and fallbacks
+(and TS bumps the metrics generation, which empties the measurer cache and re-wraps text);
+faces are never freed, so their ids stay valid keys for sizes and glyphs.
+
+A face is a file (a path, or the bytes of a registered font, copied once and shared by all
+its faces) drawn one way: `oblique` (italic asked, none in the family: a FreeType shear),
+`embolden` (600+ asked of a lighter face: `FT_Outline_Embolden` by 1/24 em before rendering,
+advances unchanged; for system fonts fontconfig's `embolden` says so), and, for a file with
+variation axes, its coordinates: the named instance's, then `wght` = the weight, then the
+spec's variations. A variable font is opened at its base index (HarfBuzz ignores the
+coordinates FreeType gives a named instance) and gets one face per weight and variation list;
+a static file is shared by every weight that maps to it. Letter spacing is added in `layout_runs` after the
 last glyph of every HarfBuzz cluster, the last one included, so `width(a + b) = width(a) +
 width(b)` keeps holding: wrapping sums word widths and selection measures prefixes, and both
 stay exact. A nonzero spacing turns `liga`/`clig` off, as CSS does.
@@ -368,7 +387,7 @@ Painting does not call the C node by node: `render/paint.ts` writes everything i
 | Op | Code | Following floats |
 |---|---|---|
 | RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
-| TEXT | 2 | x y(line top) size font id (weight * 2 + italic) · r g b a · index into `texts[]` · letterSpacing |
+| TEXT | 2 | x y(line top) size font id (weight * 2 + italic) · r g b a · index into `texts[]` · letterSpacing · spec index into `texts[]` (-1: none) |
 | CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
 | SHADOW | 5 | x y w h · r g b a · radius blur |
@@ -408,21 +427,24 @@ Text: HarfBuzz does the shaping (accents, ligatures, kerning), FreeType rasteriz
 once and stores it in a texture atlas. The measurements the layout asks of the C are cached
 on the TypeScript side.
 
-**Font fallback.** A string the UI font cannot fully draw is cut into clusters (a base
+**Font fallback.** A string the first face of its style cannot fully draw is cut into clusters (a base
 codepoint plus its combining marks, variation selectors, skin-tone modifiers, ZWJ-joined
 parts, tag sequences; regional indicators in pairs), so an emoji sequence never splits across
 fonts. Each cluster picks a face by its base: one with emoji presentation (emoji planes, the
 BMP `Emoji_Presentation` list, or a U+FE0F, ZWJ or skin tone in the cluster; U+FE0E forces
-text) asks for a color font first; otherwise the UI font if it has the glyph
-(`FT_Get_Char_Index`), then the platform's fallback, `nb_platform_font_fallback`. On Linux
-that is fontconfig's `FcFontSort` of the UI font's pattern (or of `emoji` with `color=true`),
-computed once and walked for the first font whose charset has the codepoint. The answer is
-cached per codepoint, so fontconfig is asked once per character the UI font lacks, and up to
-32 faces stay loaded (UI fonts included; past that, the UI font's tofu). Consecutive clusters
+text) asks for a color font first (one of the style's, then the system's); otherwise the
+first face of the style that has the glyph (`FT_Get_Char_Index`), then the platform's
+fallback, `nb_platform_font_fallback`. On Linux that is fontconfig's `FcFontSort` of the
+list's first system family (the UI font's pattern without one, or `emoji` with
+`color=true`), computed once and walked for the first font whose charset has the codepoint.
+The answer is cached per codepoint and style, so fontconfig is asked once per character the
+fonts lack, and up to 255 faces stay loaded (past that, the closest face of the same file,
+or the UI font). Consecutive clusters
 with the same face become a run, each run is shaped with its own font and the pens
 concatenate. `measure` and `draw` walk the same runs, so layout and painting agree. Strings
-that are pure ASCII skip all of it (one run, no decoding). Ascent and descent always come from
-the UI font, so a fallback glyph never changes the line height.
+that are pure ASCII skip all of it when the first face has every ASCII glyph (one run, no
+decoding). Ascent and descent always come from the style's first face, so a fallback glyph
+never changes the line height.
 
 **Color emoji.** Noto Color Emoji is a CBDT font: bitmaps at fixed strikes (109 px), no
 outlines. For such a face the closest strike is selected with `FT_Select_Size`, HarfBuzz scales

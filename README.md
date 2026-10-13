@@ -289,11 +289,13 @@ caps, filled polygons (concave ones included), circles and arcs (pie, donut, gau
 text. Coordinates are local to the canvas; `g.width` and `g.height` give its size. `draw` is
 reactive: it runs inside an effect, so the signals it reads (data, `theme` colors) are tracked
 and changing one of them redraws. Geometry is computed when the data changes, not every frame.
-`g.text(text, x, y, color, size?, bold?, { maxWidth, ellipsis, weight, italic, letterSpacing })`
+`g.text(text, x, y, color, size?, bold?, { maxWidth, ellipsis, weight, italic, letterSpacing, family, features, variations })`
 draws one line; with `maxWidth` text that does not fit is cut and ends in "…" (`ellipsis:
 false` just cuts it; nothing is drawn when not even the "…" fits); `weight` wins over `bold`.
-`g.measureText(text, size?, bold?, { weight, italic, letterSpacing })` (`{ width, height }`)
-measures it, to align it.
+`g.measureText(text, size?, bold?, { weight, italic, letterSpacing, family, features, variations })`
+(`{ width, height }`) measures it, to align it. Without `family`, `features` or `variations`,
+canvas text uses the `fontFamily`, `fontFeatures` and `fontVariations` around the canvas, so
+charts follow the app's font.
 Lines take a dash pattern (`g.line(..., cap, [4, 3])`, `g.polyline(..., { dash })`).
 `g.linearGradient(x0, y0, x1, y1, stops)` returns a gradient (from offset 0 at the first point
 to 1 at the second, in canvas coordinates) that every shape takes in place of a color:
@@ -582,6 +584,44 @@ import { Text } from "@nodebuilderjs/core";
 <Text fontWeight={300} fontSize={28}>Light headline</Text>;
 <Text fontSize={12} bold letterSpacing={1.5}>SECTION</Text>;
 <Text italic>An aside</Text>;
+```
+
+### Fonts
+
+`fontFamily` takes a CSS family list, inherited like `fontSize`: fonts the app registers,
+installed families by name, and the generic `sans-serif` (the default, the system UI font),
+`serif`, `monospace`, `cursive`, `fantasy`, `emoji`, `math` and `system-ui`. Names match without
+case and may be quoted. Each character uses the first family of the list that has it, then the
+system's fallback; families that are not there are skipped.
+
+`registerFont(source, options?)` adds a font file to the families, like CSS `@font-face`:
+`source` is a path or the file's bytes, and an import `with { type: "file" }` keeps working in
+the packaged executable. TrueType (`.ttf`), OpenType/CFF (`.otf`), collections (`.ttc`, every
+face), WOFF and WOFF2; family, weight and slant come from the file (`{ family, weight, italic }`
+override them; `weight: [100, 900]` for a range). Register every weight and slant under the
+same family: text picks among them with the CSS rules (a variable font covers its whole `wght`
+range), and synthesizes what the family lacks: bold (thicker outlines) and italic (slanted
+glyphs). It returns the faces it added. Text already on screen is measured and drawn again.
+
+`fontFeatures` turns OpenType features on and off (`"tnum"`, `"smcp, onum"`, `"-liga"`,
+`'"ss01" 1'`: CSS `font-feature-settings` syntax, or HarfBuzz's) and `fontVariations` sets the
+axes of variable fonts (`"wdth 75, opsz 12"`, CSS `font-variation-settings`; a `wght` there wins
+over `fontWeight`). Both are inherited. `fontFamilies()` lists the installed and registered
+families (sorted), e.g. for a font picker.
+
+```tsx
+import { Column, Text, registerFont } from "@nodebuilderjs/core";
+import interRegular from "./fonts/Inter-Regular.woff2" with { type: "file" };
+import interBold from "./fonts/Inter-Bold.woff2" with { type: "file" };
+
+registerFont(interRegular);
+registerFont(interBold);
+
+<Column fontFamily="Inter, sans-serif">
+  <Text bold>Inter Bold</Text>
+  <Text fontFamily="monospace" fontFeatures="zero">0O 1l</Text>
+  <Text fontFeatures="tnum">1,234.50</Text>
+</Column>;
 ```
 
 - `underline`: a line under each line of text, in the text color (it follows wrapping,
@@ -904,8 +944,8 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
 - Linux x64 only (arm64, Windows and macOS are on the roadmap).
 - Screenshots (`nodebuilder screenshot`, `screenshot()`) need a GPU driver with EGL
   (Mesa or NVIDIA); a process that took one can't open a window afterwards.
-- Text weights come from the system font's files (or its `wght` axis); a family without a
-  weight uses the closest one (no synthetic bold). A word longer than the line overflows. Characters the UI font lacks (symbols, CJK, emoji) come from the
+- A family without the weight or slant asked for uses the closest face, emboldened or slanted
+  (synthetic, like browsers). A word longer than the line overflows. Characters the UI font lacks (symbols, CJK, emoji) come from the
   system's fallback fonts and color emoji are drawn in color (Noto Color Emoji and other
   CBDT, sbix or COLRv0 fonts; COLRv1-only fonts are not rendered in color). No bidi: a
   right-to-left run is shaped, but lines are not reordered.

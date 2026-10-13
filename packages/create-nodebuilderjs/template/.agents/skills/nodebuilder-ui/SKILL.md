@@ -78,8 +78,8 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
   300 light, 500 medium, 700 bold, 900 black; `bold` is 700 and `fontWeight` wins on the same
   widget), `italic`, `letterSpacing` (px after every character, may be negative: `letterSpacing={1.5}`
   on small uppercase labels), `underline` (a line under each line of text, in its color;
-  `underline={false}` turns it off below; `TextField` ignores it). Weights come from the
-  system font (the closest it has).
+  `underline={false}` turns it off below; `TextField` ignores it). A family without the
+  weight or slant asked for gets the closest one, emboldened or slanted.
   Symbols, CJK and emoji the UI font lacks come from the system's fallback fonts; emoji are in
   color (`color` does not tint them, `opacity` fades them). Cursor: `cursor="pointer"`. A link that underlines on hover:
 
@@ -90,6 +90,31 @@ ignores clicks and keys. Do not fake it with `opacity` + an empty `onClick`.
   <Text color={() => theme.accent.base} underline={hovered} cursor="pointer"
     onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}
     onClick={() => console.log("open docs")}>Read the docs</Text>;
+  ```
+- Fonts (inherited): `fontFamily` is a CSS list (`"Inter, sans-serif"`) of fonts the app
+  registered, installed families by name and generic ones (`sans-serif`, the default UI font;
+  `serif`, `monospace`, `system-ui`, `emoji`...); each character uses the first family that has
+  it. Ship font files with the app and `registerFont` them at startup, before `run()`, importing
+  them `with { type: "file" }` so the package embeds them (TTF, OTF, TTC, WOFF, WOFF2, variable
+  fonts; family, weight and slant come from the file). Register each weight and italic under
+  the same family; the closest face is used, like CSS. `fontFeatures` turns OpenType features
+  on/off (`"tnum"` tabular digits for numbers that update, `"smcp"`, `"-liga"`),
+  `fontVariations` sets variable axes (`"wdth 75"`). `fontFamilies()` lists installed and
+  registered families. Charts and `<Canvas>` text follow the `fontFamily` around them.
+
+  ```tsx
+  import { Column, Text, registerFont } from "@nodebuilderjs/core";
+  import regular from "./fonts/Inter-Regular.woff2" with { type: "file" };
+  import bold from "./fonts/Inter-Bold.woff2" with { type: "file" };
+
+  registerFont(regular);
+  registerFont(bold);
+
+  <Column fontFamily="Inter, sans-serif">
+    <Text bold>Inter Bold</Text>
+    <Text fontFamily="monospace">code()</Text>
+    <Text fontFeatures="tnum">1,234.50</Text>
+  </Column>;
   ```
 - Colors are hex strings (`"#3584e4"`, `"#00000010"` with alpha) or `"transparent"`.
 - Events on any container: `onClick`, `onPointerDown/Up/Enter/Leave`,

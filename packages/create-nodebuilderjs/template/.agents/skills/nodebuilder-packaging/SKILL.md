@@ -17,7 +17,7 @@ an AppImage, `.deb`, `.rpm` and `.tar.gz`, with a menu entry and icon. Runs on d
 
 ## Rules
 
-- **App files** (images, JSON, sounds) are bundled into the executable only if imported with
+- **App files** (images, fonts, JSON, sounds) are bundled into the executable only if imported with
   `with { type: "file" }` (the import becomes the path). `readFileSync("./data.json")` with a
   loose path works in dev and **fails in the package**. For JSON, `import data from
   "./data.json"` also bundles it.

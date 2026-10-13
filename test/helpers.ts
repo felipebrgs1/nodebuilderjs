@@ -7,7 +7,7 @@ type Rgba = [number, number, number, number];
 
 export type DrawCommand =
   | { op: "rect"; x: number; y: number; w: number; h: number; color: Rgba; radius: number; borderWidth: number; borderColor: Rgba }
-  | { op: "text"; x: number; y: number; size: number; weight: number; italic: boolean; bold: boolean; letterSpacing: number; color: Rgba; text: string }
+  | { op: "text"; x: number; y: number; size: number; weight: number; italic: boolean; bold: boolean; letterSpacing: number; family: string; features: string; variations: string; color: Rgba; text: string }
   | { op: "clip"; x: number; y: number; w: number; h: number; radius: number }
   | { op: "unclip" }
   | { op: "shadow"; x: number; y: number; w: number; h: number; color: Rgba; radius: number; blur: number }
@@ -33,8 +33,10 @@ export function decode(buffer: CommandBuffer): DrawCommand[] {
         break;
       case 2: {
         const weight = Math.floor(d[i + 3]! / 2); // font id = weight * 2 + italic
-        out.push({ op: "text", x: d[i]!, y: d[i + 1]!, size: d[i + 2]!, weight, italic: d[i + 3]! % 2 === 1, bold: weight >= 600, letterSpacing: d[i + 9]!, color: rgba(i + 4), text: buffer.texts[d[i + 8]!]! });
-        i += 10;
+        // The spec: family, features and variations joined by U+001F, or -1.
+        const [family = "", features = "", variations = ""] = d[i + 10]! < 0 ? [] : buffer.texts[d[i + 10]!]!.split("\x1f");
+        out.push({ op: "text", x: d[i]!, y: d[i + 1]!, size: d[i + 2]!, weight, italic: d[i + 3]! % 2 === 1, bold: weight >= 600, letterSpacing: d[i + 9]!, family, features, variations, color: rgba(i + 4), text: buffer.texts[d[i + 8]!]! });
+        i += 11;
         break;
       }
       case 3:
