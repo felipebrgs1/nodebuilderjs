@@ -441,11 +441,17 @@ Text: HarfBuzz does the shaping (accents, ligatures, kerning), FreeType rasteriz
 once and stores it in a texture atlas. Each face is one `FT_Face`, opened while some size uses
 it; each pixel size is an `FT_Size` on it with its own HarfBuzz font (64 kept, least recently
 used out), activated before shaping or loading glyphs, so a new size (an animated `fontSize`)
-does not read and parse the file again. The atlas is 1024 px, A8. A bitmap larger than 512 px on a side
-(display sizes: `fontSize` around 700 at scale 1) is box-filtered down to 512 px in the atlas
-and the quad stretches it back, so one glyph never fills or overflows the atlas; the atlas is
-sampled with `GL_LINEAR`, which at the usual 1:1, pixel-aligned quads equals `NEAREST`. The
-measurements the layout asks of the C are cached on the TypeScript side.
+does not read and parse the file again. The atlas is one 2048 px A8 texture cut into four
+1024 px pages, each filled shelf by shelf; when all are full, the least recently used page is
+wiped (its generation bumps, so glyph slots that pointed into it rasterize again), never one a
+glyph of the current frame came from unless every page did, so quads already emitted in the
+frame keep their pixels (`nb_text_begin_frame`, called by `nb_render_frame`, counts frames).
+Only the rows that changed are uploaded (`glTexSubImage2D`), the whole texture once per GL
+context. A bitmap larger than 512 px on a side (display sizes: `fontSize` around 700 at scale 1)
+is box-filtered down to 512 px and the quad stretches it back, so one glyph never fills or
+overflows a page; the atlas is sampled with `GL_LINEAR`, which at the usual 1:1, pixel-aligned
+quads equals `NEAREST`. The measurements the layout asks of the C are cached on the TypeScript
+side.
 
 **Font fallback.** A string the first face of its style cannot fully draw is cut into clusters (a base
 codepoint plus its combining marks, variation selectors, skin-tone modifiers, ZWJ-joined
@@ -475,8 +481,9 @@ COLRv0 and sbix fonts go through the same path (FreeType renders them to BGRA); 
 (gradients) is not rendered by FreeType, so such fonts show their monochrome fallback glyphs.
 The renderer draws those quads with their own mode: the shader samples the color atlas
 (texture unit 2) and multiplies by the text color's alpha only, so `color` does not tint an
-emoji but `opacity` fades it. Color glyphs follow the same 512 px cap. Both atlases are reset
-together when either fills up.
+emoji but `opacity` fades it. The color atlas is 1024 px with four 512 px pages and a 256 px
+cap (emoji strikes are 109 to 136 px, so little is lost), paged like the alpha one; both are
+reset together only when the glyph slot table (8192) fills.
 
 Images: PNG, JPEG and WebP are decoded in TypeScript to RGBA (`src/image/png.ts` with the
 runtime's zlib, `jpeg.ts`, `webp.ts`). All three reproduce the output of the reference

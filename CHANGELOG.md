@@ -34,6 +34,12 @@
 - Animating `fontWeight` on a variable font, or `fontVariations`, filled the font tables within
   seconds, and text then snapped to the nearest face already loaded. Unused variable-font
   faces and variation lists are now freed.
+- A frame with more text than the glyph atlas holds (many sizes, big headings) drew some
+  glyphs with another glyph's bitmap and re-rasterized everything every frame. The atlas now
+  has pages and drops the least recently used one, never one the current frame uses (a scene
+  over one page: 5.1 -> 0.9 ms per frame).
+- An animated `fontSize` reopened the font file for every new size; sizes now share one
+  FreeType face.
 
 ## 0.3.0 (2026-10-12)
 

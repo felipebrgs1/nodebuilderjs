@@ -20,9 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ATLAS_SIZE 1024
-#define COLOR_ATLAS_SIZE 1024
-#define MAX_GLYPH 512     // larger bitmaps are downscaled into the atlas and stretched back when drawn
+#define PAGES 4  // per atlas: 2 x 2 squares of one texture
 #define MAX_SIZES 64
 #define GLYPH_SLOTS 8192  // power of two
 #define MAX_FEATURES 34   // a spec's (faces.c: 32) + the two letter spacing turns off
@@ -41,6 +39,8 @@ typedef struct {
 typedef struct {
   uint64_t key;
   bool used, color;
+  uint8_t page;
+  uint32_t gen;    // the page's generation when rasterised: stale once the page is wiped
   int x, y, w, h;  // atlas rect
   int dw, dh;      // drawn size: w x h unless the bitmap was downscaled to fit
   int left, top;   // bitmap bearing
@@ -56,10 +56,29 @@ static struct {
   int users;
 } open_faces[NB_MAX_FACES];
 static glyph_slot glyphs[GLYPH_SLOTS];
-static uint8_t atlas[ATLAS_SIZE * ATLAS_SIZE];
-static uint8_t *color_atlas;  // allocated on the first color glyph
-static int shelf_x, shelf_y, shelf_h, cshelf_x, cshelf_y, cshelf_h;
-static bool atlas_dirty, color_dirty;
+
+// An atlas is one texture cut into PAGES square pages, each filled shelf by shelf. When all are
+// full, the least recently used page is wiped, never one a glyph of this frame came from (unless
+// every page did), so the quads already emitted keep their pixels.
+typedef struct {
+  int sx, sy, sh;  // shelf packer, relative to the page
+  uint32_t used;   // last frame a glyph came from it
+  uint32_t gen;    // bumped on every wipe
+} atlas_page;
+
+typedef struct {
+  uint8_t *pixels;
+  int size, page_size, bpp;
+  int max_glyph;  // larger bitmaps are downscaled into the page and stretched back when drawn
+  atlas_page pages[PAGES];
+  int current;
+  int dirty0, dirty1;  // rows changed since the last upload
+} atlas_t;
+
+static uint8_t gray_pixels[2048 * 2048];  // untouched pages are never written, so never committed
+static atlas_t gray = {.pixels = gray_pixels, .size = 2048, .page_size = 1024, .bpp = 1, .max_glyph = 512};
+static atlas_t color_atlas = {.size = 1024, .page_size = 512, .bpp = 4, .max_glyph = 256};  // pixels on the first emoji
+static uint32_t frame = 1;
 static hb_buffer_t *buffer;
 
 bool nb_text_init(void) {
@@ -241,33 +260,77 @@ static int cluster(const unsigned char *s, int len, int start, int style, int pr
 
 // ---- atlases ----------------------------------------------------------------------
 
-static void reset_atlas(void) {
-  memset(glyphs, 0, sizeof glyphs);
-  memset(atlas, 0, sizeof atlas);
-  if (color_atlas) memset(color_atlas, 0, (size_t)COLOR_ATLAS_SIZE * COLOR_ATLAS_SIZE * 4);
-  shelf_x = shelf_y = shelf_h = cshelf_x = cshelf_y = cshelf_h = 0;
-  atlas_dirty = color_dirty = true;
+static void mark_dirty(atlas_t *a, int y0, int y1) {
+  if (a->dirty1 <= a->dirty0) a->dirty0 = y0, a->dirty1 = y1;
+  if (y0 < a->dirty0) a->dirty0 = y0;
+  if (y1 > a->dirty1) a->dirty1 = y1;
 }
 
-static bool pack(int size, int *sx, int *sy, int *sh, int w, int h, int *x, int *y) {
-  if (*sx + w + 1 > size) {
-    *sy += *sh + 1;
-    *sx = 0;
-    *sh = 0;
+static int page_x(const atlas_t *a, int p) { return (p % 2) * a->page_size; }
+static int page_y(const atlas_t *a, int p) { return (p / 2) * a->page_size; }
+
+static void wipe_page(atlas_t *a, int p) {
+  atlas_page *pg = &a->pages[p];
+  int x = page_x(a, p), y = page_y(a, p);
+  if (a->pixels && (pg->sx || pg->sy || pg->sh)) {
+    for (int r = 0; r < a->page_size; r++)
+      memset(a->pixels + ((size_t)(y + r) * a->size + x) * a->bpp, 0, (size_t)a->page_size * a->bpp);
+    mark_dirty(a, y, y + a->page_size);
   }
-  if (*sy + h + 1 > size || w + 1 > size) return false;
-  *x = *sx;
-  *y = *sy;
-  *sx += w + 1;
-  if (h > *sh) *sh = h;
+  pg->sx = pg->sy = pg->sh = 0;
+  pg->gen++;
+}
+
+static bool pack(atlas_page *pg, int size, int w, int h, int *x, int *y) {
+  if (pg->sx + w + 1 > size) {
+    pg->sy += pg->sh + 1;
+    pg->sx = 0;
+    pg->sh = 0;
+  }
+  if (pg->sy + h + 1 > size || w + 1 > size) return false;
+  *x = pg->sx;
+  *y = pg->sy;
+  pg->sx += w + 1;
+  if (h > pg->sh) pg->sh = h;
   return true;
 }
+
+// A w x h rect (at most max_glyph on a side) in some page: the current one, an empty one, else
+// the least recently used one, wiped.
+static int alloc_rect(atlas_t *a, int w, int h, int *x, int *y) {
+  int p = a->current;
+  if (!pack(&a->pages[p], a->page_size, w, h, x, y)) {
+    p = -1;
+    for (int i = 0; i < PAGES && p < 0; i++) {
+      const atlas_page *pg = &a->pages[i];
+      if (!pg->sx && !pg->sy && !pg->sh) p = i;
+    }
+    if (p < 0) {
+      p = 0;
+      for (int i = 1; i < PAGES; i++)
+        if (a->pages[i].used < a->pages[p].used) p = i;
+      wipe_page(a, p);
+    }
+    a->current = p;
+    pack(&a->pages[p], a->page_size, w, h, x, y);
+  }
+  *x += page_x(a, p);
+  *y += page_y(a, p);
+  return p;
+}
+
+static void reset_atlases(void) {
+  memset(glyphs, 0, sizeof glyphs);
+  for (int p = 0; p < PAGES; p++) wipe_page(&gray, p), wipe_page(&color_atlas, p);
+}
+
+void nb_text_begin_frame(void) { frame++; }
 
 // Box-filters a bitmap into an atlas at w x h: gray coverage into the A8 atlas, premultiplied
 // BGRA into the color atlas as premultiplied RGBA.
 static void put_bitmap(const FT_Bitmap *bm, bool color, int x, int y, int w, int h) {
   if (!color && w == (int)bm->width && h == (int)bm->rows) {
-    for (int r = 0; r < h; r++) memcpy(&atlas[(y + r) * ATLAS_SIZE + x], bm->buffer + r * bm->pitch, w);
+    for (int r = 0; r < h; r++) memcpy(&gray.pixels[(size_t)(y + r) * gray.size + x], bm->buffer + r * bm->pitch, w);
     return;
   }
   int channels = color ? 4 : 1;
@@ -290,8 +353,8 @@ static void put_bitmap(const FT_Bitmap *bm, bool color, int x, int y, int w, int
           total += wgt;
         }
       }
-      uint8_t *out = color ? color_atlas + ((size_t)(y + dy) * COLOR_ATLAS_SIZE + x + dx) * 4
-                           : &atlas[(size_t)(y + dy) * ATLAS_SIZE + x + dx];
+      atlas_t *a = color ? &color_atlas : &gray;
+      uint8_t *out = a->pixels + ((size_t)(y + dy) * a->size + x + dx) * a->bpp;
       for (int c = 0; c < channels; c++) out[c] = total > 0 ? (uint8_t)fminf(acc[c] / total + 0.5f, 255) : 0;
     }
   }
@@ -303,11 +366,17 @@ static glyph_slot *get_glyph(sized_font *sf, uint32_t gid) {
   glyph_slot *slot = NULL;
   for (int i = 0; i < GLYPH_SLOTS; i++) {
     glyph_slot *s = &glyphs[(h + i) & (GLYPH_SLOTS - 1)];
-    if (s->used && s->key == key) return s;
+    if (s->used && s->key == key) {
+      if (!s->w) return s;  // nothing to draw (a space)
+      atlas_page *pg = &(s->color ? &color_atlas : &gray)->pages[s->page];
+      if (pg->gen == s->gen) return pg->used = frame, s;
+      slot = s;  // its page was wiped: rasterise it again, in the same slot
+      break;
+    }
     if (!s->used) { slot = s; break; }
   }
   if (!slot) {  // cache full: start over (glyphs are re-rasterised on demand)
-    reset_atlas();
+    reset_atlases();
     slot = &glyphs[h];
   }
 
@@ -334,28 +403,24 @@ static glyph_slot *get_glyph(sized_font *sf, uint32_t gid) {
   } else if (dw && dh && bm->pixel_mode != FT_PIXEL_MODE_GRAY) {
     return NULL;  // mono bitmaps: not supported
   }
-  // A bitmap larger than MAX_GLYPH would leave no room for others (or not fit at all): keep a
+  // A bitmap larger than max_glyph would leave no room for others (or not fit at all): keep a
   // downscaled copy, which the GPU stretches back to dw x dh.
+  atlas_t *a = color ? &color_atlas : &gray;
   int w = dw, hgt = dh, big = dw > dh ? dw : dh;
-  if (big > MAX_GLYPH) {
-    w = (int)fmaxf(1, roundf((float)dw * MAX_GLYPH / big));
-    hgt = (int)fmaxf(1, roundf((float)dh * MAX_GLYPH / big));
+  if (big > a->max_glyph) {
+    w = (int)fmaxf(1, roundf((float)dw * a->max_glyph / big));
+    hgt = (int)fmaxf(1, roundf((float)dh * a->max_glyph / big));
   }
-  int x = 0, y = 0;
+  int x = 0, y = 0, page = 0;
   if (w && hgt) {
-    if (color && !color_atlas && !(color_atlas = calloc((size_t)COLOR_ATLAS_SIZE * COLOR_ATLAS_SIZE, 4))) return NULL;
-    int size = color ? COLOR_ATLAS_SIZE : ATLAS_SIZE;
-    int *sx = color ? &cshelf_x : &shelf_x, *sy = color ? &cshelf_y : &shelf_y, *sh = color ? &cshelf_h : &shelf_h;
-    if (!pack(size, sx, sy, sh, w, hgt, &x, &y)) {  // full: start over; an empty atlas always fits MAX_GLYPH
-      reset_atlas();
-      slot = &glyphs[h];
-      if (!pack(size, sx, sy, sh, w, hgt, &x, &y)) return NULL;
-    }
+    if (!a->pixels && !(a->pixels = calloc((size_t)a->size * a->size, (size_t)a->bpp))) return NULL;
+    page = alloc_rect(a, w, hgt, &x, &y);
     put_bitmap(bm, color, x, y, w, hgt);
-    if (color) color_dirty = true; else atlas_dirty = true;
+    mark_dirty(a, y, y + hgt);
+    a->pages[page].used = frame;
   }
-  *slot = (glyph_slot){.key = key, .used = true, .color = color, .x = x, .y = y, .w = w, .h = hgt,
-                       .dw = dw, .dh = dh, .left = left, .top = top};
+  *slot = (glyph_slot){.key = key, .used = true, .color = color, .page = (uint8_t)page, .gen = a->pages[page].gen,
+                       .x = x, .y = y, .w = w, .h = hgt, .dw = dw, .dh = dh, .left = left, .top = top};
   return slot;
 }
 
@@ -446,7 +511,7 @@ static void draw_glyph(void *ud, sized_font *sf, const hb_glyph_info_t *info, co
   if (!g || !g->w || !g->h) return;
   float gx = roundf(d->x + pen + pos->x_offset / 64.0f) + g->left;
   float gy = d->baseline - roundf(pos->y_offset / 64.0f) - g->top;
-  float inv = 1.0f / (g->color ? COLOR_ATLAS_SIZE : ATLAS_SIZE);
+  float inv = 1.0f / (g->color ? color_atlas.size : gray.size);
   d->emit(d->ud, gx, gy, gx + g->dw, gy + g->dh, g->x * inv, g->y * inv, (g->x + g->w) * inv, (g->y + g->h) * inv, g->color);
 }
 
@@ -459,18 +524,17 @@ void nb_text_draw(int font, const char *spec, const char *utf8, int px, float sp
   layout_runs(sf, style, utf8, spacing, draw_glyph, &d);
 }
 
-const uint8_t *nb_text_atlas(int *size, bool *dirty) {
-  *size = ATLAS_SIZE;
-  *dirty = atlas_dirty;
-  return atlas;
+static const uint8_t *changes(atlas_t *a, int *size, int *y0, int *y1) {
+  *size = a->size;
+  *y0 = a->dirty0;
+  *y1 = a->pixels ? a->dirty1 : a->dirty0;
+  return a->pixels;
 }
 
-void nb_text_atlas_uploaded(void) { atlas_dirty = false; }
+const uint8_t *nb_text_atlas(int *size, int *y0, int *y1) { return changes(&gray, size, y0, y1); }
 
-const uint8_t *nb_text_color_atlas(int *size, bool *dirty) {
-  *size = COLOR_ATLAS_SIZE;
-  *dirty = color_dirty && color_atlas;
-  return color_atlas;
-}
+void nb_text_atlas_uploaded(void) { gray.dirty0 = gray.dirty1 = 0; }
 
-void nb_text_color_atlas_uploaded(void) { color_dirty = false; }
+const uint8_t *nb_text_color_atlas(int *size, int *y0, int *y1) { return changes(&color_atlas, size, y0, y1); }
+
+void nb_text_color_atlas_uploaded(void) { color_atlas.dirty0 = color_atlas.dirty1 = 0; }

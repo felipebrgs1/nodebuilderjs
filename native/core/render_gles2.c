@@ -92,6 +92,7 @@ static const char *fragment_src =
     "}\n";
 
 static GLuint program, vbo, atlas_tex, color_atlas_tex;
+static int atlas_tex_size, color_tex_size;  // 0: not allocated in this context yet
 static GLint u_viewport, u_atlas, u_image, u_color_atlas, u_clip, u_clip_radius, u_fb_height;
 static float *verts;
 static size_t vert_count, vert_cap;
@@ -134,6 +135,7 @@ bool nb_render_init(void) {
   u_fb_height = glGetUniformLocation(program, "u_fb_height");
 
   glGenBuffers(1, &vbo);
+  atlas_tex_size = color_tex_size = 0;
   glGenTextures(1, &atlas_tex);
   glBindTexture(GL_TEXTURE_2D, atlas_tex);
   // Glyph quads are pixel-aligned at 1:1, where LINEAR samples texel centers (the same as
@@ -286,26 +288,34 @@ static void push_quad(float x0, float y0, float x1, float y1, float cx, float cy
 #undef V
 }
 
-// Glyphs are rasterised while the batch is built, so upload right before drawing.
+// Glyphs are rasterised while the batch is built, so upload right before drawing: the whole
+// atlas the first time in a context, then only the rows that changed.
+static void upload(const uint8_t *pixels, int size, int y0, int y1, GLenum format, int bpp, int *tex_size) {
+  if (!pixels) return;
+  glPixelStorei(GL_UNPACK_ALIGNMENT, bpp == 4 ? 4 : 1);
+  if (*tex_size != size) {
+    glTexImage2D(GL_TEXTURE_2D, 0, format, size, size, 0, format, GL_UNSIGNED_BYTE, pixels);
+    *tex_size = size;
+  } else if (y1 > y0) {
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y0, size, y1 - y0, format, GL_UNSIGNED_BYTE, pixels + (size_t)y0 * size * bpp);
+  }
+}
+
 static void upload_atlas(void) {
-  int size;
-  bool dirty;
-  const uint8_t *pixels = nb_text_atlas(&size, &dirty);
-  if (!dirty) return;
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, size, size, 0, GL_ALPHA, GL_UNSIGNED_BYTE, pixels);
+  int size, y0, y1;
+  const uint8_t *pixels = nb_text_atlas(&size, &y0, &y1);
+  if (atlas_tex_size == size && y1 <= y0) return;
+  upload(pixels, size, y0, y1, GL_ALPHA, 1, &atlas_tex_size);
   nb_text_atlas_uploaded();
 }
 
 static void upload_color_atlas(void) {
-  int size;
-  bool dirty;
-  const uint8_t *pixels = nb_text_color_atlas(&size, &dirty);
-  if (!dirty) return;
+  int size, y0, y1;
+  const uint8_t *pixels = nb_text_color_atlas(&size, &y0, &y1);
+  if (!pixels || (color_tex_size == size && y1 <= y0)) return;
   glActiveTexture(GL_TEXTURE2);
   glBindTexture(GL_TEXTURE_2D, color_atlas_tex);
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+  upload(pixels, size, y0, y1, GL_RGBA, 4, &color_tex_size);
   glActiveTexture(GL_TEXTURE0);
   nb_text_color_atlas_uploaded();
 }
@@ -465,6 +475,7 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
   clip_depth = 0;
   bound_image = 0;
   collect_images();
+  nb_text_begin_frame();
 
   glViewport(0, 0, bw, bh);
   glDisable(GL_SCISSOR_TEST);

@@ -65,10 +65,13 @@ bool nb_text_init(void);
 float nb_text_measure(int font, const char *spec, const char *utf8, int px, float spacing, float *ascent, float *descent);
 void nb_text_draw(int font, const char *spec, const char *utf8, int px, float spacing, float x, float top,
                   nb_glyph_emit emit, void *ud);
-const uint8_t *nb_text_atlas(int *size, bool *dirty);
+/** Starts a frame: the atlas pages its glyphs come from are not wiped until the next one. */
+void nb_text_begin_frame(void);
+/** The A8 glyph atlas (size x size) and the rows changed since the last upload, [y0, y1). */
+const uint8_t *nb_text_atlas(int *size, int *y0, int *y1);
 void nb_text_atlas_uploaded(void);
-/** Premultiplied RGBA color-glyph atlas; NULL (and not dirty) until a color glyph is drawn. */
-const uint8_t *nb_text_color_atlas(int *size, bool *dirty);
+/** Premultiplied RGBA color-glyph atlas; NULL (and no rows changed) until a color glyph is drawn. */
+const uint8_t *nb_text_color_atlas(int *size, int *y0, int *y1);
 void nb_text_color_atlas_uploaded(void);
 
 // ---- core/faces.c: app fonts -------------------------------------------------

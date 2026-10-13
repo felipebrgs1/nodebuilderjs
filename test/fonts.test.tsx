@@ -352,3 +352,24 @@ test.skipIf(!shots)("pixels: more weights in one frame than the face table holds
     expect(Math.abs(ink.length - varX(weights[i]!) / 5)).toBeLessThanOrEqual(1);
   }
 });
+
+test.skipIf(!shots)("pixels: a frame with more glyphs than one atlas page draws every one of them right", () => {
+  setup();
+  // NB Test's "x" is a box half the font size: 40 even sizes from 300 px are 150..228 px squares,
+  // about 25 to a 1024 px page. Each must be drawn from its own bitmap.
+  const sizes = Array.from({ length: 40 }, (_, i) => 300 + i * 2);
+  const cell = (i: number) => ({ left: (i % 8) * 240, top: Math.floor(i / 8) * 400 });
+  const shot = screenshot(() => (
+    <Box width={1920} height={2000}>
+      {sizes.map((size, i) => (
+        <Text position="absolute" {...cell(i)} fontFamily="NB Test" fontSize={size} color="#000000">x</Text>
+      ))}
+    </Box>
+  ), { width: 1920, height: 2000 });
+  for (let i = 0; i < sizes.length; i++) {
+    const { left, top } = cell(i), size = sizes[i]!;
+    const y = top + Math.round(size * 0.8 - size * 0.25); // the middle of the box, above the baseline
+    const ink = inkColumns(shot, y).filter((x) => x >= left && x < left + 240);
+    expect({ i, start: ink[0], width: ink.length }).toEqual({ i, start: left, width: size / 2 });
+  }
+});
