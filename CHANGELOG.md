@@ -24,6 +24,16 @@
   features, variations; -1 for none). `FontStyle` has `family`, `features` and `variations`
   (`""` for none); a custom `TextMeasurer` receives them. `Native.measureText` takes the spec
   as a sixth argument.
+- `Native` has `fontStats()` (live entries of the addon's font tables); a fake native for tests
+  must provide it.
+
+### Fixed
+- Text with a glyph larger than the 1024 px glyph atlas (`fontSize` around 1200, or 600 at
+  scale 2) froze the app. Glyphs over 512 px are now stored downscaled and stretched back
+  when drawn.
+- Animating `fontWeight` on a variable font, or `fontVariations`, filled the font tables within
+  seconds, and text then snapped to the nearest face already loaded. Unused variable-font
+  faces and variation lists are now freed.
 
 ## 0.3.0 (2026-10-12)
 

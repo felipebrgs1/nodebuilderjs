@@ -35,6 +35,8 @@ export interface Native {
   registerFont(bytes: Uint8Array, family: string | null, weightMin: number, weightMax: number, italic: number): { family: string; weightMin: number; weightMax: number; italic: boolean; variable: boolean }[];
   /** The registered font families and the installed ones, unsorted, possibly with duplicates. */
   fontFamilies(): string[];
+  /** Live entries of the font tables (debugging and tests: they must stay bounded). */
+  fontStats(): { faces: number; variations: number; specs: number; styles: number; sizes: number };
   /**
    * Draws `commands` without a window (no display needed) into a `width*scale` x `height*scale`
    * target and returns its pixels: RGBA8, straight alpha, rows top to bottom. Throws

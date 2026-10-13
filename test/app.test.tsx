@@ -39,6 +39,7 @@ function fakeNative() {
     readClipboard: () => {},
     registerFont: () => [],
     fontFamilies: () => [],
+    fontStats: () => ({ faces: 0, variations: 0, specs: 0, styles: 0, sizes: 0 }),
   };
   return { native, calls, emit: (...events: NativeEvent[]) => emitEvents(events) };
 }

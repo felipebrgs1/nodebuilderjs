@@ -1,8 +1,10 @@
 // Internal to the core: font faces and styles (faces.c) for the text engine (text.c).
 //
 // A face is a font file (or a face of a collection) as drawn: with its variation coordinates
-// and the synthetic italic (oblique) or bold it needs. Faces are never freed, so their ids are
-// stable keys for text.c's sized fonts and glyph cache.
+// and the synthetic italic (oblique) or bold it needs. Faces of variable files are evicted when
+// the table fills (animated weights or variations), at the start of nb_font_style only: text.c
+// drops its sized fonts through nb_text_forget_face, and a reused id has a new generation
+// (nb_face_gen), part of the glyph cache key.
 //
 // A style is what a TEXT command asks for: a spec (family list, features, variations) at a
 // font id (weight * 2 + italic). It resolves to a stack of faces (one per family of the list
@@ -35,3 +37,9 @@ const hb_feature_t *nb_font_features(int style, int *count);
 FT_Face nb_face_open(int face);
 /** Synthetic bold: thicken the outlines. */
 bool nb_face_embolden(int face);
+/** Bumped each time the face's id is reused for another face. */
+uint8_t nb_face_gen(int face);
+/** text.c: close the sized fonts of an evicted face. */
+void nb_text_forget_face(int face);
+/** text.c: how many sized fonts are open. */
+int nb_text_size_count(void);

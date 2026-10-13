@@ -136,8 +136,10 @@ bool nb_render_init(void) {
   glGenBuffers(1, &vbo);
   glGenTextures(1, &atlas_tex);
   glBindTexture(GL_TEXTURE_2D, atlas_tex);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  // Glyph quads are pixel-aligned at 1:1, where LINEAR samples texel centers (the same as
+  // NEAREST); it smooths the glyphs text.c downscaled into the atlas and stretches back.
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   // Color glyphs are resampled to their final size when rasterised, so NEAREST would do; LINEAR

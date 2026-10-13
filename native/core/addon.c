@@ -456,6 +456,24 @@ static napi_value js_font_families(napi_env env, napi_callback_info info) {
   return list.array;
 }
 
+// fontStats() -> { faces, variations, specs, styles, sizes }: live entries of the font tables.
+static napi_value js_font_stats(napi_env env, napi_callback_info info) {
+  if (!nb_text_init()) {
+    napi_throw_error(env, NULL, "text engine initialisation failed");
+    return NULL;
+  }
+  nb_font_stats st;
+  nb_fonts_stats(&st);
+  napi_value o;
+  napi_create_object(env, &o);
+  set_num(env, o, "faces", st.faces);
+  set_num(env, o, "variations", st.variations);
+  set_num(env, o, "specs", st.specs);
+  set_num(env, o, "styles", st.styles);
+  set_num(env, o, "sizes", st.sizes);
+  return o;
+}
+
 // createImage(width, height, rgba: Uint8Array) -> id (> 0). Works before the window opens.
 static napi_value js_create_image(napi_env env, napi_callback_info info) {
   size_t argc = 3;
@@ -610,6 +628,7 @@ NAPI_MODULE_INIT() {
       {"measureText", NULL, js_measure_text, NULL, NULL, NULL, napi_default, NULL},
       {"registerFont", NULL, js_register_font, NULL, NULL, NULL, napi_default, NULL},
       {"fontFamilies", NULL, js_font_families, NULL, NULL, NULL, napi_default, NULL},
+      {"fontStats", NULL, js_font_stats, NULL, NULL, NULL, napi_default, NULL},
       {"createImage", NULL, js_create_image, NULL, NULL, NULL, napi_default, NULL},
       {"destroyImage", NULL, js_destroy_image, NULL, NULL, NULL, napi_default, NULL},
       {"decodeImage", NULL, js_decode_image, NULL, NULL, NULL, napi_default, NULL},

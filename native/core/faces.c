@@ -22,6 +22,10 @@
 #define MAX_STACK (MAX_FAMILIES + 1)
 #define STYLE_SLOTS 1024   // power of two
 #define FALLBACK_SLOTS 4096  // power of two
+#define PLATFORM_CACHE 256  // installed-family lookups remembered
+#define FACE_RESERVE 32    // free faces kept for a call (a style stack plus its fallbacks)
+#define VSET_RESERVE 8
+#define FALLBACK_STALE -2  // a fallback slot whose face was evicted: looked up again on the next hit
 
 FT_Library nb_ft;
 
@@ -39,8 +43,11 @@ typedef struct {
 typedef struct {
   int file;
   bool oblique, embolden;
-  int weight;  // the wght coordinate (files with a wght axis; 0 otherwise)
-  int vset;    // the spec's variation list (files with axes; 0 otherwise)
+  int weight;     // the wght coordinate (files with a wght axis; 0 otherwise)
+  int vset;       // the spec's variation list (files with axes; 0 otherwise)
+  bool live;      // false: an evicted slot, free for the next face
+  uint8_t gen;    // bumped when the slot is reused, so glyphs cached for the old face miss
+  uint32_t used;  // the tick of the last style or fallback that returned it (LRU)
 } face_entry;
 
 typedef struct {
@@ -84,12 +91,20 @@ typedef struct {
   bool italic;
 } registry_entry;
 
+// What the platform answered for an installed family (NULL: the UI font) at a weight and slant.
+typedef struct {
+  char *family;
+  bool generic, italic, oblique, embolden;
+  int weight, file;  // file -1: not installed
+} platform_entry;
+
 static font_file files[MAX_FILES];
 static int file_count;
 static face_entry faces[NB_MAX_FACES];
-static int face_count;
-static variation_set vsets[MAX_VSETS] = {{.text = ""}};
-static int vset_count = 1;
+static int face_count, live_faces;  // slots ever used, and the ones holding a face
+static variation_set vsets[MAX_VSETS] = {{.text = ""}};  // text NULL: a free slot
+static int vset_count = 1, live_vsets = 1;
+static uint32_t tick;  // one per nb_font_style call
 static spec_entry specs[MAX_SPECS];
 static int spec_slots[SPEC_SLOTS];  // spec index + 1
 static int spec_count;
@@ -99,6 +114,8 @@ static fallback_slot fallbacks[FALLBACK_SLOTS];
 static int fallback_count;
 static registry_entry registry[MAX_REGISTERED];
 static int registry_count;
+static platform_entry platform_cache[PLATFORM_CACHE];
+static int platform_count;
 
 static int platform_face(const char *family, bool generic, int weight, bool italic, int vset);
 static int intern_spec(const char *text);
@@ -170,16 +187,27 @@ static int add_face(int file, bool oblique, bool embolden, int weight, int vset)
   font_file *f = &files[file];
   if (!f->mm) vset = 0;
   if (!f->wght) weight = 0;
-  int closest = -1;
+  int closest = -1, free_slot = -1;
   for (int i = 0; i < face_count; i++) {
     face_entry *e = &faces[i];
+    if (!e->live) {
+      if (free_slot < 0) free_slot = i;
+      continue;
+    }
     if (e->file != file || e->oblique != oblique || e->embolden != embolden) continue;
-    if (e->weight == weight && e->vset == vset) return i;
+    if (e->weight == weight && e->vset == vset) return e->used = tick, i;
     if (closest < 0 || abs(e->weight - weight) < abs(faces[closest].weight - weight)) closest = i;
   }
-  if (face_count == NB_MAX_FACES) return closest >= 0 ? closest : 0;  // full: the nearest we have
-  faces[face_count] = (face_entry){.file = file, .oblique = oblique, .embolden = embolden, .weight = weight, .vset = vset};
-  return face_count++;
+  if (free_slot < 0) {
+    // Full even after nb_font_style's eviction (one call needing ~200 faces): the nearest we have.
+    if (face_count == NB_MAX_FACES) return closest >= 0 ? closest : 0;
+    free_slot = face_count++;
+  }
+  uint8_t gen = (uint8_t)(faces[free_slot].gen + 1);
+  faces[free_slot] = (face_entry){.file = file, .oblique = oblique, .embolden = embolden, .weight = weight, .vset = vset,
+                                  .live = true, .gen = gen, .used = tick};
+  live_faces++;
+  return free_slot;
 }
 
 static bool covers(int face, uint32_t cp) { return FT_Get_Char_Index(files[faces[face].file].probe, cp) != 0; }
@@ -210,7 +238,7 @@ static void set_variations(FT_Face ft, const face_entry *e) {
 }
 
 FT_Face nb_face_open(int face) {
-  if (face < 0 || face >= face_count) face = 0;
+  if (face < 0 || face >= face_count || !faces[face].live) face = 0;
   const face_entry *e = &faces[face];
   const font_file *f = &files[e->file];
   FT_Face ft;
@@ -227,16 +255,37 @@ FT_Face nb_face_open(int face) {
 
 bool nb_face_embolden(int face) { return face >= 0 && face < face_count && faces[face].embolden; }
 
+uint8_t nb_face_gen(int face) { return face >= 0 && face < face_count ? faces[face].gen : 0; }
+
 // ---- system and app families ------------------------------------------------------------
 
-static int platform_face(const char *family, bool generic, int weight, bool italic, int vset) {
+// The platform's match is remembered: every new weight is a new style (an animated fontWeight,
+// one per frame), and asking fontconfig costs far more than the rest of resolving it.
+static const platform_entry *platform_match(const char *family, bool generic, int weight, bool italic) {
+  for (int i = 0; i < platform_count; i++) {
+    const platform_entry *p = &platform_cache[i];
+    if (p->weight == weight && p->italic == italic && p->generic == generic &&
+        (family ? p->family && strcmp(p->family, family) == 0 : !p->family))
+      return p;
+  }
+  if (platform_count == PLATFORM_CACHE) {  // full: start over
+    for (int i = 0; i < platform_count; i++) free(platform_cache[i].family);
+    platform_count = 0;
+  }
   nb_font_match m = {0};
   char *path = nb_platform_font_path(family, generic, weight, italic, &m);
-  if (!path) return -1;
-  int file = add_file(path, NULL, 0, m.index);
-  if (file < 0) return -1;
+  int file = path ? add_file(path, NULL, 0, m.index) : -1;
+  platform_entry *p = &platform_cache[platform_count++];
+  *p = (platform_entry){.family = family ? strdup(family) : NULL, .generic = generic, .italic = italic, .weight = weight,
+                        .file = file, .oblique = m.oblique, .embolden = m.embolden};
+  return p;
+}
+
+static int platform_face(const char *family, bool generic, int weight, bool italic, int vset) {
+  const platform_entry *p = platform_match(family, generic, weight, italic);
+  if (p->file < 0) return -1;
   // A variable font has the weight itself; anything else lighter than asked is emboldened.
-  return add_face(file, m.oblique, m.embolden && !files[file].wght, weight, vset);
+  return add_face(p->file, p->oblique, p->embolden && !files[p->file].wght, weight, vset);
 }
 
 // Among the faces registered under `family`, the ones CSS would pick (CSS Fonts 4, "font style
@@ -356,14 +405,26 @@ static void add_variation(const char *item, int len, void *ud) {
 static int intern_vset(const char *s, const char *end) {
   size_t n = (size_t)(end - s);
   if (!n) return 0;
-  for (int i = 1; i < vset_count; i++)
-    if (strlen(vsets[i].text) == n && memcmp(vsets[i].text, s, n) == 0) return i;
-  if (vset_count == MAX_VSETS) return 0;
-  variation_set *vs = &vsets[vset_count];
+  int slot = -1;
+  for (int i = 1; i < vset_count; i++) {
+    if (!vsets[i].text) {
+      if (slot < 0) slot = i;
+    } else if (strlen(vsets[i].text) == n && memcmp(vsets[i].text, s, n) == 0) {
+      return i;
+    }
+  }
+  if (slot < 0) {
+    if (vset_count == MAX_VSETS) return 0;  // full even after nb_font_style made room
+    slot = vset_count;
+  }
+  variation_set *vs = &vsets[slot];
   vs->text = strndup(s, n);
   vs->count = 0;
   each_item(s, end, add_variation, vs);
-  return vs->count ? vset_count++ : (free(vs->text), 0);
+  if (!vs->count) return free(vs->text), vs->text = NULL, 0;
+  if (slot == vset_count) vset_count++;
+  live_vsets++;
+  return slot;
 }
 
 // Spec: family list, features and variations, separated by U+001F.
@@ -443,15 +504,76 @@ static void resolve(style_entry *st, int spec, int font) {
   for (uint32_t cp = 0x20; cp < 0x7F && st->ascii; cp++) st->ascii = covers(st->faces[0], cp);
 }
 
+// ---- eviction ---------------------------------------------------------------------------
+//
+// Every distinct weight of a variable font and every distinct variation list is a face, so an
+// animated fontWeight or fontVariations makes a new one per frame. Before a call could run out,
+// nb_font_style evicts the least recently used faces of variable files (the others are bounded
+// by the files) and the styles and fallbacks that pointed at them resolve again on their next
+// use. It runs only there, at the start of a measure or draw call, when nothing holds a face.
+
+static int by_use(const void *a, const void *b) {
+  uint32_t x = faces[*(const int *)a].used, y = faces[*(const int *)b].used;
+  return x < y ? -1 : x > y;
+}
+
+static void evict_faces(void) {
+  int order[NB_MAX_FACES], n = 0;
+  for (int i = 1; i < face_count; i++)  // never face 0, the UI font
+    if (faces[i].live && files[faces[i].file].mm) order[n++] = i;
+  qsort(order, (size_t)n, sizeof order[0], by_use);
+  bool evicted[NB_MAX_FACES] = {false};
+  for (int k = 0; k < n && live_faces > NB_MAX_FACES / 2; k++) {
+    faces[order[k]].live = false;
+    evicted[order[k]] = true;
+    live_faces--;
+    nb_text_forget_face(order[k]);
+  }
+  for (int h = 0; h < STYLE_SLOTS; h++) {
+    style_entry *st = &styles[h];
+    for (int i = 0; i < st->count; i++)
+      if (evicted[st->faces[i]]) st->count = 0;  // stale: resolved again when asked for
+  }
+  for (int h = 0; h < FALLBACK_SLOTS; h++)
+    if (fallbacks[h].key && fallbacks[h].face >= 0 && evicted[fallbacks[h].face]) fallbacks[h].face = FALLBACK_STALE;
+}
+
+// Variation lists are referenced by specs and faces: drop every spec (and so every style), evict
+// faces, then free the lists no face uses.
+static void evict_variations(void) {
+  for (int i = 1; i < spec_count; i++) free(specs[i].text);
+  memset(spec_slots, 0, sizeof spec_slots);
+  spec_count = 1;
+  reset_styles();
+  evict_faces();
+  bool used[MAX_VSETS] = {true};
+  for (int i = 0; i < face_count; i++)
+    if (faces[i].live) used[faces[i].vset] = true;
+  for (int i = 1; i < vset_count; i++) {
+    if (used[i] || !vsets[i].text) continue;
+    free(vsets[i].text);
+    vsets[i].text = NULL;
+    live_vsets--;
+  }
+}
+
 static int valid_font(int font) { return font >= 2 && font <= 2001 ? font : NB_FONT_REGULAR; }
 
 int nb_font_style(const char *spec_text, int font) {
+  tick++;
+  if (live_vsets > MAX_VSETS - VSET_RESERVE) evict_variations();
+  if (live_faces > NB_MAX_FACES - FACE_RESERVE) evict_faces();
   font = valid_font(font);
   int spec = intern_spec(spec_text);
   uint32_t key = ((uint32_t)spec << 11 | (uint32_t)font) + 1;
   uint32_t h = (key * 2654435761u >> 16) & (STYLE_SLOTS - 1);
   for (;; h = (h + 1) & (STYLE_SLOTS - 1)) {
-    if (styles[h].key == key) return (int)h;
+    if (styles[h].key == key) {
+      style_entry *st = &styles[h];
+      if (!st->count) resolve(st, spec, font);  // a face of it was evicted
+      for (int i = 0; i < st->count; i++) faces[st->faces[i]].used = tick;
+      return (int)h;
+    }
     if (!styles[h].key) break;
   }
   if (style_count * 4 >= STYLE_SLOTS * 3) {  // mostly full: start over
@@ -494,8 +616,13 @@ int nb_font_face_for(int style, uint32_t cp, bool emoji) {
   uint64_t key = (cp | (uint64_t)style << 21 | (uint64_t)emoji << 40) + 1;
   uint32_t h = fallback_hash(key);
   for (;; h = (h + 1) & (FALLBACK_SLOTS - 1)) {
-    if (fallbacks[h].key == key) return fallbacks[h].face < 0 ? st->faces[0] : fallbacks[h].face;
-    if (!fallbacks[h].key) break;
+    if (fallbacks[h].key == key && fallbacks[h].face != FALLBACK_STALE) {
+      int face = fallbacks[h].face;
+      if (face < 0) return st->faces[0];
+      faces[face].used = tick;
+      return face;
+    }
+    if (fallbacks[h].key == key || !fallbacks[h].key) break;
   }
   int face = -1;
   if (emoji) {
@@ -506,6 +633,10 @@ int nb_font_face_for(int style, uint32_t cp, bool emoji) {
   for (int i = 0; i < st->count && face < 0; i++)
     if (covers(st->faces[i], cp)) face = st->faces[i];
   if (face < 0) face = platform_fallback(st, cp, false);
+  if (fallbacks[h].key == key) {  // a stale slot: refreshed in place
+    fallbacks[h].face = face;
+    return face < 0 ? st->faces[0] : face;
+  }
   if (fallback_count * 4 >= FALLBACK_SLOTS * 3) {  // mostly full: start over
     memset(fallbacks, 0, sizeof fallbacks);
     fallback_count = 0;
@@ -600,4 +731,9 @@ int nb_fonts_register(const uint8_t *data, size_t size, const char *family, int 
 void nb_fonts_families(void (*fn)(const char *family, void *ud), void *ud) {
   for (int i = 0; i < registry_count; i++) fn(registry[i].family, ud);
   nb_platform_font_families(fn, ud);
+}
+
+void nb_fonts_stats(nb_font_stats *out) {
+  *out = (nb_font_stats){.faces = live_faces, .variations = live_vsets, .specs = spec_count, .styles = style_count,
+                         .sizes = nb_text_size_count()};
 }

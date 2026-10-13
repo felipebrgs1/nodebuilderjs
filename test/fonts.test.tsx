@@ -5,7 +5,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { Canvas, Column, Text, TextField, createSignal, fontFamilies, registerFont } from "@nodebuilderjs/core";
+import { Box, Canvas, Column, Text, TextField, createSignal, fontFamilies, registerFont } from "@nodebuilderjs/core";
 import { canScreenshot, canUseRealTextMetrics, mount, screenshot, useRealTextMetrics } from "@nodebuilderjs/core/testing";
 import { type FontInput, fontStyle } from "../src/render/node.js";
 import { loadNative, nativeTextMeasurer } from "../src/runtime/native.js";
@@ -146,6 +146,32 @@ test.skipIf(!real)("fontVariations sets other axes, and wins over the weight", (
   expect(width("x", { family: "NB Var", weight: 100, variations: "wght=900, wdth=50" })).toBeCloseTo(65, 1);
 });
 
+/** NB Var's "x" in px at size 100 for a wght coordinate (the axis is linear on each side of 400). */
+const varX = (wght: number) => (wght >= 400 ? 50 + ((wght - 400) * 40) / 500 : 30 + ((wght - 100) * 20) / 300);
+/** 300 distinct weights over NB Var's axis: each one a face, more than the face table holds. */
+const manyWeights = Array.from({ length: 300 }, (_, i) => 100 + Math.round(i * 2.67));
+
+test.skipIf(!real)("animating a variable axis keeps every width exact and the font tables bounded", () => {
+  setup();
+  const native = loadNative();
+  // Each distinct weight and variation string is a face of its own: far more than the table holds.
+  // Advances are whole pixels (hinted), hence a pixel of tolerance; a wrong face is tens off.
+  // ~150 ms: every new weight asks fontconfig for the UI font once (see FONTS.md).
+  for (const w of manyWeights) {
+    if (Math.abs(width("x", { family: "NB Var", weight: w }) - varX(w)) > 1) throw new Error(`weight ${w}`);
+  }
+  for (let i = 0; i < 400; i++) { // more than the 256 variation lists
+    const wght = 100 + i * 2;
+    if (Math.abs(width("x", { family: "NB Var", variations: `wght ${wght}` }) - varX(wght)) > 1) throw new Error(`wght ${wght}`);
+  }
+  expect(width("x", { family: "NB Var", weight: 650 })).toBeCloseTo(70, 1);
+  expect(width("x", { family: "NB Var", variations: "wdth 50" })).toBeCloseTo(25, 1);
+  expect(width("x", { family: "NB Test" })).toBeCloseTo(50, 1);
+  const stats = native.fontStats();
+  expect(stats.faces).toBeLessThan(255);
+  expect(stats.variations).toBeLessThan(256);
+});
+
 test.skipIf(!real)("fontFeatures turns OpenType features on and off", () => {
   expect(width("1", { family: "NB Test" })).toBeCloseTo(30, 1);
   expect(width("1", { family: "NB Test", features: "tnum" })).toBeCloseTo(60, 1);
@@ -265,4 +291,43 @@ test.skipIf(!shots)("pixels: a missing bold is synthesized (thicker), a missing 
   expect(inkColumns(bold, mid).length).toBeGreaterThan(11);
   const top = inkColumns(italic, 20 + 80 - 48), bottom = inkColumns(italic, 20 + 80 - 2);
   expect(top[0]! - bottom[0]!).toBeGreaterThan(5); // the top leans right
+});
+
+test.skipIf(!shots)("pixels: a glyph larger than the atlas is still drawn (downscaled in it), without crashing", () => {
+  setup();
+  // NB Fallback's "x" at 2400 is a 240 x 1200 px box: taller than the 1024 px atlas.
+  expect(width("x", { family: "NB Fallback" }, 2400)).toBeCloseTo(240, 0);
+  const shot = screenshot(() => (
+    <Column align="start" padding={10}>
+      <Text fontFamily="NB Fallback" fontSize={2400} color="#000000">x</Text>
+    </Column>
+  ), { width: 280, height: 2440 });
+  const baseline = 10 + 1920; // ascent: 800 units
+  for (const y of [baseline - 1100, baseline - 600, baseline - 100]) {
+    const row = inkColumns(shot, y);
+    expect(row[0]).toBeLessThanOrEqual(11);
+    expect(row.at(-1)).toBeGreaterThanOrEqual(248);
+    expect(row.length).toBeGreaterThan(236);
+  }
+  expect(inkColumns(shot, baseline + 20)).toEqual([]);
+});
+
+test.skipIf(!shots)("pixels: more weights in one frame than the face table holds are all drawn with their own face", () => {
+  setup();
+  // 300 "x" boxes of NB Var at size 20, weights 100..898: each one a face, evicted as the frame goes.
+  const weights = manyWeights;
+  const shot = screenshot(() => (
+    <Box width={600} height={300}>
+      {weights.map((w, i) => (
+        <Text position="absolute" left={(i % 20) * 30} top={Math.floor(i / 20) * 20} fontFamily="NB Var" fontWeight={w}
+          fontSize={20} color="#000000">x</Text>
+      ))}
+    </Box>
+  ), { width: 600, height: 300 });
+  for (const i of [0, 150, 299]) {
+    const left = (i % 20) * 30, y = Math.floor(i / 20) * 20 + 16 - 3; // baseline 16 px below the top
+    const ink = inkColumns(shot, y).filter((x) => x >= left && x < left + 30);
+    expect(ink[0]).toBe(left);
+    expect(Math.abs(ink.length - varX(weights[i]!) / 5)).toBeLessThanOrEqual(1);
+  }
 });

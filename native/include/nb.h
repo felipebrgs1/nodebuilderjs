@@ -90,6 +90,12 @@ int nb_fonts_register(const uint8_t *data, size_t size, const char *family, int 
 /** Calls `fn` with every family `spec` can name: the registered ones, then the installed ones. */
 void nb_fonts_families(void (*fn)(const char *family, void *ud), void *ud);
 
+typedef struct {
+  int faces, variations, specs, styles, sizes;  // live entries of each table
+} nb_font_stats;
+/** How full the font tables are (tests: animated axes must keep them bounded). */
+void nb_fonts_stats(nb_font_stats *out);
+
 // ---- core/render_gles2.c ----------------------------------------------------
 
 // Command buffer opcodes (producer: src/render/paint.ts; keep both in sync).

@@ -392,7 +392,9 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   portable: FreeType reads them from memory in `faces.c`, which also does the CSS matching.
   A TEXT command's font is a font id (`weight * 2 + italic`) plus a spec (family list,
   features, variations joined by U+001F); `faces.c` resolves the pair to a style (a stack of
-  faces) and drops all styles when a font is registered; faces are never freed. Variable fonts
+  faces) and drops all styles when a font is registered. Faces of variable files are evicted
+  (LRU) at the start of `nb_font_style` only, when the table runs low; a reused face id bumps
+  its generation (`nb_face_gen`, part of the glyph cache key). Variable fonts
   get their axes set in the core (FreeType). Letter spacing is added per HarfBuzz cluster in
   `layout_runs`, shared by measure and draw. `text.c` keeps `measure` and `draw` on the same run itemization; color
   glyphs go to the RGBA atlas and are drawn with `MODE_COLOR_GLYPH` (texture unit 2, only the

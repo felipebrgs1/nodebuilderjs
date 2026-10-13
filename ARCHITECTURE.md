@@ -256,8 +256,22 @@ NULL when not installed; generic names always resolve), then the UI font. A clus
 is the first of the stack that has its base, else the platform's fallback after the list's
 first system family (cached per codepoint and style). A style whose first face has all of
 printable ASCII keeps the ASCII fast path. Registering a font drops styles and fallbacks
-(and TS bumps the metrics generation, which empties the measurer cache and re-wraps text);
-faces are never freed, so their ids stay valid keys for sizes and glyphs.
+(and TS bumps the metrics generation, which empties the measurer cache and re-wraps text).
+What the platform answers for an installed family at a weight and slant is remembered (256
+lookups), since fontconfig costs far more than the rest of resolving a style.
+
+**Eviction.** Every distinct weight of a variable font and every distinct `fontVariations`
+string is a face of its own, so animating either makes one per frame. At the start of each
+measure or draw call (the only point where nothing holds a face), when fewer than 32 of the 255
+face slots are free, the least recently used faces of variable files are evicted down to half
+the table (never face 0, the UI font; the faces of static files are bounded by the files): text.c
+closes their sized fonts, styles that used one resolve again on their next use and fallback
+slots that pointed at one are looked up again. A reused slot gets a new generation, which is
+part of the glyph cache key, so glyphs of the old face just stop matching (their atlas pixels
+stay until the next reset, so quads already emitted in the frame are still right). Variation
+lists (256) are referenced by specs too: when they run low, every spec and style is dropped,
+faces are evicted and the lists no face uses are freed. `fontStats()` in the addon reports the
+live entries for tests.
 
 A face is a file (a path, or the bytes of a registered font, copied once and shared by all
 its faces) drawn one way: `oblique` (italic asked, none in the family: a FreeType shear),
@@ -424,8 +438,11 @@ style form (`{ linear, angle }`) becomes a line in `render/gradient.ts` with the
 affine and would need a shader mode; they are not implemented.
 
 Text: HarfBuzz does the shaping (accents, ligatures, kerning), FreeType rasterizes each glyph
-once and stores it in a texture atlas. The measurements the layout asks of the C are cached
-on the TypeScript side.
+once and stores it in a texture atlas (1024 px, A8). A bitmap larger than 512 px on a side
+(display sizes: `fontSize` around 700 at scale 1) is box-filtered down to 512 px in the atlas
+and the quad stretches it back, so one glyph never fills or overflows the atlas; the atlas is
+sampled with `GL_LINEAR`, which at the usual 1:1, pixel-aligned quads equals `NEAREST`. The
+measurements the layout asks of the C are cached on the TypeScript side.
 
 **Font fallback.** A string the first face of its style cannot fully draw is cut into clusters (a base
 codepoint plus its combining marks, variation selectors, skin-tone modifiers, ZWJ-joined
@@ -438,8 +455,8 @@ fallback, `nb_platform_font_fallback`. On Linux that is fontconfig's `FcFontSort
 list's first system family (the UI font's pattern without one, or `emoji` with
 `color=true`), computed once and walked for the first font whose charset has the codepoint.
 The answer is cached per codepoint and style, so fontconfig is asked once per character the
-fonts lack, and up to 255 faces stay loaded (past that, the closest face of the same file,
-or the UI font). Consecutive clusters
+fonts lack, and up to 255 faces stay loaded (variable instances are evicted, see above; past
+that, the closest face of the same file, or the UI font). Consecutive clusters
 with the same face become a run, each run is shaped with its own font and the pens
 concatenate. `measure` and `draw` walk the same runs, so layout and painting agree. Strings
 that are pure ASCII skip all of it when the first face has every ASCII glyph (one run, no
@@ -455,7 +472,8 @@ COLRv0 and sbix fonts go through the same path (FreeType renders them to BGRA); 
 (gradients) is not rendered by FreeType, so such fonts show their monochrome fallback glyphs.
 The renderer draws those quads with their own mode: the shader samples the color atlas
 (texture unit 2) and multiplies by the text color's alpha only, so `color` does not tint an
-emoji but `opacity` fades it. Both atlases are reset together when either fills up.
+emoji but `opacity` fades it. Color glyphs follow the same 512 px cap. Both atlases are reset
+together when either fills up.
 
 Images: PNG, JPEG and WebP are decoded in TypeScript to RGBA (`src/image/png.ts` with the
 runtime's zlib, `jpeg.ts`, `webp.ts`). All three reproduce the output of the reference

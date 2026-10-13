@@ -21,12 +21,14 @@
 
 #define ATLAS_SIZE 1024
 #define COLOR_ATLAS_SIZE 1024
+#define MAX_GLYPH 512     // larger bitmaps are downscaled into the atlas and stretched back when drawn
 #define MAX_SIZES 64
 #define GLYPH_SLOTS 8192  // power of two
 #define MAX_FEATURES 34   // a spec's (faces.c: 32) + the two letter spacing turns off
 
 typedef struct {
   int face, px;
+  uint8_t gen;  // the face's generation (nb_face_gen) when opened
   FT_Face ft;
   hb_font_t *hb;
   float bitmap_scale;  // fixed-size (bitmap) fonts: px / strike size; 1 otherwise
@@ -37,6 +39,7 @@ typedef struct {
   uint64_t key;
   bool used, color;
   int x, y, w, h;  // atlas rect
+  int dw, dh;      // drawn size: w x h unless the bitmap was downscaled to fit
   int left, top;   // bitmap bearing
 } glyph_slot;
 
@@ -58,18 +61,28 @@ bool nb_text_init(void) {
 
 // ---- sizes ------------------------------------------------------------------------
 
+int nb_text_size_count(void) { return size_count; }
+
+static void close_size(int i) {
+  hb_font_destroy(sizes[i].hb);
+  FT_Done_Face(sizes[i].ft);
+  memmove(&sizes[i], &sizes[i + 1], sizeof(sized_font) * (size_t)(size_count - i - 1));
+  size_count--;
+}
+
+void nb_text_forget_face(int face) {
+  for (int i = size_count - 1; i >= 0; i--)
+    if (sizes[i].face == face) close_size(i);
+}
+
 static sized_font *get_font(int face, int px) {
   if (face < 0 || face >= NB_MAX_FACES) face = 0;
   if (px < 1) px = 1;
+  if (px > 0xFFFF) px = 0xFFFF;  // 16 bits of the glyph cache key
   for (int i = 0; i < size_count; i++)
     if (sizes[i].face == face && sizes[i].px == px) return &sizes[i];
 
-  if (size_count == MAX_SIZES) {  // evict the oldest
-    hb_font_destroy(sizes[0].hb);
-    FT_Done_Face(sizes[0].ft);
-    memmove(&sizes[0], &sizes[1], sizeof(sized_font) * (MAX_SIZES - 1));
-    size_count--;
-  }
+  if (size_count == MAX_SIZES) close_size(0);  // evict the oldest
   FT_Face f = nb_face_open(face);
   if (!f) return NULL;
   hb_font_t *hb;
@@ -96,7 +109,7 @@ static sized_font *get_font(int face, int px) {
   }
   // Synthetic bold, as FreeType's FT_GlyphSlot_Embolden: 1/24 em thicker (advances unchanged).
   FT_Pos embolden = nb_face_embolden(face) && FT_IS_SCALABLE(f) ? FT_MulFix(f->units_per_EM, f->size->metrics.y_scale) / 24 : 0;
-  sizes[size_count] = (sized_font){.face = face, .px = px, .ft = f, .hb = hb, .bitmap_scale = bitmap_scale, .embolden = embolden};
+  sizes[size_count] = (sized_font){.face = face, .px = px, .gen = nb_face_gen(face), .ft = f, .hb = hb, .bitmap_scale = bitmap_scale, .embolden = embolden};
   return &sizes[size_count++];
 }
 
@@ -206,8 +219,14 @@ static bool pack(int size, int *sx, int *sy, int *sh, int w, int h, int *x, int 
   return true;
 }
 
-// Box-filters a premultiplied BGRA bitmap into the color atlas as premultiplied RGBA, w x h.
-static void put_color(const FT_Bitmap *bm, int x, int y, int w, int h) {
+// Box-filters a bitmap into an atlas at w x h: gray coverage into the A8 atlas, premultiplied
+// BGRA into the color atlas as premultiplied RGBA.
+static void put_bitmap(const FT_Bitmap *bm, bool color, int x, int y, int w, int h) {
+  if (!color && w == (int)bm->width && h == (int)bm->rows) {
+    for (int r = 0; r < h; r++) memcpy(&atlas[(y + r) * ATLAS_SIZE + x], bm->buffer + r * bm->pitch, w);
+    return;
+  }
+  int channels = color ? 4 : 1;
   float sx = (float)bm->width / w, sy = (float)bm->rows / h;
   for (int dy = 0; dy < h; dy++) {
     float y0 = dy * sy, y1 = y0 + sy;
@@ -218,19 +237,24 @@ static void put_color(const FT_Bitmap *bm, int x, int y, int w, int h) {
         const uint8_t *row = bm->buffer + ry * bm->pitch;
         for (int rx = (int)x0; rx < (int)ceilf(x1) && rx < (int)bm->width; rx++) {
           float wgt = wy * (fminf(x1, rx + 1) - fmaxf(x0, rx));
-          const uint8_t *p = row + rx * 4;  // B G R A
-          acc[0] += p[2] * wgt; acc[1] += p[1] * wgt; acc[2] += p[0] * wgt; acc[3] += p[3] * wgt;
+          const uint8_t *p = row + rx * channels;
+          if (color) {  // B G R A
+            acc[0] += p[2] * wgt; acc[1] += p[1] * wgt; acc[2] += p[0] * wgt; acc[3] += p[3] * wgt;
+          } else {
+            acc[0] += p[0] * wgt;
+          }
           total += wgt;
         }
       }
-      uint8_t *out = color_atlas + ((size_t)(y + dy) * COLOR_ATLAS_SIZE + x + dx) * 4;
-      for (int c = 0; c < 4; c++) out[c] = total > 0 ? (uint8_t)fminf(acc[c] / total + 0.5f, 255) : 0;
+      uint8_t *out = color ? color_atlas + ((size_t)(y + dy) * COLOR_ATLAS_SIZE + x + dx) * 4
+                           : &atlas[(size_t)(y + dy) * ATLAS_SIZE + x + dx];
+      for (int c = 0; c < channels; c++) out[c] = total > 0 ? (uint8_t)fminf(acc[c] / total + 0.5f, 255) : 0;
     }
   }
 }
 
 static glyph_slot *get_glyph(sized_font *sf, uint32_t gid) {
-  uint64_t key = ((uint64_t)sf->face << 56) | ((uint64_t)sf->px << 32) | gid;
+  uint64_t key = (uint64_t)sf->face << 56 | (uint64_t)sf->gen << 48 | (uint64_t)sf->px << 32 | gid;
   uint32_t h = (uint32_t)((key * 0x9E3779B97F4A7C15ull) >> 40) & (GLYPH_SLOTS - 1);
   glyph_slot *slot = NULL;
   for (int i = 0; i < GLYPH_SLOTS; i++) {
@@ -240,7 +264,7 @@ static glyph_slot *get_glyph(sized_font *sf, uint32_t gid) {
   }
   if (!slot) {  // cache full: start over (glyphs are re-rasterised on demand)
     reset_atlas();
-    return get_glyph(sf, gid);
+    slot = &glyphs[h];
   }
 
   FT_Int32 flags = FT_LOAD_RENDER | FT_LOAD_TARGET_LIGHT;
@@ -254,33 +278,39 @@ static glyph_slot *get_glyph(sized_font *sf, uint32_t gid) {
   }
   if (g->format != FT_GLYPH_FORMAT_BITMAP && FT_Render_Glyph(g, FT_RENDER_MODE_LIGHT)) return NULL;
   FT_Bitmap *bm = &g->bitmap;
-  int x = 0, y = 0, w = bm->width, hgt = bm->rows, left = g->bitmap_left, top = g->bitmap_top;
+  int dw = bm->width, dh = bm->rows, left = g->bitmap_left, top = g->bitmap_top;
   bool color = bm->pixel_mode == FT_PIXEL_MODE_BGRA;
-  if (color) {
+  if (color) {  // bitmap strikes come at their own size: scale them to the requested one
     float s = sf->bitmap_scale;
-    w = w ? (int)fmaxf(1, roundf(w * s)) : 0;
-    hgt = hgt ? (int)fmaxf(1, roundf(hgt * s)) : 0;
+    dw = dw ? (int)fmaxf(1, roundf(dw * s)) : 0;
+    dh = dh ? (int)fmaxf(1, roundf(dh * s)) : 0;
     left = (int)roundf(left * s);
     top = (int)roundf(top * s);
-    if (w && hgt) {
-      if (!color_atlas && !(color_atlas = calloc((size_t)COLOR_ATLAS_SIZE * COLOR_ATLAS_SIZE, 4))) return NULL;
-      if (!pack(COLOR_ATLAS_SIZE, &cshelf_x, &cshelf_y, &cshelf_h, w, hgt, &x, &y)) {
-        reset_atlas();
-        return get_glyph(sf, gid);
-      }
-      put_color(bm, x, y, w, hgt);
-      color_dirty = true;
-    }
-  } else if (w && hgt) {
-    if (bm->pixel_mode != FT_PIXEL_MODE_GRAY) return NULL;  // mono bitmaps: not supported
-    if (!pack(ATLAS_SIZE, &shelf_x, &shelf_y, &shelf_h, w, hgt, &x, &y)) {
-      reset_atlas();
-      return get_glyph(sf, gid);
-    }
-    for (int r = 0; r < hgt; r++) memcpy(&atlas[(y + r) * ATLAS_SIZE + x], bm->buffer + r * bm->pitch, w);
-    atlas_dirty = true;
+  } else if (dw && dh && bm->pixel_mode != FT_PIXEL_MODE_GRAY) {
+    return NULL;  // mono bitmaps: not supported
   }
-  *slot = (glyph_slot){.key = key, .used = true, .color = color, .x = x, .y = y, .w = w, .h = hgt, .left = left, .top = top};
+  // A bitmap larger than MAX_GLYPH would leave no room for others (or not fit at all): keep a
+  // downscaled copy, which the GPU stretches back to dw x dh.
+  int w = dw, hgt = dh, big = dw > dh ? dw : dh;
+  if (big > MAX_GLYPH) {
+    w = (int)fmaxf(1, roundf((float)dw * MAX_GLYPH / big));
+    hgt = (int)fmaxf(1, roundf((float)dh * MAX_GLYPH / big));
+  }
+  int x = 0, y = 0;
+  if (w && hgt) {
+    if (color && !color_atlas && !(color_atlas = calloc((size_t)COLOR_ATLAS_SIZE * COLOR_ATLAS_SIZE, 4))) return NULL;
+    int size = color ? COLOR_ATLAS_SIZE : ATLAS_SIZE;
+    int *sx = color ? &cshelf_x : &shelf_x, *sy = color ? &cshelf_y : &shelf_y, *sh = color ? &cshelf_h : &shelf_h;
+    if (!pack(size, sx, sy, sh, w, hgt, &x, &y)) {  // full: start over; an empty atlas always fits MAX_GLYPH
+      reset_atlas();
+      slot = &glyphs[h];
+      if (!pack(size, sx, sy, sh, w, hgt, &x, &y)) return NULL;
+    }
+    put_bitmap(bm, color, x, y, w, hgt);
+    if (color) color_dirty = true; else atlas_dirty = true;
+  }
+  *slot = (glyph_slot){.key = key, .used = true, .color = color, .x = x, .y = y, .w = w, .h = hgt,
+                       .dw = dw, .dh = dh, .left = left, .top = top};
   return slot;
 }
 
@@ -371,7 +401,7 @@ static void draw_glyph(void *ud, sized_font *sf, const hb_glyph_info_t *info, co
   float gx = roundf(d->x + pen + pos->x_offset / 64.0f) + g->left;
   float gy = d->baseline - roundf(pos->y_offset / 64.0f) - g->top;
   float inv = 1.0f / (g->color ? COLOR_ATLAS_SIZE : ATLAS_SIZE);
-  d->emit(d->ud, gx, gy, gx + g->w, gy + g->h, g->x * inv, g->y * inv, (g->x + g->w) * inv, (g->y + g->h) * inv, g->color);
+  d->emit(d->ud, gx, gy, gx + g->dw, gy + g->dh, g->x * inv, g->y * inv, (g->x + g->w) * inv, (g->y + g->h) * inv, g->color);
 }
 
 void nb_text_draw(int font, const char *spec, const char *utf8, int px, float spacing, float x, float top,

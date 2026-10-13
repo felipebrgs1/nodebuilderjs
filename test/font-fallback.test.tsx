@@ -85,6 +85,26 @@ test.skipIf(!shots || !emoji)("pixels: 🎉 is drawn in color, ignoring the text
   }
 });
 
+test.skipIf(!shots || !emoji)("pixels: a color emoji larger than the atlas cap is drawn at its full size", () => {
+  // At 800 px the emoji is ~1000 px wide: over the 512 px cap, so it is stretched from a smaller copy.
+  const shot = screenshot(() => (
+    <Column align="start">
+      <Text fontSize={800} color="#000000">🎉</Text>
+    </Column>
+  ), { width: 1100, height: 1150 });
+  let x0 = Infinity, x1 = -1, y0 = Infinity, y1 = -1, colored = 0;
+  for (let y = 0; y < shot.height; y += 4)
+    for (let x = 0; x < shot.width; x += 4) {
+      const p = shot.pixel(x, y);
+      if (p[3]! === 0) continue;
+      x0 = Math.min(x0, x), x1 = Math.max(x1, x), y0 = Math.min(y0, y), y1 = Math.max(y1, y);
+      if (colorful(p)) colored++;
+    }
+  expect(x1 - x0).toBeGreaterThan(600);
+  expect(y1 - y0).toBeGreaterThan(600);
+  expect(colored).toBeGreaterThan(100_000 / 16); // sampled every 4 px
+});
+
 test.skipIf(!shots || !emoji)("pixels: opacity applies to color emoji", () => {
   const shot = screenshot(() => (
     <Column align="start" opacity={0.5}>
