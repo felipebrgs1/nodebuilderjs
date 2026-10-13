@@ -438,7 +438,10 @@ style form (`{ linear, angle }`) becomes a line in `render/gradient.ts` with the
 affine and would need a shader mode; they are not implemented.
 
 Text: HarfBuzz does the shaping (accents, ligatures, kerning), FreeType rasterizes each glyph
-once and stores it in a texture atlas (1024 px, A8). A bitmap larger than 512 px on a side
+once and stores it in a texture atlas. Each face is one `FT_Face`, opened while some size uses
+it; each pixel size is an `FT_Size` on it with its own HarfBuzz font (64 kept, least recently
+used out), activated before shaping or loading glyphs, so a new size (an animated `fontSize`)
+does not read and parse the file again. The atlas is 1024 px, A8. A bitmap larger than 512 px on a side
 (display sizes: `fontSize` around 700 at scale 1) is box-filtered down to 512 px in the atlas
 and the quad stretches it back, so one glyph never fills or overflows the atlas; the atlas is
 sampled with `GL_LINEAR`, which at the usual 1:1, pixel-aligned quads equals `NEAREST`. The

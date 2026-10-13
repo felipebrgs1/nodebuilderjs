@@ -277,6 +277,27 @@ test.skipIf(!shots)("pixels: the registered font's glyphs are drawn (the box of 
   expect(row.at(-1)).toBe(59);
 });
 
+test.skipIf(!shots)("sizes of one face share it: measuring and drawing them interleaved keeps each its own scale", () => {
+  setup();
+  const native = loadNative(), measure = nativeTextMeasurer(native, 1), style = fontStyle({ family: "NB Test" });
+  for (let i = 0; i < 3; i++) {
+    expect(measure("xx", 100, style).width).toBeCloseTo(100, 1);
+    expect(measure("xx", 50, style).width).toBeCloseTo(50, 1);
+    expect(measure("xx", 20 + i, style).width).toBeCloseTo(20 + i, 1);
+  }
+  const shot = screenshot(() => (
+    <Column align="start" padding={10}>
+      <Text fontFamily="NB Test" fontSize={100} color="#000000">x</Text>
+      <Text fontFamily="NB Test" fontSize={50} color="#000000">x</Text>
+      <Text fontFamily="NB Test" fontSize={100} color="#000000">x</Text>
+    </Column>
+  ), { width: 120, height: 270 });
+  // Lines of 100, 50 and 100 px; the "x" box is half the size wide and tall, its baseline at 0.8.
+  expect(inkColumns(shot, 10 + 80 - 25).length).toBe(50);
+  expect(inkColumns(shot, 10 + 100 + 40 - 12).length).toBe(25);
+  expect(inkColumns(shot, 10 + 150 + 80 - 25).length).toBe(50);
+});
+
 test.skipIf(!shots)("pixels: a missing bold is synthesized (thicker), a missing italic slanted", () => {
   setup();
   const shoot = (props: { bold?: boolean; italic?: boolean }) => screenshot(() => (

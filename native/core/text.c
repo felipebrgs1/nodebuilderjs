@@ -13,6 +13,7 @@
 #include "faces.h"
 
 #include FT_OUTLINE_H
+#include FT_SIZES_H
 #include <hb-ft.h>
 #include <math.h>
 #include <stdio.h>
@@ -28,8 +29,10 @@
 
 typedef struct {
   int face, px;
-  uint8_t gen;  // the face's generation (nb_face_gen) when opened
-  FT_Face ft;
+  uint8_t gen;    // the face's generation (nb_face_gen) when opened
+  uint32_t used;  // LRU stamp
+  FT_Face ft;     // shared by every size of the face (open_faces)
+  FT_Size size;   // this size's own scale: activated before shaping or loading glyphs
   hb_font_t *hb;
   float bitmap_scale;  // fixed-size (bitmap) fonts: px / strike size; 1 otherwise
   FT_Pos embolden;     // synthetic bold: outline strength (26.6), 0 for none
@@ -45,6 +48,13 @@ typedef struct {
 
 static sized_font sizes[MAX_SIZES];
 static int size_count;
+static uint32_t size_tick;
+// One FT_Face per face, open while some size uses it: a new size is an FT_Size on it, not a
+// new FT_Face (which reads and parses the file again).
+static struct {
+  FT_Face ft;
+  int users;
+} open_faces[NB_MAX_FACES];
 static glyph_slot glyphs[GLYPH_SLOTS];
 static uint8_t atlas[ATLAS_SIZE * ATLAS_SIZE];
 static uint8_t *color_atlas;  // allocated on the first color glyph
@@ -63,11 +73,24 @@ bool nb_text_init(void) {
 
 int nb_text_size_count(void) { return size_count; }
 
+static void release_size(sized_font *sf) {
+  hb_font_destroy(sf->hb);
+  FT_Done_Size(sf->size);
+  if (--open_faces[sf->face].users == 0) {
+    FT_Done_Face(open_faces[sf->face].ft);
+    open_faces[sf->face].ft = NULL;
+  }
+}
+
 static void close_size(int i) {
-  hb_font_destroy(sizes[i].hb);
-  FT_Done_Face(sizes[i].ft);
+  release_size(&sizes[i]);
   memmove(&sizes[i], &sizes[i + 1], sizeof(sized_font) * (size_t)(size_count - i - 1));
   size_count--;
+}
+
+// The face's FreeType state (glyph loading, HarfBuzz's advances) follows its active size.
+static void activate(const sized_font *sf) {
+  if (sf->ft->size != sf->size) FT_Activate_Size(sf->size);
 }
 
 void nb_text_forget_face(int face) {
@@ -79,12 +102,22 @@ static sized_font *get_font(int face, int px) {
   if (face < 0 || face >= NB_MAX_FACES) face = 0;
   if (px < 1) px = 1;
   if (px > 0xFFFF) px = 0xFFFF;  // 16 bits of the glyph cache key
-  for (int i = 0; i < size_count; i++)
-    if (sizes[i].face == face && sizes[i].px == px) return &sizes[i];
+  for (int i = 0; i < size_count; i++) {
+    if (sizes[i].face != face || sizes[i].px != px) continue;
+    sizes[i].used = ++size_tick;
+    activate(&sizes[i]);
+    return &sizes[i];
+  }
 
-  if (size_count == MAX_SIZES) close_size(0);  // evict the oldest
-  FT_Face f = nb_face_open(face);
-  if (!f) return NULL;
+  FT_Face f = open_faces[face].ft;
+  if (!f && !(f = open_faces[face].ft = nb_face_open(face))) return NULL;
+  FT_Size size;
+  if (FT_New_Size(f, &size)) {
+    if (!open_faces[face].users) FT_Done_Face(f), open_faces[face].ft = NULL;
+    return NULL;
+  }
+  open_faces[face].users++;
+  FT_Activate_Size(size);
   hb_font_t *hb;
   float bitmap_scale = 1;
   if (!FT_IS_SCALABLE(f) && f->num_fixed_sizes > 0) {
@@ -109,8 +142,19 @@ static sized_font *get_font(int face, int px) {
   }
   // Synthetic bold, as FreeType's FT_GlyphSlot_Embolden: 1/24 em thicker (advances unchanged).
   FT_Pos embolden = nb_face_embolden(face) && FT_IS_SCALABLE(f) ? FT_MulFix(f->units_per_EM, f->size->metrics.y_scale) / 24 : 0;
-  sizes[size_count] = (sized_font){.face = face, .px = px, .gen = nb_face_gen(face), .ft = f, .hb = hb, .bitmap_scale = bitmap_scale, .embolden = embolden};
-  return &sizes[size_count++];
+  // Full: the least recently used size gives its slot (in place, so the others do not move).
+  sized_font *sf = &sizes[size_count];
+  if (size_count == MAX_SIZES) {
+    sf = &sizes[0];
+    for (int i = 1; i < size_count; i++)
+      if (sizes[i].used < sf->used) sf = &sizes[i];
+    release_size(sf);
+  } else {
+    size_count++;
+  }
+  *sf = (sized_font){.face = face, .px = px, .gen = nb_face_gen(face), .used = ++size_tick, .ft = f, .size = size,
+                     .hb = hb, .bitmap_scale = bitmap_scale, .embolden = embolden};
+  return sf;
 }
 
 static uint32_t next_codepoint(const unsigned char *s, int len, int *i) {
@@ -269,6 +313,7 @@ static glyph_slot *get_glyph(sized_font *sf, uint32_t gid) {
 
   FT_Int32 flags = FT_LOAD_RENDER | FT_LOAD_TARGET_LIGHT;
   if (FT_HAS_COLOR(sf->ft)) flags = FT_LOAD_RENDER | FT_LOAD_COLOR;
+  activate(sf);
   if (sf->embolden) flags &= ~FT_LOAD_RENDER;  // thicken the outline, then render it
   if (FT_Load_Glyph(sf->ft, gid, flags)) return NULL;
   FT_GlyphSlot g = sf->ft->glyph;
@@ -364,6 +409,7 @@ static float layout_runs(sized_font *primary, int style, const char *utf8, float
       hb_buffer_clear_contents(buffer);
       hb_buffer_add_utf8(buffer, utf8, len, start, end - start);
       hb_buffer_guess_segment_properties(buffer);
+      activate(sf);
       hb_shape(sf->hb, buffer, features, (unsigned)nfeatures);
       unsigned n;
       hb_glyph_info_t *info = hb_buffer_get_glyph_infos(buffer, &n);
@@ -383,8 +429,8 @@ float nb_text_measure(int font, const char *spec, const char *utf8, int px, floa
   int style = nb_font_style(spec, font);
   sized_font *sf = get_font(nb_font_primary(style), px);
   if (!sf) return 0;
-  if (ascent) *ascent = sf->ft->size->metrics.ascender / 64.0f;
-  if (descent) *descent = -sf->ft->size->metrics.descender / 64.0f;
+  if (ascent) *ascent = sf->size->metrics.ascender / 64.0f;
+  if (descent) *descent = -sf->size->metrics.descender / 64.0f;
   return layout_runs(sf, style, utf8, spacing, NULL, NULL);
 }
 
@@ -409,7 +455,7 @@ void nb_text_draw(int font, const char *spec, const char *utf8, int px, float sp
   int style = nb_font_style(spec, font);
   sized_font *sf = get_font(nb_font_primary(style), px);
   if (!sf) return;
-  draw_ctx d = {.x = x, .baseline = roundf(top + sf->ft->size->metrics.ascender / 64.0f), .emit = emit, .ud = ud};
+  draw_ctx d = {.x = x, .baseline = roundf(top + sf->size->metrics.ascender / 64.0f), .emit = emit, .ud = ud};
   layout_runs(sf, style, utf8, spacing, draw_glyph, &d);
 }
 
