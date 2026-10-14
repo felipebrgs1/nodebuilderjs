@@ -78,6 +78,9 @@ if (opts["skip-build"]) {
   await $`bun install --silent`.cwd(ROOT);
   console.log(`• versão ${version} em todos os pacotes`);
 
+  // ---- agent docs: the hashes of every released version, for `nodebuilder agents update` ----
+  await $`bun ${join(ROOT, "scripts/agents-history.ts")}`.cwd(ROOT);
+
   // ---- lib/: JS + declarations for Node (Bun uses src/ through the "bun" export condition) ----
   console.log(`• lib/: ${await buildLib(join(ROOT, "src"), join(ROOT, "lib"))} módulos (JS + .d.ts)`);
 

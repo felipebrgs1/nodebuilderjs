@@ -66,6 +66,18 @@ something is broken. `--json` is for scripts and coding agents; `--window` tests
 a small window for a moment (by default GL is tested offscreen, and on a laptop with two GPUs
 the window may use the other one). Paste its output in bug reports.
 
+The `AGENTS.md` and skills in `.agents/skills` that coding agents read describe the framework
+version the app was created with. After updating `@nodebuilderjs/core`, bring them along:
+
+```sh
+bun run agents:update   # or, in apps created before 0.4.1: bunx nodebuilder agents update
+```
+
+It replaces only docs the framework released (it knows the hash of every version). A doc
+edited in the app is kept and listed (`--force` replaces it), and in `AGENTS.md` only the block
+between the `nodebuilder:begin`/`end` markers is the framework's: notes after it stay. The
+doctor warns when the docs are behind.
+
 ## How it works, in 30 seconds
 
 - **Components run once.** There is no re-render and no virtual DOM. State is `createSignal`,

@@ -1,3 +1,4 @@
+<!-- nodebuilder:begin (the framework's guide, kept current by `nodebuilder agents update`; write your notes after the end marker) -->
 # AGENTS.md
 
 nodebuilder app: native Linux UI in TSX, **no DOM and no React**. Read this before changing code.
@@ -12,6 +13,9 @@ nodebuilder app: native Linux UI in TSX, **no DOM and no React**. Read this befo
   fails to load, text shows boxes or a screenshot fails**, before changing code: the problem is
   often a missing package, and each failure comes with the command that installs it.
   `bun run doctor -- --json` for a machine-readable report.
+- After updating `@nodebuilderjs/core` (`bun update`), `bun run agents:update` brings this guide
+  and the skills to the new version (the doctor warns when they are behind). Docs edited in
+  this app are kept and listed, not overwritten.
 - Before finishing: `bun run typecheck && bun test`. **After a visual change, take a screenshot
   and look at it** (open the PNG): tests check boxes, not colors, alignment or clipping.
 - A screen other than the first: `nodebuilder screenshot src/App.tsx shot.png --export App
@@ -51,3 +55,9 @@ that support skills load them on their own; others should read the topic's skill
 | `nodebuilder-testing` | tests without a window (`mount`, `findByText`/`findAllByText` (`{ in: "Button" }`), `findByLabel` (`ariaLabel`), `findByValue`/`findByPlaceholder`/`shownText` (fields), `click`, `interact`, hidden targets that throw, `layoutWarnings()`, real text metrics (`useRealTextMetrics`), `frames`, clipboard), screenshots (`nodebuilder screenshot`, `--props` for a given page, `screenshot()`) |
 | `nodebuilder-packaging` | AppImage/.deb/.rpm, embedded files, icon and app id |
 | `nodebuilder-performance` | slowness, long lists, live data, animation, CPU use while idle (`NB_STATS`, `NB_TRACE=frames`) |
+<!-- nodebuilder:end -->
+
+## This app
+
+Notes for agents about this app (conventions, commands, decisions) go here, after the marker
+above: `nodebuilder agents update` replaces only the framework guide between the markers.

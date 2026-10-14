@@ -17,7 +17,7 @@ well, so as much of the framework as possible lives in TS, and the C stays small
 | `ARCHITECTURE.md` | how it works inside and how to measure performance |
 | `ROADMAP.md` | priorities and what has been done (still in Portuguese) |
 | `FONTS.md` | the fonts roadmap: what is done and everything left to make fonts complete |
-| `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps |
+| `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps, and inside core for `nodebuilder agents update` (only the block between the `nodebuilder:begin/end` markers of `AGENTS.md` is the framework's) |
 
 ## Non-negotiable rules
 
@@ -60,6 +60,9 @@ bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 
                             # PNG of the app without a window or display server (EGL offscreen)
 bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
                             # icon imports for an app (validated in its node_modules); `icons list [filter]`
+bun cli/nodebuilder.ts agents update [--dry-run] [--force]
+                            # in an app: AGENTS.md and .agents/skills up to this version (keeps edited ones)
+bun scripts/agents-history.ts   # cli/agents-history.json (hashes of every committed template doc; npm:build runs it)
 bun cli/nodebuilder.ts doctor [--json] [--window]
                             # checks the machine (addon, system libs, display, keyboard, GL, fonts,
                             #   libheif) with the command that fixes each problem; exit 1 on failure
@@ -133,6 +136,7 @@ What cannot be tested automatically is documented when closing the task:
   (percentage sizes), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
   `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
   `doctor` (each check on fake probes, the ELF and `ldd` readers, `diagnostics()` and one spawn),
+  `agents` (`agents update` on temp apps: stale, edited, renamed docs, AGENTS.md markers),
   `clipboard`, `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
   pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
@@ -254,7 +258,8 @@ examples/        counter, todo, images, icons, drawing, charts, overlays, text, 
 cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
                  (+ screenshot-entry.ts: renders an exported component for `--props`/`--export`),
                  icons.ts (`icons add/list`: writes an app's icon imports), doctor.ts (checks
-                 over injected probes; `systemProbes()` is the real machine)
+                 over injected probes; `systemProbes()` is the real machine), agents.ts
+                 (`agents update`) + agents-history.json (generated: released doc hashes)
   package/       common.ts (SYSTEM_LIBS: soname -> deb/pacman package, for packaging and doctor),
                  deb.ts, rpm.ts, appimage.ts, native.ts (addon build, `elfGlibc`), Dockerfile, icon.svg
 packages/        workspaces published together with core (see "Publishing to npm")

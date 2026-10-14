@@ -19,6 +19,15 @@ From a second report of the Discord clone (with 0.4.0).
 - `nodebuilder screenshot` of a file that does not call `run()` failed; it now renders the
   file's default export (as with `--props '{}'`), and says how to pick one when there is none.
 
+### New
+- `nodebuilder agents update` (`bun run agents:update` in new apps): brings an app's `AGENTS.md`
+  and `.agents/skills` up to the installed `@nodebuilderjs/core`, which now ships them. Docs the
+  framework released are replaced (it knows every version's hash, so apps from 0.2 on work),
+  docs edited in the app are kept and listed (`--force` replaces them), skills renamed since
+  are removed, and `.claude/skills` links follow. `AGENTS.md` gets markers around the
+  framework's guide; notes after them (or appended to an older `AGENTS.md`) stay.
+  `nodebuilder doctor` warns when the docs are behind.
+
 ### Docs
 - Testing skill: a click inside a `Scroll` focuses it (keys bubble from there), and testing a
   reactive prop on the same node, since a screen switch can recreate it.

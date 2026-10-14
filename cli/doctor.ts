@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { type Native, loadNative } from "../src/runtime/native.js";
+import { type Change, planAgents, readAgentDocs } from "./agents.js";
 import { HEIF_LIB, SYSTEM_LIBS, type SystemLib } from "./package/common.js";
 import { atLeast, elfGlibc } from "./package/native.js";
 
@@ -51,6 +52,11 @@ export interface DoctorProbes {
   missingLibs(path: string): string[];
   hasLib(soname: string): boolean;
   loadNative(): DoctorNative;
+  /**
+   * What `nodebuilder agents update` would do to the app in the current folder (undefined when
+   * it is not an app that depends on @nodebuilderjs/core), and the docs' version.
+   */
+  agents(): { version: string; changes: Change[] } | undefined;
   /** Opens a small window, draws a frame and closes it (`--window`). */
   openWindow?(): Promise<{ gl: GLInfo | null }>;
 }
@@ -211,6 +217,24 @@ function heifCheck(p: DoctorProbes): Check {
   return { id: "heif", status: "off", title: "libheif not found: AVIF/HEIC images disabled", fix: installCommand(p.installer, [libPackages(HEIF_LIB, p.target)]) };
 }
 
+function agentsCheck(p: DoctorProbes): Check {
+  const docs = p.agents();
+  if (!docs) return { id: "agents", status: "skip", title: "agent docs: not in an app folder" };
+  const behind = docs.changes.filter((c) => c.action === "add" || c.action === "update" || c.action === "remove").length;
+  const kept = docs.changes.filter((c) => c.action === "keep").length;
+  const edited = kept ? ` (${kept} edited in this app, kept)` : "";
+  if (behind) {
+    return {
+      id: "agents",
+      status: "warn",
+      title: `agent docs (AGENTS.md, skills): ${behind} behind @nodebuilderjs/core ${docs.version}`,
+      detail: edited.trim() || undefined,
+      fix: "bun run agents:update (or bunx nodebuilder agents update)",
+    };
+  }
+  return { id: "agents", status: "ok", title: `agent docs match @nodebuilderjs/core ${docs.version}${edited}` };
+}
+
 export async function diagnose(p: DoctorProbes, options: { window?: boolean } = {}): Promise<Check[]> {
   const checks = [runtimeCheck(p)];
   const addon = addonCheck(p);
@@ -221,7 +245,7 @@ export async function diagnose(p: DoctorProbes, options: { window?: boolean } = 
   } else {
     for (const id of NATIVE_IDS) checks.push({ id, status: "skip", title: `${id}: skipped, the native core did not load` });
   }
-  checks.push(heifCheck(p));
+  checks.push(heifCheck(p), agentsCheck(p));
   return checks;
 }
 
@@ -353,6 +377,12 @@ export function systemProbes(): DoctorProbes {
       return ldconfigCache.includes(soname);
     },
     loadNative,
+    agents: () => {
+      const pkg = JSON.parse(read(join(process.cwd(), "package.json")) || "{}");
+      if (!pkg.dependencies?.["@nodebuilderjs/core"] && !pkg.devDependencies?.["@nodebuilderjs/core"]) return undefined;
+      const docs = readAgentDocs();
+      return { version: docs.version, changes: planAgents(process.cwd(), docs, {}) };
+    },
     openWindow: () => openWindow(loadNative()),
   };
 }

@@ -75,6 +75,7 @@ const pkg = {
     typecheck: "tsc --noEmit",
     screenshot: "nodebuilder screenshot src/main.tsx screenshot.png",
     doctor: "nodebuilder doctor",
+    "agents:update": "nodebuilder agents update",
     "icons:add": "nodebuilder icons add --out src/icons.ts",
     package: `nodebuilder package src/main.tsx --title "${title}" --app-id ${appId}`,
   },

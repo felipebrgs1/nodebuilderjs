@@ -57,6 +57,8 @@
     "src",
     "lib",
     "cli",
+    "packages/create-nodebuilderjs/template/AGENTS.md",
+    "packages/create-nodebuilderjs/template/.agents",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
