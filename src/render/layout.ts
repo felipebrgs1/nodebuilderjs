@@ -182,6 +182,26 @@ function anchorBox(layer: UINode): { x: number; y: number; width: number; height
   return a;
 }
 
+/**
+ * The part of a box of `n` (window coordinates x, y, w, h: usually its content box) on screen,
+ * cut by every clipping or scrolling ancestor and the window, relative to the box's corner
+ * (zero-size when none of it shows). For widgets that draw only what is visible.
+ */
+export function visibleRegion(n: UINode, x: number, y: number, w: number, h: number): { x: number; y: number; width: number; height: number } {
+  let view = { x0: x, y0: y, x1: x + w, y1: y + h };
+  let top = n;
+  let layered = n.overlay !== undefined;
+  for (let a = n.parent; a; a = a.parent) {
+    // Past an overlay layer only the window cuts it (the layer is drawn above the tree).
+    if (!layered && (scrolls(a) || a.style.clip)) view = clipView(a, view);
+    layered ||= a.overlay !== undefined;
+    top = a;
+  }
+  const x0 = Math.max(view.x0, 0), y0 = Math.max(view.y0, 0);
+  const x1 = Math.min(view.x1, top.width), y1 = Math.min(view.y1, top.height);
+  return x1 > x0 && y1 > y0 ? { x: x0 - x, y: y0 - y, width: x1 - x0, height: y1 - y0 } : { x: 0, y: 0, width: 0, height: 0 };
+}
+
 /** How far a node's own drawing reaches outside its box (shadows). */
 export function overhang(n: UINode): number {
   const sh = n.style.shadow;

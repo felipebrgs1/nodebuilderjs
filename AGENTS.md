@@ -137,7 +137,7 @@ What cannot be tested automatically is documented when closing the task:
   `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
   `doctor` (each check on fake probes, the ELF and `ldd` readers, `diagnostics()` and one spawn),
   `agents` (`agents update` on temp apps: stale, edited, renamed docs, AGENTS.md markers),
-  `clipboard`, `window-icon` (`iconImages`: sizes, fitting, the default; `run()` covers the
+  `text-area` (wrapping, caret across lines, scrolling to the caret), `clipboard`, `window-icon` (`iconImages`: sizes, fitting, the default; `run()` covers the
   prop and `hide`/`show` in `app`), `dbus` (wire format, connection against `fake-bus.ts`),
   `tray` (`createTray` against `fake-bus.ts`), `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
   pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
@@ -211,7 +211,9 @@ src/                   one module per folder; relative imports with `.js`
     select.ts tabs.ts tooltip.ts dialog.ts     on top of Overlay (Tabs opens nothing, but uses roving.ts)
     roving.ts          group with a single Tab stop and arrow keys (RadioGroup, Tabs)
     overlay.ts         <Overlay>: layer above the window (marker in the tree + root.layers)
-    text-selection.ts  character positions, word under the click (Text selectable; TextField)
+    text-selection.ts  character positions, word under the click (Text selectable; TextField, TextArea)
+    text-edit.ts       EditSession (selection, undo/redo), editKey (keys every text input shares), editable (border, focus ring, caret blink, selection props)
+    text-area.ts       TextArea: multi-line (wrapText with breakWords), caret across lines, scrolls to the caret
   image/
     source.ts          image sources: cache by path, usage count, GPU handle
     decode.ts          decodeImage: picks the decoder by the file signature
@@ -661,7 +663,8 @@ packages, all with the version from the root `package.json`:
 
 ## Current limitations
 
-- TextField: no selection, copy, undo (paste exists; `password` masks the drawing only); Text: a word longer than the line
+- TextField/TextArea: no IME, no primary selection (middle-click paste), no drag and drop of text, no
+  scrollbar on a TextArea that scrolls itself; Text: a word longer than the line
   overflows (selection only with `selectable`, no Shift+click or keyboard); a family without a
   weight or slant gets the closest face, emboldened or slanted (synthetic); app fonts are
   registered synchronously (no `unicode-range`, no async loading); `underline` is painted in

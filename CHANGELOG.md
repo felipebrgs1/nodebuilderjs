@@ -26,6 +26,12 @@ From a second report of the Discord clone (with 0.4.0).
   `scrollIntoView({ x, y, width, height })` for a region of an element, `createThemeTokens`
   for app colors that follow `setTheme`, a reactive `<Window title>`, `mount(view, { paint })`
   and `interact()` `click`/`contextMenu`/`keyUp` with modifiers.
+- `TextField` selects, copies, cuts and undoes: Shift+arrows, Ctrl+arrows by words, mouse drag,
+  double and triple click, Shift+click, Ctrl+A/C/X/V/Z/Y, Ctrl+Backspace/Delete; typing replaces
+  the selection; `selection` and `onSelectionChange` control and report the caret.
+- `TextArea`: multi-line input that wraps (splitting words longer than a line), grows with its
+  content (`rows` minimum), keeps the caret in view in a `Scroll` or scrolls itself with a
+  `height`, with the same editing keys and undo.
 - `<Canvas measure={(width) => height}>` (a canvas that sizes itself, e.g. a wrapped document
   in a `Scroll`) and `g.visibleRect` (the part on screen; reading it redraws on scroll).
 - Key names are normalized: Shift+Tab is `"Tab"` with `shift`, `Prior`/`Next` are

@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: nodebuilder widgets, style props and layout (gradient backgrounds, per-corner radius, percentage sizes, responsive Grid minColumnWidth, password fields, window-wide keys (Window onKeyDown, focusable containers), onMount, Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking (zIndex), clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
+description: nodebuilder widgets, style props and layout (gradient backgrounds, per-corner radius, percentage sizes, responsive Grid minColumnWidth, password fields, window-wide keys (Window onKeyDown, focusable containers), onMount, Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, TextArea (multi-line, selection, undo), Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking (zIndex), clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
 ---
 
 # UI with nodebuilder
@@ -22,7 +22,8 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 | `Icon` | SVG icon (Lucide, Phosphor), color inherited like text | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icons` |
 | `Canvas` | free drawing: lines, polygons, arcs, text | `draw={(g) => ...}` + size; skill `nodebuilder-drawing` |
 | `Button` | button with focus and keyboard | `label` or children, `variant` (`default`, `primary`, `danger`, `flat`; a value or a function), `disabled`, `onClick` |
-| `TextField` | controlled text field | `value` (accessor), `onInput(value)`, `onSubmit`, `placeholder`, `disabled`, `password` (draws `•`; a function for "show password"), `borderColor`/`borderWidth` (kept when focused), `focusBorderColor`/`focusBorderWidth` |
+| `TextField` | controlled text field, one line | `value` (accessor), `onInput(value)`, `onSubmit` (Return), `placeholder`, `disabled`, `password` (draws `•`; a function for "show password"), `selection` (accessor of `{ anchor, focus }`: moves the caret), `onSelectionChange`, `borderColor`/`borderWidth` (kept when focused), `focusBorderColor`/`focusBorderWidth` |
+| `TextArea` | controlled multi-line text (notes, editors) | the `TextField` props (no `password`) plus `rows` (minimum lines, 3); grows with its content (in a `Scroll`, the caret stays in view) or scrolls itself with a `height`; Return inserts a line, Ctrl+Return is `onSubmit` |
 | `Checkbox` | checkbox | `checked` (accessor), `onChange(checked)`, `label`, `disabled` |
 | `Toggle` | on/off switch (`Switch` is the control-flow component) | `checked` (accessor), `onChange(on)`, `label`, `disabled` |
 | `RadioGroup` | one option among several; a single Tab stop, arrows switch | `value` (accessor), `onChange(v)`, `options=[{ value, label, disabled? }]`, `disabled` |
@@ -358,7 +359,7 @@ const rows: ElementRef[] = [];
 - The user scrolls with the wheel (Shift+wheel goes sideways; touchpad on both axes), by dragging
   the scrollbar thumb, by clicking the track (one page) and with the keyboard: PageUp/PageDown,
   Home/End and the arrows scroll the `Scroll` around the focused element (with no focus, the one under
-  the mouse), unless an `onKeyDown` calls `e.stop()`. `TextField` keeps Home/End and ←/→;
+  the mouse), unless an `onKeyDown` calls `e.stop()`. `TextField`/`TextArea` keep their caret keys;
   ↑/↓ scroll.
 - Scrollbars sit **on top of** the content, in a 14 px strip along the right edge (and the
   bottom one), and only exist when there is something to scroll: leave `padding` on that edge if
@@ -594,8 +595,8 @@ const [query, setQuery] = createSignal("");
 </Window>
 ```
 - Animation: see the next section.
-- Not available yet: theme following the system, `scale`/`rotate`, selection in `TextField`
-  (and Ctrl+C in it), IME, multiple windows.
+- Not available yet: theme following the system, `scale`/`rotate`, IME, multiple windows,
+  rich text (one style per `Text`).
 
 ## Animation
 

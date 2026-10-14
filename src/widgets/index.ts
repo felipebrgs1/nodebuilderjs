@@ -14,6 +14,8 @@ export { RadioGroup, type Choice } from "./radio.js";
 export { Slider } from "./slider.js";
 export { ProgressBar, Spinner } from "./progress.js";
 export { TextField } from "./text-field.js";
+export { TextArea } from "./text-area.js";
+export { type TextSelection } from "./text-edit.js";
 export { Window, WindowControls } from "./window.js";
 export { Overlay } from "./overlay.js";
 export { Select } from "./select.js";

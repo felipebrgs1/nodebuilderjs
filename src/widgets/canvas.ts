@@ -5,9 +5,9 @@
 // painting, so `draw` never sees a canvas that was not laid out yet. Painting replays the
 // recording, offset to where the canvas is.
 
-import { clipView, edges } from "../render/layout.js";
+import { edges, visibleRegion } from "../render/layout.js";
 import { type CanvasGradient, type GradientStop, isGradient, offsetGradient } from "../render/gradient.js";
-import { type Color, type FontStyle, type Handlers, type LineCap, type Paint, type Painter, type Radius, UINode, fontStyle, invalidate, measureText, scrolls } from "../render/node.js";
+import { type Color, type FontStyle, type Handlers, type LineCap, type Paint, type Painter, type Radius, UINode, fontStyle, invalidate, measureText } from "../render/node.js";
 import { type PolylineOptions, fillPolygon, polyline } from "../render/shapes.js";
 import { truncate } from "../render/text-wrap.js";
 import { batch, createEffect, createSignal, untrack } from "../reactive/signals.js";
@@ -178,7 +178,7 @@ export function Canvas(
         width: Math.max(0, n.width - pl - pr), height: Math.max(0, n.height - pt - pb), scale: displayScale(),
         family: inherited(n, "fontFamily") ?? "", features: inherited(n, "fontFeatures") ?? "", variations: inherited(n, "fontVariations") ?? "",
       });
-      setVisible(visibleRect(n, n.x + pl, n.y + pt, n.width - pl - pr, n.height - pt - pb));
+      setVisible(visibleRegion(n, n.x + pl, n.y + pt, n.width - pl - pr, n.height - pt - pb));
     });
     painting = false;
     for (const op of ops) op(p, n.x + pl, n.y + pt);
@@ -188,22 +188,6 @@ export function Canvas(
 
 type Rect = { x: number; y: number; width: number; height: number };
 const sameRect = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
-
-/** The content box (window coordinates x, y, w, h) cut by clipping ancestors and the window, relative to the box. */
-function visibleRect(n: UINode, x: number, y: number, w: number, h: number): Rect {
-  let view = { x0: x, y0: y, x1: x + w, y1: y + h };
-  let top = n;
-  let layered = n.overlay !== undefined;
-  for (let a = n.parent; a; a = a.parent) {
-    // Past an overlay layer only the window cuts it (the layer is drawn above the tree).
-    if (!layered && (scrolls(a) || a.style.clip)) view = clipView(a, view);
-    layered ||= a.overlay !== undefined;
-    top = a;
-  }
-  const x0 = Math.max(view.x0, 0), y0 = Math.max(view.y0, 0);
-  const x1 = Math.min(view.x1, top.width), y1 = Math.min(view.y1, top.height);
-  return x1 > x0 && y1 > y0 ? { x: x0 - x, y: y0 - y, width: x1 - x0, height: y1 - y0 } : { x: 0, y: 0, width: 0, height: 0 };
-}
 
 /** A canvas sized by `measure`: its height follows the width it gets, at any width. */
 function measured(node: UINode, measure: (width: number) => number) {

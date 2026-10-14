@@ -3,7 +3,7 @@
 
 import {
   Box, Button, Card, Checkbox, Column, Dialog, Match, ProgressBar, RadioGroup, Row, Select, Slider, Spinner, Switch, Tabs, Text,
-  TextField, Toggle, Tooltip, Window, colorScheme, createSignal, run, setTheme, theme,
+  TextArea, TextField, Toggle, Tooltip, Window, colorScheme, createSignal, run, setTheme, theme,
 } from "@nodebuilderjs/core";
 
 const initial = process.env.OPEN;
@@ -21,6 +21,7 @@ function Controls() {
   const [size, setSize] = createSignal("m");
   const [volume, setVolume] = createSignal(40);
   const [name, setName] = createSignal("");
+  const [notes, setNotes] = createSignal("Multi-line text wraps at the width it gets.\nReturn adds a line; Ctrl+Z undoes.");
   const [agree, setAgree] = createSignal(false);
   const [tab, setTab] = createSignal(initial === "select" ? "lista" : "controles");
   const [city, setCity] = createSignal<string | undefined>(initial === "select" ? "sp" : undefined);
@@ -63,6 +64,7 @@ function Controls() {
           <Text bold>Formulário</Text>
           <TextField value={name} onInput={setName} placeholder="Nome" />
           <TextField value={() => "somente leitura"} onInput={() => {}} disabled />
+          <TextArea value={notes} onInput={setNotes} placeholder="Notes" rows={3} />
           <Checkbox checked={agree} onChange={setAgree} label="Aceito os termos" />
           <Row gap={8}>
             <Tooltip text="Preencha o nome e aceite os termos">

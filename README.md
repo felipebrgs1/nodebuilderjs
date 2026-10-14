@@ -88,7 +88,7 @@ doctor warns when the docs are behind.
 - **Styles are props, not CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
   `radius`, `color`, `fontSize`... The layout is flexbox.
 - **Built-in widgets:** `Window` (with `WindowControls` for a custom title bar), `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
-  `Button`, `TextField`, `Checkbox`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`,
+  `Button`, `TextField`, `TextArea`, `Checkbox`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`,
   `Tooltip`, `Dialog`, `ProgressBar`, `Spinner`, `Card`, `Divider`, `Spacer`, plus `<For>`/`<Index>`,
   `<Show>`/`<Switch>` and `<ErrorBoundary>` for lists, conditions and errors, and
   `createContext` for values shared down the tree.
@@ -575,7 +575,7 @@ const rows: ElementRef[] = [];
   along the edge) when there is something to scroll.
 - Keyboard: PageUp/PageDown, Home/End and the arrow keys scroll the `Scroll` around the
   focused element (with no focus, the one under the mouse), unless an `onKeyDown` calls
-  `e.stop()`. `TextField` keeps Home/End and ←/→ for the cursor.
+  `e.stop()`. `TextField` and `TextArea` keep the keys they move the caret with.
 - `scrollIntoView()` scrolls each `Scroll` around the element by the minimum needed, on the
   next frame (also for an element that was just created or that is far away, off screen).
   `scrollIntoView({ x, y, width, height })` shows only that region of the element (from its
@@ -613,8 +613,36 @@ const [volume, setVolume] = createSignal(40);
   `color` (the filled part) and `background` (the track).
 - `Button`'s `variant` may be a function: the colors, hover and weight follow it.
 - `<TextField password>` draws `•` for each character (the value stays real; a function
-  toggles it for a "show password" button). A `TextField` keeps the app's `borderColor` and
-  `borderWidth` when focused; `focusBorderColor`/`focusBorderWidth` restyle its focus ring.
+  toggles it for a "show password" button, and nothing can be copied out of it). A
+  `TextField` keeps the app's `borderColor` and `borderWidth` when focused;
+  `focusBorderColor`/`focusBorderWidth` restyle its focus ring.
+
+### Text input
+
+```tsx
+import { TextArea, TextField, createSignal, type TextSelection } from "@nodebuilderjs/core";
+
+const [title, setTitle] = createSignal("");
+const [body, setBody] = createSignal("");
+const [caret, setCaret] = createSignal<TextSelection>({ anchor: 0, focus: 0 });
+<TextField value={title} onInput={setTitle} onSubmit={() => {}} placeholder="Title" />;
+<TextArea value={body} onInput={setBody} rows={6} placeholder="Write here" onSelectionChange={setCaret} />;
+```
+
+- Both edit like a desktop text field: Shift+arrows, Shift+Home/End and a drag select;
+  Ctrl+arrows move by words; a double click picks a word, a triple click the line (`TextField`:
+  everything); Shift+click extends; Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V (also Ctrl+Insert,
+  Shift+Insert, Shift+Delete); Ctrl+Backspace/Delete delete a word; Ctrl+Z undoes (a run of
+  typing at a time) and Ctrl+Shift+Z or Ctrl+Y redoes. Typing replaces the selection.
+- `selection` (an accessor of `{ anchor, focus }`, in code points; `focus` is the caret) moves
+  the caret whenever it changes, and `onSelectionChange` reports every change: enough to split
+  a line at the caret in a block editor. A value the app sets keeps the selection inside it and
+  clears the undo history.
+- `TextArea` wraps at the width it gets (a word longer than the line is split), is at least
+  `rows` lines tall (3) and grows with its content: inside a `Scroll` the caret stays in view as
+  it moves. With a `height` (or `maxHeight`) that cuts the content, it scrolls by itself (wheel,
+  caret). Return inserts a line, Ctrl+Return calls `onSubmit`; Up/Down keep the column,
+  Home/End stay on the visual line, Ctrl+Home/End go to the ends, PageUp/PageDown move a page.
 
 ```tsx
 import { Button, Dialog, Match, Select, Switch, Tabs, Text, Tooltip, createSignal } from "@nodebuilderjs/core";
@@ -827,8 +855,8 @@ Static text can be selected and copied with `<Text selectable>`: dragging select
 double-click picks the word, triple-click the line, Ctrl+A everything and Ctrl+C copies. It is
 off by default, so labels and buttons don't get selected by accident.
 
-It is the system clipboard (Wayland and X11), text only. `TextField` pastes with Ctrl+V or
-Shift+Insert (line breaks become spaces). Without a window, as in tests, it is an in-memory
+It is the system clipboard (Wayland and X11), text only. `TextField` and `TextArea` copy, cut
+and paste with the usual keys (in a `TextField` line breaks become spaces). Without a window, as in tests, it is an in-memory
 clipboard. On Wayland, the compositor only accepts a copy right after a key press or click
 (the usual case: Ctrl+C, a "Copy" button).
 
@@ -1160,7 +1188,7 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
   system's fallback fonts and color emoji are drawn in color (Noto Color Emoji and other
   CBDT, sbix or COLRv0 fonts; COLRv1-only fonts are not rendered in color). No bidi: a
   right-to-left run is shaped, but lines are not reordered.
-- Text field without selection, copy or undo (paste works).
+- Text input without IME (input methods for Asian languages), middle-click paste or dragging text; a `TextArea` that scrolls itself has no scrollbar.
 - The window icon needs the `xdg-toplevel-icon` Wayland protocol (KDE Plasma 6.1+); GNOME shows
   the `.desktop` icon matching `appId` (installed by `nodebuilder package`). The tray needs a
   StatusNotifierItem host (GNOME: the AppIndicator extension).

@@ -420,3 +420,11 @@ test("measureText is public and uses the same metrics as layout (before anything
   expect(measureText("abcd", 10)).toEqual({ width: 20, ascent: 10, descent: 2.5 });
   expect(measureText("abcd", 10, { italic: true, family: "monospace" }).width).toBe(24);
 });
+
+test("wrapText with breakWords splits a word longer than the line, at characters", () => {
+  const widthOf = (s: string) => s.length * 8;
+  const lines = wrapText("go aaaaaaaaaaaa b", 40, widthOf, { breakWords: true });
+  expect(lines.map((l) => [l.start, l.end, l.text])).toEqual([[0, 3, "go"], [3, 8, "aaaaa"], [8, 13, "aaaaa"], [13, 17, "aa b"]]);
+  // Without it, the word overflows its own line (CSS overflow-wrap: normal).
+  expect(wrapText("go aaaaaaaaaaaa b", 40, widthOf).map((l) => l.text)).toEqual(["go", "aaaaaaaaaaaa", "b"]);
+});

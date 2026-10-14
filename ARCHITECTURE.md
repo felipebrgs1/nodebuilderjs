@@ -654,6 +654,21 @@ layout in progress. If the handlers invalidated anything, `layout()` places the 
 in a test, right after `relayout()`); a handler still changing sizes after that is reported
 among the layout warnings as an `onResize` loop.
 
+### Text editing
+
+`TextField` and `TextArea` share `widgets/text-edit.ts`. The value belongs to the app (`value`
++ `onInput`); an `EditSession` keeps what lives around it: the selection (`anchor`/`focus`, in
+code points), an undo stack of `{ value, anchor, focus }` snapshots (consecutive typing or
+deleting pushes one; a caret move, a space or a paste starts a new step) and the last value it
+emitted, so a different value means the app set it (the history is dropped, the selection
+clamped). `editKey` handles the keys every text input shares and asks the widget only for line
+navigation (`LineNavigation`: line bounds, the position above or below at an x, a page), which
+`TextArea` answers from its wrapped lines; a single-line field leaves it out. `TextArea` wraps
+with `wrapText(..., { breakWords: true })` at its content width, measures as height-for-width
+at any width (`fluidMeasure`), draws only the lines in `visibleRegion`, and after a change
+asks `scrollIntoView` for the caret's region, so a `Scroll` around it follows on the next
+layout; a height of its own that cuts the content makes it scroll itself in paint.
+
 ## Wayland and X11
 
 The backend is chosen at runtime: Wayland if `WAYLAND_DISPLAY` is set, otherwise X11 if
