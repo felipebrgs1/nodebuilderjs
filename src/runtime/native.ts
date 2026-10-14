@@ -64,6 +64,8 @@ export interface Native {
   decodeImage(bytes: Uint8Array): { width: number; height: number; data: Uint8Array };
   setCursor(name: string): void;
   setTitle(title: string): void;
+  /** Unmaps (false) or maps again (true) the window; a configure event follows a map. */
+  setVisible(visible: boolean): void;
   /** Square straight-alpha RGBA images of one icon at several sizes (taskbar, switcher). */
   setIcon(images: { size: number; rgba: Uint8Array }[]): void;
   move(): void;

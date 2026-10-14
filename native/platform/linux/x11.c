@@ -655,6 +655,14 @@ static void x_set_maximized(bool maximized) {
   if (X.dpy) send_wm_message(X.net_wm_state, maximized ? 1 : 0, X.net_wm_state_max_v, X.net_wm_state_max_h, 1, 0);
 }
 
+// Withdrawn, not iconified: the window leaves the taskbar. MapNotify sends the configure.
+static void x_set_visible(bool visible) {
+  if (!X.dpy) return;
+  if (visible) XMapRaised(X.dpy, X.win);
+  else XWithdrawWindow(X.dpy, X.win, X.screen);
+  XFlush(X.dpy);
+}
+
 static void x_minimize(void) {
   if (!X.dpy) return;
   XIconifyWindow(X.dpy, X.win, X.screen);
@@ -712,6 +720,7 @@ const nb_linux_backend nb_x11_backend = {
     .set_cursor = x_set_cursor,
     .set_title = x_set_title,
     .set_icon = x_set_icon,
+    .set_visible = x_set_visible,
     .move = x_move,
     .resize = x_resize,
     .set_maximized = x_set_maximized,

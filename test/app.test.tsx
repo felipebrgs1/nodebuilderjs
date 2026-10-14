@@ -6,7 +6,7 @@ import type { Child } from "@nodebuilderjs/core";
 import { iconImages } from "../src/image/icon.js";
 import { setImageBackend } from "../src/image/source.js";
 import { invalidate, setDisplayScale } from "../src/render/node.js";
-import { runWith, windowControls } from "../src/runtime/app.js";
+import { runWith, windowControls, windowState } from "../src/runtime/app.js";
 import { setFrameClock } from "../src/runtime/frames.js";
 import type { Native, NativeEvent } from "../src/runtime/native.js";
 
@@ -15,7 +15,7 @@ const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fakeNative() {
   let emitEvents: (events: NativeEvent[]) => void = () => {};
   let images = 0;
-  const calls = { render: 0, requestFrame: 0, close: 0, icons: [] as { size: number; rgba: Uint8Array }[][] };
+  const calls = { render: 0, requestFrame: 0, close: 0, icons: [] as { size: number; rgba: Uint8Array }[][], visible: [] as boolean[] };
   const native: Native = {
     open: (_options, onEvents) => void (emitEvents = onEvents),
     close: () => void calls.close++,
@@ -32,6 +32,7 @@ function fakeNative() {
     setCursor: () => {},
     setTitle: () => {},
     setIcon: (images) => void calls.icons.push(images),
+    setVisible: (visible) => void calls.visible.push(visible),
     move: () => {},
     resize: () => {},
     setMaximized: () => {},
@@ -108,6 +109,44 @@ describe("window icon", () => {
     const app = await start(() => <Window title="x" icon="/nonexistent/icon.png" />);
     expect(app.warnings.some((w) => w.includes("/nonexistent/icon.png"))).toBe(true);
     expect(app.calls.icons[0]!.at(-1)!.rgba).toEqual(iconImages().at(-1)!.rgba);
+  });
+});
+
+describe("hiding the window", () => {
+  test("a hidden window renders nothing until it is shown and configured again", async () => {
+    const [count, setCount] = createSignal(0);
+    const app = await start(() => (
+      <Window title="x">
+        <Text>{() => `count ${count()}`}</Text>
+      </Window>
+    ));
+    await app.frames(1);
+    expect(windowState.visible()).toBe(true);
+    windowControls.hide();
+    expect(app.calls.visible).toEqual([false]);
+    expect(windowState.visible()).toBe(false);
+    const rendered = app.calls.render;
+    setCount(1);
+    await app.frames(2);
+    // A configure while hidden (the compositor resending state) does not draw either.
+    await app.send({ type: "configure", width: 400, height: 300, scale: 1, maximized: false, activated: false, transparent: true });
+    expect(app.calls.render).toBe(rendered);
+    expect(app.calls.requestFrame).toBe(0);
+
+    windowControls.show();
+    expect(app.calls.visible).toEqual([false, true]);
+    expect(windowState.visible()).toBe(true);
+    expect(app.calls.render).toBe(rendered); // waits for the window to be mapped again
+    await app.send({ type: "configure", width: 400, height: 300, scale: 1, maximized: false, activated: true, transparent: true });
+    expect(app.calls.render).toBe(rendered + 1);
+  });
+
+  test("hide and show are idempotent", async () => {
+    const app = await start(() => <Window title="x" />);
+    windowControls.show();
+    windowControls.hide();
+    windowControls.hide();
+    expect(app.calls.visible).toEqual([false]);
   });
 });
 

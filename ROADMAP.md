@@ -42,6 +42,9 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - Window icon (2026-10-14): `<Window icon>` (SVG or raster) via `xdg-toplevel-icon-v1` on
   Wayland and `_NET_WM_ICON` on X11; the nodebuilder icon by default instead of the
   compositor's generic one
+- System tray (2026-10-14): `createTray` (StatusNotifierItem + dbusmenu, reactive icon, tooltip
+  and menu) on our own D-Bus client in TypeScript; `windowControls.hide()`/`show()` to close to
+  the tray
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 - `nodebuilder doctor` (2026-10-14): checks the machine (runtime, native core and system
   libraries, display, keyboard, GL, fonts, libheif) and prints the command that fixes each

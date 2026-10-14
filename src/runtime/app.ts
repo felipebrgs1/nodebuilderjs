@@ -5,6 +5,8 @@ import { writeFileSync } from "node:fs";
 import { type Child, insert } from "../jsx-runtime.js";
 import { type IconImage, type IconInput, iconImages } from "../image/icon.js";
 import { setImageBackend } from "../image/source.js";
+import { sessionBusAddress } from "../dbus/connection.js";
+import { setTrayBus } from "../tray/tray.js";
 import { layout } from "../render/layout.js";
 import { overflowWarnings } from "../render/overflow.js";
 import { nativeClipboard, setClipboardBackend } from "./clipboard.js";
@@ -50,18 +52,27 @@ const [height, setHeight] = createSignal(0);
 const [maximized, setMaximized] = createSignal(false);
 const [activated, setActivated] = createSignal(true);
 const [transparent, setTransparent] = createSignal(true);
+const [visible, setVisible] = createSignal(true);
 
 let native: Native | null = null;
 let closeRequest: () => void = () => {};
+let visibilityRequest: (visible: boolean) => void = () => {};
 
-/** `transparent` is false when corners can't be see-through (e.g. X11 without a compositor). */
-export const windowState = { width, height, maximized, activated, transparent };
+/**
+ * `transparent` is false when corners can't be see-through (e.g. X11 without a compositor).
+ * `visible` is false after `windowControls.hide()`.
+ */
+export const windowState = { width, height, maximized, activated, transparent, visible };
 
 export const windowControls = {
   close: () => closeRequest(),
   minimize: () => native?.minimize(),
   toggleMaximize: () => native?.setMaximized(!maximized()),
   setTitle: (title: string) => native?.setTitle(title),
+  /** Unmaps the window (it leaves the taskbar; the app keeps running, e.g. in the tray). */
+  hide: () => visibilityRequest(false),
+  /** Maps a hidden window again. */
+  show: () => visibilityRequest(true),
 };
 
 export { requestAnimationFrame } from "./frames.js";
@@ -128,6 +139,7 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
     );
     return;
   }
+  setTrayBus(sessionBusAddress());
   runWith(loadNative(), app, runOptions);
 }
 
@@ -317,7 +329,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
 
   function renderFrame() {
     scheduled = false;
-    if (!dirty || !open) return;
+    if (!dirty || !open || !configured) return; // hidden since it was scheduled
     recordReason();
     const t0 = now();
     lastRender = t0;
@@ -403,6 +415,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
           setTextMeasurer(nativeTextMeasurer(nat, ev.scale)); // metrics are hinted per scale
           setDisplayScale(ev.scale);
         }
+        if (!visible()) break; // drawn once shown and configured again
         configured = true;
         request("ev", "configure", null); // its stack is just the event loop
         break;
@@ -448,6 +461,17 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
     setClipboardBackend(null);
     clip.close();
     dispose();
+  };
+
+  setVisible(true);
+  visibilityRequest = (show) => {
+    if (!open || show === visible()) return;
+    nat.setVisible(show);
+    setVisible(show);
+    // Hidden: no frames until the window is mapped and configured again (no frame callbacks
+    // come for an unmapped surface).
+    configured = false;
+    framePending = false;
   };
 
   nat.open(

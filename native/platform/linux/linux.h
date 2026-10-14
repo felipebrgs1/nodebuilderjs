@@ -24,6 +24,7 @@ typedef struct {
   void (*move)(void);
   void (*resize)(uint32_t edges);
   void (*set_maximized)(bool maximized);
+  void (*set_visible)(bool visible);
   void (*minimize)(void);
   void (*clipboard_write)(const char *utf8);
   void (*clipboard_read)(void);

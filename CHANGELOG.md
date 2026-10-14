@@ -20,6 +20,13 @@ From a second report of the Discord clone (with 0.4.0).
   file's default export (as with `--props '{}'`), and says how to pick one when there is none.
 
 ### New
+- Window icon: `<Window icon>` (SVG markup or an `.svg`/PNG/JPEG/WebP file) through
+  `xdg-toplevel-icon-v1` on Wayland and `_NET_WM_ICON` on X11. Without one, the window shows the
+  nodebuilder icon instead of the compositor's generic one (in development there is no
+  `.desktop` file to take it from).
+- System tray: `createTray({ icon, tooltip, title, menu, onClick })`, a StatusNotifierItem with a
+  menu (checkmarks, radios, submenus), reactive, on a D-Bus client of our own in TypeScript.
+  `windowControls.hide()`/`show()` and `windowState.visible()` to close to the tray.
 - `nodebuilder agents update` (`bun run agents:update` in new apps): brings an app's `AGENTS.md`
   and `.agents/skills` up to the installed `@nodebuilderjs/core`, which now ships them. Docs the
   framework released are replaced (it knows every version's hash, so apps from 0.2 on work),

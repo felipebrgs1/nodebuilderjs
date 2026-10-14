@@ -80,6 +80,7 @@
     "overlays": "bun examples/overlays.tsx",
     "text": "bun examples/text.tsx",
     "widgets": "bun examples/widgets.tsx",
+    "tray": "bun examples/tray.tsx",
     "scroll": "bun examples/scroll.tsx",
     "dev": "bun --watch examples/todo.tsx",
     "bench": "NB_STATS=1 bun examples/bench.tsx",

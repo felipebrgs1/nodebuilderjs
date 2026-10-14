@@ -538,8 +538,26 @@ too: the edges count from inside the parent's `padding`.
   `{ ...darkTheme, accent: {...} }`), at any time; `colorScheme()` tells which one is active.
 - **Theme colors always inside a function** (`color={() => theme.text.secondary}`): that way they
   follow theme changes. `color={theme.text.secondary}` keeps the color of that moment.
-- `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`;
-  `windowState.width()`, `.height()`, `.maximized()`, `.activated()` are accessors.
+- `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`, `.hide()`/`.show()`
+  (off the screen and the taskbar, the app keeps running); `windowState.width()`, `.height()`,
+  `.maximized()`, `.activated()`, `.visible()` are accessors.
+- **System tray:** `createTray({ icon, tooltip, title, menu, onClick, onMiddleClick })`, every
+  option may be an accessor; it lives while the calling scope does. Menu entries: `{ label,
+  onClick, enabled, visible, checked, radio, children }` or `"separator"`. `tray.available()` is
+  false without a tray host (GNOME without the AppIndicator extension), so closing to the tray
+  must check it, and there must be another way to quit:
+
+```tsx
+import { Window, createTray, windowControls, windowState } from "@nodebuilderjs/core";
+
+let quitting = false;
+const tray = createTray({
+  tooltip: "My app",
+  onClick: () => (windowState.visible() ? windowControls.hide() : windowControls.show()),
+  menu: [{ label: "Quit", onClick: () => ((quitting = true), windowControls.close()) }],
+});
+<Window title="My app" onClose={() => quitting || !tray.available() || (windowControls.hide(), false)} />;
+```
 - **Custom title bar** (navigation or search merged with the window buttons): `<Window
   decorations={false}>` drops the built-in bar (border, corners and edge resizing stay);
   `dragRegion` on any widget makes it move the window, and a double click maximizes. Plain

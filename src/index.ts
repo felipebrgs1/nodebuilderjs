@@ -17,6 +17,7 @@ export { animate, createTween, createPresence, easing, mixColor, type AnimateOpt
 export { decodeImage } from "./image/decode.js";
 export { type Bitmap, type ImageInput } from "./image/source.js";
 export { type IconInput } from "./image/icon.js";
+export { createTray, type Tray, type TrayOptions, type TrayMenuEntry, type TrayMenuItem } from "./tray/tray.js";
 export { parseSvg, renderSvg, type IconNode, type Svg } from "./svg/index.js";
 export { UINode, debugTree, setTextMeasurer, type Background, type Paint, type Radius, type FontStyle, type FontInput, type TextMeasurer, type Style, type ElementRef, type Placement, type Painter, type KeyEvent, type PointerEvent } from "./render/node.js";
 export { layout } from "./render/layout.js";

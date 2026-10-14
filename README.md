@@ -813,6 +813,45 @@ import icon from "./icon.svg" with { type: "file" };
 <Window title="Notes" appId="com.example.notes" icon={icon}>{/* content */}</Window>;
 ```
 
+**Hiding.** `windowControls.hide()` takes the window off the screen and the taskbar while the
+app keeps running (in the tray, below); `windowControls.show()` brings it back and
+`windowState.visible()` is reactive.
+
+### System tray
+
+`createTray` shows an icon in the system tray while the scope that created it lives (closing
+the window disposes it). Every option may be an accessor; the item updates when it changes:
+
+```tsx
+import { Window, createSignal, createTray, run, windowControls, windowState } from "@nodebuilderjs/core";
+
+run(() => {
+  const [unread, setUnread] = createSignal(0);
+  let quitting = false;
+  const tray = createTray({
+    tooltip: () => `${unread()} unread`,
+    onClick: () => (windowState.visible() ? windowControls.hide() : windowControls.show()),
+    menu: () => [
+      { label: "Mark all read", onClick: () => setUnread(0), enabled: unread() > 0 },
+      "separator",
+      { label: "Quit", onClick: () => ((quitting = true), windowControls.close()) },
+    ],
+  });
+  // Closing hides to the tray, if there is one.
+  return <Window title="Mail" onClose={() => quitting || !tray.available() || (windowControls.hide(), false)} />;
+});
+```
+
+- `icon` takes the same inputs as `<Window icon>` (default: the nodebuilder icon); `title` names
+  the item; `onMiddleClick` handles the middle button. Without `onClick`, a left click opens the
+  menu too.
+- Menu items: `label`, `onClick`, `enabled`, `visible`, `checked` (a checkmark; with `radio`, a
+  radio dot) and `children` (a submenu); `"separator"` draws a line.
+- `tray.available()` is true while a panel shows the item. It is a StatusNotifierItem over D-Bus
+  (our own client, no libdbus): KDE Plasma, Xfce, Cinnamon, Budgie and others show it; GNOME
+  only with the AppIndicator extension. Without a tray, `available()` stays false: keep a way to
+  quit that does not depend on it.
+
 ### Testing
 
 `@nodebuilderjs/core/testing` runs the app in `bun test` without a window, with fake text
@@ -1053,6 +1092,9 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
   CBDT, sbix or COLRv0 fonts; COLRv1-only fonts are not rendered in color). No bidi: a
   right-to-left run is shaped, but lines are not reordered.
 - Text field without selection, copy or undo (paste works).
+- The window icon needs the `xdg-toplevel-icon` Wayland protocol (KDE Plasma 6.1+); GNOME shows
+  the `.desktop` icon matching `appId` (installed by `nodebuilder package`). The tray needs a
+  StatusNotifierItem host (GNOME: the AppIndicator extension).
 - SVG only in the icon subset (no gradients, text, filters); AVIF/HEIC depend on the system
   `libheif`.
 - The dark theme doesn't follow the system preference on its own (on Linux it comes from the

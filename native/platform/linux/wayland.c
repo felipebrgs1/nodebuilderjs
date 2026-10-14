@@ -96,6 +96,10 @@ static struct {
   EGLContext egl_context;
   EGLSurface egl_surface;
 
+  // Unmapping discards the toplevel's attributes, so they are kept to send again on map.
+  char *title, *app_id;
+  bool hidden;
+
   int width, height, pending_w, pending_h;
   int buffer_w, buffer_h;
   int scale;
@@ -662,6 +666,13 @@ static bool init_egl(void) {
   return true;
 }
 
+static void set_toplevel_attributes(void) {
+  xdg_toplevel_set_title(S.toplevel, S.title);
+  xdg_toplevel_set_app_id(S.toplevel, S.app_id);
+  xdg_toplevel_set_min_size(S.toplevel, 240, 160);
+  if (S.icon) xdg_toplevel_icon_manager_v1_set_icon(S.icon_manager, S.toplevel, S.icon);
+}
+
 static bool wl_open(const nb_window_options *options) {
   const char *title = options->title, *app_id = options->app_id;
   S.scale = 1;
@@ -705,9 +716,9 @@ static bool wl_open(const nb_window_options *options) {
   xdg_surface_add_listener(S.xdg_surface, &xdg_surface_listener, NULL);
   S.toplevel = xdg_surface_get_toplevel(S.xdg_surface);
   xdg_toplevel_add_listener(S.toplevel, &toplevel_listener, NULL);
-  xdg_toplevel_set_title(S.toplevel, title);
-  xdg_toplevel_set_app_id(S.toplevel, app_id);
-  xdg_toplevel_set_min_size(S.toplevel, 240, 160);
+  S.title = strdup(title);
+  S.app_id = strdup(app_id);
+  set_toplevel_attributes();
   wl_surface_commit(S.surface);
 
   while (!S.configured)
@@ -792,6 +803,8 @@ static void wl_close(void) {
   if (S.toplevel) xdg_toplevel_destroy(S.toplevel);
   if (S.xdg_surface) xdg_surface_destroy(S.xdg_surface);
   if (S.surface) wl_surface_destroy(S.surface);
+  free(S.title);
+  free(S.app_id);
   if (S.cursor_surface) wl_surface_destroy(S.cursor_surface);
   if (S.cursor_theme) wl_cursor_theme_destroy(S.cursor_theme);
   if (S.display) {
@@ -840,6 +853,7 @@ static void wl_begin_frame(int *bw, int *bh, int *scale) {
 }
 
 static void wl_end_frame(void) {
+  if (S.hidden) return;  // a buffer would map it without a configure (protocol error)
   if (!S.frame_cb) {
     S.frame_cb = wl_surface_frame(S.surface);
     wl_callback_add_listener(S.frame_cb, &frame_listener, NULL);
@@ -848,7 +862,7 @@ static void wl_end_frame(void) {
 }
 
 static void wl_request_frame(void) {
-  if (S.frame_cb || !S.surface) return;
+  if (S.frame_cb || !S.surface || S.hidden) return;
   S.frame_cb = wl_surface_frame(S.surface);
   wl_callback_add_listener(S.frame_cb, &frame_listener, NULL);
   wl_surface_commit(S.surface);
@@ -893,12 +907,34 @@ static void wl_set_icon(const nb_icon_image *images, int count) {
   wl_shm_pool_destroy(pool);  // the buffers keep the memory alive
   munmap(mem, total);
   close(fd);
+  if (S.hidden) return;  // sent with the other attributes when mapped again
   xdg_toplevel_icon_manager_v1_set_icon(S.icon_manager, S.toplevel, S.icon);
   wl_surface_commit(S.surface);  // set_icon is double-buffered
   wl_display_flush(S.display);
 }
 
-static void wl_set_title(const char *title) { if (S.toplevel) xdg_toplevel_set_title(S.toplevel, title); }
+static void wl_set_title(const char *title) {
+  if (!S.toplevel) return;
+  free(S.title);
+  S.title = strdup(title);
+  xdg_toplevel_set_title(S.toplevel, title);
+}
+
+// A null buffer unmaps the toplevel; mapping again is like a new one: attributes, a commit
+// without a buffer, then the compositor's configure (which JS answers with a frame).
+static void wl_set_visible(bool visible) {
+  if (!S.surface || visible == !S.hidden) return;
+  S.hidden = !visible;
+  if (visible) {
+    set_toplevel_attributes();
+  } else {
+    if (S.frame_cb) wl_callback_destroy(S.frame_cb);  // an unmapped surface gets no frame callback
+    S.frame_cb = NULL;
+    wl_surface_attach(S.surface, NULL, 0, 0);
+  }
+  wl_surface_commit(S.surface);
+  wl_display_flush(S.display);
+}
 static void wl_move(void) { if (S.toplevel && S.seat) xdg_toplevel_move(S.toplevel, S.seat, S.last_serial); }
 static void wl_resize(uint32_t edges) { if (S.toplevel && S.seat) xdg_toplevel_resize(S.toplevel, S.seat, S.last_serial, edges); }
 static void wl_minimize(void) { if (S.toplevel) xdg_toplevel_set_minimized(S.toplevel); }
@@ -947,6 +983,7 @@ const nb_linux_backend nb_wayland_backend = {
     .scale = wl_scale,
     .set_cursor = wl_set_cursor,
     .set_title = wl_set_title,
+    .set_visible = wl_set_visible,
     .set_icon = wl_set_icon,
     .move = wl_move,
     .resize = wl_resize,

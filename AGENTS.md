@@ -49,7 +49,7 @@ bun run typecheck           # tsc 7 --noEmit (~0.1 s)
 bun test                    # all tests, no window (~0.1 s)
 bun test test/svg.test.tsx  # one file; -t "pattern" filters by test name
 bun run check:snippets      # typechecks the ts/tsx snippets of README.md and the template docs
-bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll | widgets   # examples
+bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll | widgets | tray   # examples
 bun run dev                 # todo with --watch
 bun run bench               # stress test with NB_STATS=1 (env: N=1000 MODE=one|all|static)
 bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settings ROWS=500
@@ -138,7 +138,8 @@ What cannot be tested automatically is documented when closing the task:
   `doctor` (each check on fake probes, the ELF and `ldd` readers, `diagnostics()` and one spawn),
   `agents` (`agents update` on temp apps: stale, edited, renamed docs, AGENTS.md markers),
   `clipboard`, `window-icon` (`iconImages`: sizes, fitting, the default; `run()` covers the
-  prop in `app`), `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
+  prop and `hide`/`show` in `app`), `dbus` (wire format, connection against `fake-bus.ts`),
+  `tray` (`createTray` against `fake-bus.ts`), `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
   pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
 - Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
@@ -218,7 +219,13 @@ src/                   one module per folder; relative imports with `.js`
     jpeg.ts            baseline/progressive JPEG, CMYK/YCCK, EXIF; identical to libjpeg-turbo
     webp.ts            WebP VP8 (lossy), VP8L, alpha, first animation frame; identical to libwebp
     png-encode.ts      PNG encoder (RGBA, Sub/Up filters, node:zlib) for screenshots
-    icon.ts            app icons: SVG/raster -> square sizes (window icon; DEFAULT_ICON_SVG)
+    icon.ts            app icons: SVG/raster -> square sizes (window and tray icons; DEFAULT_ICON_SVG)
+  dbus/                D-Bus client in TS over node:net (no libdbus)
+    wire.ts            marshalling by signature, message framing (MessageReader)
+    connection.ts      auth, Hello, calls, signal matches, exported objects (properties, introspection)
+  tray/
+    tray.ts            createTray: StatusNotifierItem + menu; setTrayBus (run() only)
+    menu.ts            TrayMenuEntry -> com.canonical.dbusmenu layout
   svg/                 SVG for icons (<Icon>)
     parse.ts           XML, presentation attributes, style="", transform
     render.ts          shapes -> geometry -> bitmap
@@ -256,7 +263,7 @@ test/            one file per module (bun:test; bunfig.toml limits bun test to t
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> named commands
   charts/        tests for src/charts (scales and each chart type)
   fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
-examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
+examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, tray, bench, dashboard (.tsx) + assets/
 cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
                  (+ screenshot-entry.ts: renders an exported component for `--props`/`--export`),
                  icons.ts (`icons add/list`: writes an app's icon imports), doctor.ts (checks
@@ -677,7 +684,7 @@ packages, all with the version from the root `package.json`:
   edge; holding a click on the scrollbar track advances only one page (no repeat).
   Shift+wheel depends on the event's modifiers: on Wayland they only apply while the window
   has keyboard focus.
-- Dark theme does not follow the system (missing the XDG portal over D-Bus); a theme color
+- Dark theme does not follow the system (the XDG portal is reachable now with `src/dbus/`, not read yet); a theme color
   copied as a fixed value (`color={theme.x}`) does not follow the switch. Animations without
   `scale`/`rotate` or declarative `transition`.
 - Screenshots need EGL (Mesa surfaceless or an EGL device); a process that took one cannot
@@ -685,7 +692,8 @@ packages, all with the version from the root `package.json`:
 - No accessibility (AT-SPI), multi-window, IME
   (text-input-v3), DnD, real fractional scaling (KDE 125% renders at 2x and downscales).
 - Window icon on Wayland only with `xdg-toplevel-icon-v1` (KDE 6.1+; GNOME uses the `.desktop`
-  matching the app id). No system tray yet (StatusNotifierItem over D-Bus).
+  matching the app id). Tray only with a StatusNotifierItem host (GNOME needs the AppIndicator
+  extension; no XEmbed tray). The tray's menu is drawn by the panel (no icons in items yet).
 - Window always uses its own decoration (CSD): title bar, move, maximize,
   resize from the edges (6 px); `decorations={false}` swaps the bar for the app's own
   (`dragRegion` + `<WindowControls />`). `xdg-decoration` (SSD on KDE) not yet.

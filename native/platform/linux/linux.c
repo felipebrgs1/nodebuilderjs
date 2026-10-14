@@ -102,6 +102,7 @@ void nb_platform_set_icon(const nb_icon_image *images, int count) { FORWARD(acti
 void nb_platform_move(void) { FORWARD(active->move()); }
 void nb_platform_resize(uint32_t edges) { FORWARD(active->resize(edges)); }
 void nb_platform_set_maximized(bool maximized) { FORWARD(active->set_maximized(maximized)); }
+void nb_platform_set_visible(bool visible) { FORWARD(active->set_visible(visible)); }
 void nb_platform_minimize(void) { FORWARD(active->minimize()); }
 void nb_platform_flush(void) { FORWARD(active->flush()); }
 void nb_platform_clipboard_write(const char *utf8) { FORWARD(active->clipboard_write(utf8)); }

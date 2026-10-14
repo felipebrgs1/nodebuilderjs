@@ -671,6 +671,32 @@ ARGB8888 buffers kept alive until the icon is replaced or the window closes, the
 commit (`set_icon` is double-buffered). Without the protocol nothing is sent and the compositor
 falls back to the `.desktop` that matches the app id. X11 writes `_NET_WM_ICON`.
 
+**Hiding** (`windowControls.hide/show`, `nb_platform_set_visible`): Wayland attaches a null
+buffer, which unmaps the toplevel and discards its attributes, so `wayland.c` keeps the title,
+app id and icon and sends them again before the map's first commit; the compositor's configure
+then makes JS draw. A pending frame callback is dropped (none comes while unmapped) and
+`end_frame` refuses to swap while hidden (a buffer would map it without a configure). X11
+withdraws the window (`XWithdrawWindow`, so it leaves the taskbar) and maps it again; MapNotify
+sends the configure. In JS, hiding clears `configured`, so nothing renders until that configure.
+
+## D-Bus and the system tray
+
+`src/dbus/` is a D-Bus client in TypeScript, on `node:net` (no libdbus, nothing in C, no fd in
+the pump): `wire.ts` marshals values by signature and frames messages (writes little endian,
+reads both), `connection.ts` does the EXTERNAL auth, `Hello`, calls with replies, signal matches
+and exported objects (methods, read-only properties with `PropertiesChanged`, introspection).
+Tests run against `test/fake-bus.ts`, a bus in the test process on a temp unix socket.
+
+`src/tray/` serves a StatusNotifierItem at `/StatusNotifierItem` and its menu
+(`com.canonical.dbusmenu`) at `/MenuBar`, under the name `org.kde.StatusNotifierItem-<pid>-<n>`,
+and registers it with `org.kde.StatusNotifierWatcher`; a `NameOwnerChanged` of the watcher (the
+panel restarting) registers it again. `createTray`'s options are read in effects: a change
+updates the state and emits `NewIcon`/`NewToolTip`/`NewTitle` or `LayoutUpdated` (with a new
+revision; the menu is renumbered depth-first on each change). Handlers run in a microtask,
+batched, outside the D-Bus dispatch, so their errors surface like any event handler's. Only
+`run()` points trays at the session bus (`setTrayBus`): in tests and screenshots `createTray`
+connects to nothing and `available()` stays false.
+
 ### Clipboard
 
 Text only, through the `nb_platform_clipboard_write/read` contract. Reading is asynchronous on

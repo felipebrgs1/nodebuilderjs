@@ -619,6 +619,16 @@ static napi_value js_set_maximized(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
+static napi_value js_set_visible(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  bool visible;
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  CHECK(napi_get_value_bool(env, argv[0], &visible));
+  if (g_open) nb_platform_set_visible(visible);
+  return NULL;
+}
+
 static napi_value js_request_frame(napi_env env, napi_callback_info info) {
   if (g_open) nb_platform_request_frame();
   return NULL;
@@ -727,6 +737,7 @@ NAPI_MODULE_INIT() {
   napi_property_descriptor props[] = {
       {"open", NULL, js_open, NULL, NULL, NULL, napi_default, NULL},
       {"setIcon", NULL, js_set_icon, NULL, NULL, NULL, napi_default, NULL},
+      {"setVisible", NULL, js_set_visible, NULL, NULL, NULL, napi_default, NULL},
       {"close", NULL, js_close, NULL, NULL, NULL, napi_default, NULL},
       {"render", NULL, js_render, NULL, NULL, NULL, napi_default, NULL},
       {"renderOffscreen", NULL, js_render_offscreen, NULL, NULL, NULL, napi_default, NULL},
