@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: nodebuilder widgets, style props and layout (gradient backgrounds, per-corner radius, percentage sizes, responsive Grid minColumnWidth, password fields, window-wide keys (Window onKeyDown, focusable containers), onMount, Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, TextArea (multi-line, selection, undo), Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking (zIndex), clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
+description: nodebuilder widgets, style props and layout (gradient backgrounds, per-corner radius, percentage sizes, responsive Grid minColumnWidth, password fields, window-wide keys (Window onKeyDown, focusable containers), onMount, Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, TextArea (multi-line, selection, undo), RichText (styled spans, links), Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking (zIndex), clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
 ---
 
 # UI with nodebuilder
@@ -17,6 +17,7 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 | `Column` / `Row` / `Box` | flex container (column, row; `Box` is a column) | style + events |
 | `Grid` | children in rows of equal-width cells (cards, covers, galleries) | `columns`, `gap`, `rowGap` (default `gap`); see "Layout rules" |
 | `Scroll` | scrolling: vertical (default), `horizontal` or `horizontal vertical` (both) | needs `grow={1}` or a size; see "Scrolling" below |
+| `RichText` | one paragraph of styled spans (markdown, links inside a sentence) | `spans` (array or accessor) of strings or `{ text, color, size, bold, weight, italic, family, letterSpacing, underline, background, onClick }`, `lineHeight`, `textAlign`; a span with `onClick` is a link (pointer cursor; other clicks go to the parent) |
 | `Text` | text; wraps at spaces to fit the width | children (`{count}`, `"a"`) or `text={() => ...}`, `wrap` (default `true`), `maxLines` (truncates with "…"), `textAlign`, `lineHeight`, `underline`, `selectable` |
 | `Image` | PNG, JPEG, WebP, AVIF | see the `nodebuilder-images` skill |
 | `Icon` | SVG icon (Lucide, Phosphor), color inherited like text | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icons` |
@@ -596,7 +597,7 @@ const [query, setQuery] = createSignal("");
 ```
 - Animation: see the next section.
 - Not available yet: theme following the system, `scale`/`rotate`, IME, multiple windows,
-  rich text (one style per `Text`).
+  selecting `RichText`.
 
 ## Animation
 

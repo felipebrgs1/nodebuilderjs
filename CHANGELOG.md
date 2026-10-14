@@ -32,6 +32,9 @@ From a second report of the Discord clone (with 0.4.0).
 - `TextArea`: multi-line input that wraps (splitting words longer than a line), grows with its
   content (`rows` minimum), keeps the caret in view in a `Scroll` or scrolls itself with a
   `height`, with the same editing keys and undo.
+- `RichText`: a paragraph of spans with their own font, size, color, background and underline,
+  wrapping across spans on a shared baseline; a span with `onClick` is a link (pointer cursor).
+- The cursor follows what an `onPointerMove` handler sets at once (it waited for the next move).
 - `<Canvas measure={(width) => height}>` (a canvas that sizes itself, e.g. a wrapped document
   in a `Scroll`) and `g.visibleRect` (the part on screen; reading it redraws on scroll).
 - Key names are normalized: Shift+Tab is `"Tab"` with `shift`, `Prior`/`Next` are

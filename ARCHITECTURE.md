@@ -654,6 +654,15 @@ layout in progress. If the handlers invalidated anything, `layout()` places the 
 in a test, right after `relayout()`); a handler still changing sizes after that is reported
 among the layout warnings as an `onResize` loop.
 
+### Rich text
+
+`RichText` measures each span's words and spaces once per text and font (the same
+`measureText` as `Text`), then breaks lines greedily over those pieces, so a line may change
+font mid-way; consecutive pieces of one span become one TEXT command. A line is as tall as its
+tallest span, and each run is drawn at `line ascent - its ascent`, so they share a baseline.
+Links are spans with `onClick`: the node takes `onClick` only when one exists, runs the span's
+under the pointer and hands any other click to the nearest ancestor with an `onClick`.
+
 ### Text editing
 
 `TextField` and `TextArea` share `widgets/text-edit.ts`. The value belongs to the app (`value`

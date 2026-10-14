@@ -145,6 +145,8 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
   (TTF, OTF/CFF, TTC, WOFF, WOFF2, variable; CSS weight/slant matching), synthetic bold and
   italic, `fontFeatures`, `fontVariations`, `fontFamilies()`. Everything still missing for
   fonts (bugs, core, API, CLI, tests, order of work) is mapped in [FONTS.md](FONTS.md).
+- ~~Rich text (several styles in one paragraph)~~ **done** (2026-10-14: `RichText`). Missing:
+  selecting it.
 - ~~Selection, copy/cut and undo/redo in `TextField`; a multi-line field~~ **done**
   (2026-10-14: `TextArea`, `selection`/`onSelectionChange`). Missing: primary selection
   (middle-click paste), Shift+click and arrows to extend `<Text selectable>`'s selection

@@ -747,6 +747,27 @@ import { Text } from "@nodebuilderjs/core";
 <Text italic>An aside</Text>;
 ```
 
+`<RichText>` is one paragraph made of spans, each with its own style, wrapping across them
+(rendered markdown, chat messages, a link in the middle of a sentence):
+
+```tsx
+import { RichText, theme } from "@nodebuilderjs/core";
+
+<RichText spans={[
+  "Run ", { text: "bun test", family: "monospace", background: "#8882" }, " or read ",
+  { text: "the docs", color: theme.accent.base, underline: true, onClick: (e) => console.log(e.ctrl) },
+  ". ", { text: "Bold", bold: true }, " and ", { text: "italic", italic: true }, " words.",
+]} />;
+```
+
+- A span is a string or `{ text, color, size, bold, weight, italic, family, letterSpacing,
+  underline, background, onClick }`; unset fields come from the inherited style, as in `Text`.
+  `spans` may be an accessor. `lineHeight` and `textAlign` work as in `Text`.
+- Spans of different sizes share a baseline. A span with `onClick` is a link: the pointer
+  cursor shows over it and a click on it runs it (with the modifiers, for Ctrl+click); a click
+  elsewhere goes to the parent's `onClick`.
+- Not selectable yet, and a word longer than the line overflows, as in `Text`.
+
 ### Fonts
 
 `fontFamily` takes a CSS family list, inherited like `fontSize`: fonts the app registers,

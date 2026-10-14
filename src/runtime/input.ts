@@ -220,9 +220,14 @@ export function createInput(root: UINode, host: InputHost) {
     const bar = pointer ? barUnder(next[0], pointer.x, pointer.y) : null;
     if (barPress) setActiveBar(barPress.node, barPress.axis, !!barPress.drag);
     else setActiveBar(bar ? next[0]! : null, bar?.axis ?? null, false);
+    updateCursor(bar);
+  }
+
+  /** The cursor for the pointer's spot: resize edges, a scrollbar, or the nearest node that sets one. */
+  function updateCursor(bar = pointer ? barUnder(hoverPath[0], pointer.x, pointer.y) : null) {
     if (!pointer) return;
     const edges = resizeEdges(pointer.x, pointer.y);
-    const shape = bar || barPress ? "default" : next.find((n) => n.style.cursor)?.style.cursor;
+    const shape = bar || barPress ? "default" : hoverPath.find((n) => n.style.cursor)?.style.cursor;
     setCursor(edges ? EDGE_CURSORS[edges]! : (shape ?? "default"));
   }
 
@@ -340,6 +345,7 @@ export function createInput(root: UINode, host: InputHost) {
         n.handlers.onPointerMove?.(at(n, e));
         if (e.stopped()) break;
       }
+      updateCursor(); // a handler may have changed it (a link under the pointer inside a RichText)
     },
 
     pointerLeave() {

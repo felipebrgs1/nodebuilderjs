@@ -137,7 +137,8 @@ What cannot be tested automatically is documented when closing the task:
   `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
   `doctor` (each check on fake probes, the ELF and `ldd` readers, `diagnostics()` and one spawn),
   `agents` (`agents update` on temp apps: stale, edited, renamed docs, AGENTS.md markers),
-  `text-area` (wrapping, caret across lines, scrolling to the caret), `clipboard`, `window-icon` (`iconImages`: sizes, fitting, the default; `run()` covers the
+  `text-area` (wrapping, caret across lines, scrolling to the caret), `rich-text` (spans: fonts,
+  wrapping across spans, baseline, links), `clipboard`, `window-icon` (`iconImages`: sizes, fitting, the default; `run()` covers the
   prop and `hide`/`show` in `app`), `dbus` (wire format, connection against `fake-bus.ts`),
   `tray` (`createTray` against `fake-bus.ts`), `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
   pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
@@ -213,6 +214,7 @@ src/                   one module per folder; relative imports with `.js`
     overlay.ts         <Overlay>: layer above the window (marker in the tree + root.layers)
     text-selection.ts  character positions, word under the click (Text selectable; TextField, TextArea)
     text-edit.ts       EditSession (selection, undo/redo), editKey (keys every text input shares), editable (border, focus ring, caret blink, selection props)
+    rich-text.ts       RichText: spans with their own font/color/background/underline/onClick, wrapped across spans, shared baseline
     text-area.ts       TextArea: multi-line (wrapText with breakWords), caret across lines, scrolls to the caret
   image/
     source.ts          image sources: cache by path, usage count, GPU handle

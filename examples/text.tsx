@@ -1,9 +1,9 @@
 // Text: paragraphs that wrap, alignment, line spacing, one-line truncation with an
 // ellipsis, underlines (and a link underlined on hover), font weights, italics, letter
 // spacing, font families (generic ones and a picker of the installed ones), OpenType features
-// and a selectable paragraph cut at two lines.
+// a selectable paragraph cut at two lines, and a RichText paragraph (bold, italic, inline code, a link).
 
-import { Card, Column, Row, Select, Text, Window, createSignal, fontFamilies, run, theme } from "@nodebuilderjs/core";
+import { Card, Column, RichText, Row, Select, Text, Window, createSignal, fontFamilies, run, theme } from "@nodebuilderjs/core";
 
 const paragraph =
   "O nodebuilder desenha a interface com a GPU, sem navegador. Este parágrafo é longo de propósito, para quebrar em várias linhas dentro do card.";
@@ -22,10 +22,18 @@ const installed = fontFamilies().map((family) => ({ value: family, label: family
 const [family, setFamily] = createSignal<string | undefined>(installed.find((f) => /^(DejaVu Serif|Noto Serif|Liberation Serif)$/.test(f.value))?.value);
 
 run(() => (
-  <Window title="Text" width={560} height={760}>
+  <Window title="Text" width={560} height={860}>
     <Column grow={1} padding={20} gap={12}>
       <Card>
         <Text>{paragraph}</Text>
+      </Card>
+      <Card>
+        <RichText spans={[
+          "RichText mixes ", { text: "bold", bold: true }, ", ", { text: "italic", italic: true }, " and ",
+          { text: "inline code", family: "monospace", background: "#8882" }, " in one paragraph, with ",
+          { text: "a link", color: theme.accent.base, underline: true, onClick: () => console.log("link") },
+          " that wraps across spans like any text.",
+        ]} />
       </Card>
       <Row gap={12}>
         <Card grow={1}>
