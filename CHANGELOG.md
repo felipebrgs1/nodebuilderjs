@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-10-14)
 
 ### New
 - `nodebuilder doctor` (`bun run doctor` in new apps): checks Bun, the native core (found,
@@ -64,6 +64,8 @@
     TypeScript.
 
 ### Changed
+- The command buffer and `Native` changed (below): core 0.4 needs `@nodebuilderjs/linux-x64`
+  0.4, which it installs with it. `nodebuilder doctor` reports a mismatch.
 - Command buffer: RECT, SHADOW and CLIP carry four corner radii (top left, top right, bottom
   right, bottom left) instead of one: RECT is 17 floats, SHADOW 13, CLIP 8. `Painter.rect`,
   `shadow` and `clip` take a `Radius` (a number or the four). The renderer's vertex has one more

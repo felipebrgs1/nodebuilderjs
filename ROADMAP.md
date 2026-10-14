@@ -3,7 +3,7 @@
 Para onde o nodebuilder vai. A ordem dentro de cada seção é a prioridade atual; não há
 datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebuilderjs/issues).
 
-## Already shipped (0.3)
+## Already shipped (0.4)
 
 - Reatividade estilo SolidJS (signals, memos, effects, ownership), JSX próprio, `<For>` e `<Show>`
 - Controle de fluxo completo (2026-10-12): `<Switch>`/`<Match>`, `<Index>` (lista por
@@ -36,6 +36,9 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   spacing, `underline`, font fallback and color emoji, `<Icon fill>`, `nodebuilder icons add`,
   overflow warnings, frame tracing (`NB_TRACE=frames`) and testing helpers (`findByLabel`,
   `layoutWarnings`, `useRealTextMetrics`, `screenshot`)
+- 0.4 (2026-10-14): font families and app fonts (`fontFamily`, `registerFont`, OpenType
+  features and variable axes), paged glyph atlases, `nodebuilder doctor` and the fixes from a
+  user report below
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 - `nodebuilder doctor` (2026-10-14): checks the machine (runtime, native core and system
   libraries, display, keyboard, GL, fonts, libheif) and prints the command that fixes each

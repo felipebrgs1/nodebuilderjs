@@ -25,7 +25,7 @@ function App() {
 run(() => <App />);
 ```
 
-> **Status:** version 0.2, experimental. The API may still change. See the [roadmap](ROADMAP.md).
+> **Status:** version 0.4, experimental. The API may still change. See the [roadmap](ROADMAP.md).
 
 ## Getting started
 
