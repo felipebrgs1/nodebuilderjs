@@ -814,14 +814,16 @@ SCENE=dashboard scripts/compare.sh "electron" 3 5 -- \
 SCENE=dashboard scripts/compare.sh "tauri" 3 5 -- compare/tauri/target/release/nodebuilder-tauri-baseline
 ```
 
-Flutter (`compare/flutter/`) and egui (`compare/egui/`) have ports of both scenes, with the
-same data and the same per-frame updates:
+Flutter (`compare/flutter/`), egui (`compare/egui/`) and GPUI (`compare/gpui/`, Zed's
+framework) have ports of both scenes, with the same data and the same per-frame updates:
 
 ```sh
 (cd compare/flutter && /opt/flutter/bin/flutter build linux --release)
 scripts/compare.sh "flutter" 3 5 -- compare/flutter/build/linux/x64/release/bundle/nodebuilder_flutter_baseline
 (cd compare/egui && cargo build --release)
 scripts/compare.sh "egui" 3 5 -- compare/egui/target/release/nodebuilder-egui-baseline
+(cd compare/gpui && cargo build --release)
+scripts/compare.sh "gpui" 3 5 -- compare/gpui/target/release/nodebuilder-gpui-baseline
 ```
 
 On Linux, Tauri and Flutter do not go above 60 fps; to compare the same work, run the others
@@ -841,6 +843,27 @@ the README, before culling; fps · CPU · PSS in MB):
 | 3000 cells, all change | 50 · 173% · 427 | 45 · 81% · 128 | 51 · 96% · 190 |
 
 After culling, in the same session: table from 78 to 104 fps (CPU 82% → 51%).
+
+GPUI 0.2.2 (Zed's framework; Blade/Vulkan on Linux) against nodebuilder only, same session
+(2026-10-14; fps · CPU · PSS in MB). GPUI has no text input, so the dashboard's inputs are
+static boxes; every row is built, as in the other ports (Zed itself uses `uniform_list`, which
+only builds the visible rows):
+
+| Scene | GPUI (60 cap) | nodebuilder (60 cap) | GPUI (120 cap) | nodebuilder (120 cap) |
+|---|---|---|---|---|
+| Dashboard: overview | 60 · 31% · 74 | 58 · 38% · 147 | 114 · 37% · 73 | 109 · 47% · 146 |
+| Dashboard: table | 27 · 91% · 131 | 56 · 50% · 199 | 27 · 92% · 131 | 108 · 55% · 215 |
+| Dashboard: logs | 59 · 64% · 92 | 56 · 40% · 169 | 70 · 71% · 92 | 110 · 50% · 174 |
+| Dashboard: settings | 59 · 24% · 73 | 59 · 27% · 137 | 116 · 34% · 72 | 112 · 36% · 140 |
+| Dashboard: `CYCLE=30` | 43 · 65% · 134 | 57 · 44% · 231 | 57 · 76% · 134 | 106 · 49% · 220 |
+| 1000 static cells | 3% · 85 | 0.4% · 132 | | |
+| 1000 cells, 1 text changes | 59 · 42% · 85 | 59 · 36% · 165 | 103 · 67% · 85 | 106 · 45% · 154 |
+| 1000 cells, all change | 25 · 91% · 87 | 57 · 49% · 170 | 26 · 91% · 86 | 110 · 58% · 193 |
+| 3000 cells, all change | 9 · 97% · 114 | 51 · 75% · 242 | 9 · 98% · 115 | 74 · 99% · 266 |
+
+GPUI is single-threaded on the UI side: where it falls behind it sits at one full core.
+Building the view is cheap (1.3 ms/frame on the table); the rest is its own layout, text and
+paint over ~3500 text elements per frame. It uses about half of nodebuilder's memory.
 
 Things to watch when measuring:
 - Tauri took more than 3 s to become idle after opening: use a warm-up of ≥ 8 s for static
