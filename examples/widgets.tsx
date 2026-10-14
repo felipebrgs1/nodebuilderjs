@@ -27,7 +27,7 @@ function Controls() {
   const [city, setCity] = createSignal<string | undefined>(initial === "select" ? "sp" : undefined);
   const [confirm, setConfirm] = createSignal(initial === "dialogo");
   return (
-    <Window title="Widgets" width={680} height={640}>
+    <Window title="Widgets" width={680} height={720}>
       <Column grow={1} padding={20} gap={16}>
       <Tabs
         value={tab}
