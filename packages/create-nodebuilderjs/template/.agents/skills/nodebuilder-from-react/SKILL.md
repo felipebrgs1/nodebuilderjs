@@ -31,7 +31,7 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | `list.map((x, i) => ...)` with `key={i}` (list of primitives) | `<Index each={list}>{(item, i) => ...}</Index>`; `item` is an accessor (`item()`), `i` is a number |
 | `cond && <X/>` | `<Show when={() => cond()}><X/></Show>` |
 | `cond ? <A/> : <B/>`, `switch` that returns JSX | `<Show when={...} fallback={<B/>}><A/></Show>`; several cases: `<Switch fallback={...}><Match when={() => s() === "a"}>...</Match></Switch>` |
-| `user && <X name={user.name}/>` | `<Show when={user}>{(u) => <X name={u().name} />}</Show>` (same as in Solid) |
+| `user && <X name={user.name}/>` | `<Show when={user}>{(u) => <X name={u().name} />}</Show>` (same as in Solid). Not like Solid: there is no compiler, so `<Show when={user}><Text>{user()!.name}</Text></Show>` evaluates `user()!.name` right away, even when `user()` is null; use the `{(u) => ...}` child or `{() => user()!.name}` |
 | error boundary (`componentDidCatch`, `react-error-boundary`) | `<ErrorBoundary fallback={(error, reset) => ...}>` (as in Solid); catches errors on creation and in effects, not in `onClick` code |
 | `createContext` / `useContext` | the same: `createContext(default)`, `<Ctx.Provider value={...}>`, `useContext(Ctx)`; a value that changes goes as an accessor |
 | `useRef` + `ref={r}` / `el.focus()` | `ref={(el) => ...}` on any widget: `el.focus()`, `el.blur()`, `el.scrollTo(y)`, `el.width` |
@@ -51,7 +51,7 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | CSS `flex-wrap: wrap` (chips, tags), `row-gap` | `<Row wrap gap={6} rowGap={8}>` (lines start at the top: no `align-content`) |
 | CSS `flex: 1 1 0` (equal or 1:1:2 columns in one row) | `width={0} grow={1}` (`grow={2}`...) on each child |
 | CSS `aspect-ratio: 16 / 9`, square thumbnails | `aspectRatio={16 / 9}`; `aspectRatio={1}` in `Grid` cells gives square cells |
-| CSS `align-self`, `position: absolute; inset: 0` / `right: 8px` | `alignSelf`, `position="absolute" left={0} top={0} right={0} bottom={0}` / `right={8}` (inside a `Scroll` it scrolls with the content) |
+| CSS `align-self`, `position: absolute; inset: 0` / `right: 8px` | `alignSelf`, `position="absolute" left={0} top={0} right={0} bottom={0}` / `right={8}`: from the parent's padding box, as in CSS (the parent is always the containing block; no `position: relative` needed); inside a `Scroll` it scrolls with the content |
 | CSS `background: linear-gradient(180deg, #1db954, #121212 60%)` | `background={{ linear: ["#1db954", ["#121212", 0.6]], angle: 180 }}` (linear only; on `<canvas>`: `g.linearGradient(x0, y0, x1, y1, stops)`) |
 | CSS `opacity`, `transform: translate(...)` | props `opacity`, `translateX`, `translateY` (no `scale`/`rotate`) |
 | `transition`, framer-motion, react-spring, `AnimatePresence` | `createTween`, `createPresence` (+ `<Show when={p.mounted}>`), `animate` |

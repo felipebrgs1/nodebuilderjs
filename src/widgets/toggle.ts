@@ -51,7 +51,7 @@ export function Toggle(
   const toggle = () => !disabled() && props.onChange(!untrack(props.checked));
   ownHandler(row, "onClick", toggle);
   ownHandler(row, "onKeyDown", (e) => {
-    if (e.key === "space" || e.key === "Return" || e.key === "KP_Enter") {
+    if (e.key === "space" || e.key === "Return") {
       toggle();
       e.stop();
     }

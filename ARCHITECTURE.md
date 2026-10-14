@@ -50,7 +50,7 @@ The model is SolidJS's, implemented from scratch in `src/reactive/signals.ts`:
   wrote finishes before the ones it triggered (it never runs reentrantly, in the middle of
   itself), and an update cycle is detected by the 100 000-run limit instead of blowing the
   stack (it throws "reactive update loop detected"). An error that no scope handles does not stall the queue: the remaining pending
-  effects run and the first error is rethrown at the end, to whoever wrote the signal.
+  effects run (in a `finally`) and the first error goes on to whoever wrote the signal.
 - **Ownership:** everything created inside an effect or `createRoot` is disposed of along
   with it (`onCleanup`). That is how switching tabs, for example, releases everything from the old tab.
 - **Context** (`reactive/context.ts`) also lives in the owner tree: the `Provider` creates a
@@ -61,7 +61,9 @@ The model is SolidJS's, implemented from scratch in `src/reactive/signals.ts`:
 - **Errors** also travel up the owner tree. `catchError(fn, onError)` creates a scope with
   a handler (`Owner.onError`); `execute`, which runs every effect and memo, catches whatever the
   run throws and hands it to the nearest handler up the owners (passing through the roots of
-  `<For>`/`<Index>`, like context). With no handler, it rethrows as before. The handler runs
+  `<For>`/`<Index>`, like context). With no handler up the owners, `execute` does not catch at
+  all (`try`/`finally`): `bun test` and Bun's error printer show the frames of the last `throw`,
+  so catching and rethrowing would put the framework's frame on top instead of the app's. The handler runs
   with writes deferred until the end of the current update, so that the failing scope is not
   disposed of in the middle of a computation that is still running.
   `<ErrorBoundary>` (`reactive/error-boundary.ts`) creates the children inside a `catchError`:
@@ -183,7 +185,8 @@ its last value, or its content the first time, as CSS does for percentages in in
 least that width as the inner width allows (capped by `columns`); without a width (the natural
 size) every cell goes in one row, so the grid "wraps" (height depends on width) and can shrink
 down to one column. Absolute children are placed after the
-in-flow ones, from the content box and minus the scroll offset (they scroll with the content);
+in-flow ones, from the padding box (inside the border, ignoring the padding, as in CSS; their
+percentages too) and minus the scroll offset (they scroll with the content);
 both edges of an axis without a size stretch them (`absoluteSpan`), and a wrapping child gets
 its height at that width (`heightAt`).
 
@@ -639,7 +642,13 @@ the event miss silently.
 Reactivity). Keys bubble from the focused node; with nothing focused they start at the
 topmost modal layer, or else at the root's top nodes (the `Window`), so a window-level
 `onKeyDown` sees everything nothing below took. A control's own key handler is chained after
-the app's (`ownHandler`), and the app's `stop()` skips it.
+the app's (`ownHandler`), and the app's `stop()` skips it. Key releases (`onKeyUp`) take the same
+path. Key names are normalized once, in `createInput` (`normalizeKey`): xkb aliases
+(`ISO_Left_Tab`, `Prior`/`Next`, the keypad's navigation keys) become one name, and with Ctrl
+or Alt a letter is lowercase; widgets compare only the plain names. Every input event carries the
+modifiers (the addon reads xkb's state on Wayland, the event's `state` on X11); a right press
+ends with the innermost `onContextMenu`, and the Menu key or Shift+F10 opens the focused node's
+at its bottom-left corner.
 
 `onResize` is collected during `layout()` and delivered in a batch after the whole tree has
 been positioned, so that the handler can change state (and the tree) without disrupting the
@@ -647,6 +656,30 @@ layout in progress. If the handlers invalidated anything, `layout()` places the 
 (at most two extra passes), so nodes they create have boxes before the frame is painted (and
 in a test, right after `relayout()`); a handler still changing sizes after that is reported
 among the layout warnings as an `onResize` loop.
+
+### Rich text
+
+`RichText` measures each span's words and spaces once per text and font (the same
+`measureText` as `Text`), then breaks lines greedily over those pieces, so a line may change
+font mid-way; consecutive pieces of one span become one TEXT command. A line is as tall as its
+tallest span, and each run is drawn at `line ascent - its ascent`, so they share a baseline.
+Links are spans with `onClick`: the node takes `onClick` only when one exists, runs the span's
+under the pointer and hands any other click to the nearest ancestor with an `onClick`.
+
+### Text editing
+
+`TextField` and `TextArea` share `widgets/text-edit.ts`. The value belongs to the app (`value`
++ `onInput`); an `EditSession` keeps what lives around it: the selection (`anchor`/`focus`, in
+code points), an undo stack of `{ value, anchor, focus }` snapshots (consecutive typing or
+deleting pushes one; a caret move, a space or a paste starts a new step) and the last value it
+emitted, so a different value means the app set it (the history is dropped, the selection
+clamped). `editKey` handles the keys every text input shares and asks the widget only for line
+navigation (`LineNavigation`: line bounds, the position above or below at an x, a page), which
+`TextArea` answers from its wrapped lines; a single-line field leaves it out. `TextArea` wraps
+with `wrapText(..., { breakWords: true })` at its content width, measures as height-for-width
+at any width (`fluidMeasure`), draws only the lines in `visibleRegion`, and after a change
+asks `scrollIntoView` for the caret's region, so a `Scroll` around it follows on the next
+layout; a height of its own that cuts the content makes it scroll itself in paint.
 
 ## Wayland and X11
 
@@ -661,6 +694,41 @@ the pointer took the press (clickable, focusable or with `onPointerDown`). Custo
 (`decorations={false}`) use the same path. On X11, the
 window manager's decoration is turned off and move/maximize use EWMH messages; without a
 compositor, the window loses transparency and rounded corners.
+
+**Window icon.** `src/image/icon.ts` turns `<Window icon>` (or the default, the same SVG
+`nodebuilder package` installs) into square straight-alpha images at 16–256 px: an SVG is
+rasterized at each size, a raster image is centered and area-averaged in premultiplied alpha,
+never scaled up. `run()` sends them once after `open()` (`nb_platform_set_icon`). Wayland uses
+`xdg-toplevel-icon-v1` (vendored in `protocols/`): one memfd `wl_shm` pool, premultiplied
+ARGB8888 buffers kept alive until the icon is replaced or the window closes, then a surface
+commit (`set_icon` is double-buffered). Without the protocol nothing is sent and the compositor
+falls back to the `.desktop` that matches the app id. X11 writes `_NET_WM_ICON`.
+
+**Hiding** (`windowControls.hide/show`, `nb_platform_set_visible`): Wayland attaches a null
+buffer, which unmaps the toplevel and discards its attributes, so `wayland.c` keeps the title,
+app id and icon and sends them again before the map's first commit; the compositor's configure
+then makes JS draw. A pending frame callback is dropped (none comes while unmapped) and
+`end_frame` refuses to swap while hidden (a buffer would map it without a configure). X11
+withdraws the window (`XWithdrawWindow`, so it leaves the taskbar) and maps it again; MapNotify
+sends the configure. In JS, hiding clears `configured`, so nothing renders until that configure.
+
+## D-Bus and the system tray
+
+`src/dbus/` is a D-Bus client in TypeScript, on `node:net` (no libdbus, nothing in C, no fd in
+the pump): `wire.ts` marshals values by signature and frames messages (writes little endian,
+reads both), `connection.ts` does the EXTERNAL auth, `Hello`, calls with replies, signal matches
+and exported objects (methods, read-only properties with `PropertiesChanged`, introspection).
+Tests run against `test/fake-bus.ts`, a bus in the test process on a temp unix socket.
+
+`src/tray/` serves a StatusNotifierItem at `/StatusNotifierItem` and its menu
+(`com.canonical.dbusmenu`) at `/MenuBar`, under the name `org.kde.StatusNotifierItem-<pid>-<n>`,
+and registers it with `org.kde.StatusNotifierWatcher`; a `NameOwnerChanged` of the watcher (the
+panel restarting) registers it again. `createTray`'s options are read in effects: a change
+updates the state and emits `NewIcon`/`NewToolTip`/`NewTitle` or `LayoutUpdated` (with a new
+revision; the menu is renumbered depth-first on each change). Handlers run in a microtask,
+batched, outside the D-Bus dispatch, so their errors surface like any event handler's. Only
+`run()` points trays at the session bus (`setTrayBus`): in tests and screenshots `createTray`
+connects to nothing and `available()` stays false.
 
 ### Clipboard
 
@@ -714,6 +782,23 @@ is most useful when things are broken:
 Each check has an id, a status (`ok`, `warn`, `fail`, `off` for an optional feature, `skip`), a
 title, an optional detail and a fix (a command for the detected package manager, from
 `/etc/os-release`). `--json` prints them as they are.
+
+## Agent docs in apps (`nodebuilder agents update`)
+
+`bun create` copies the template's `AGENTS.md` and `.agents/skills` into the app, where they
+describe that version of the framework. Core ships the same files (`package.json#files`
+includes them), and `cli/agents.ts` brings an app's copies to the installed version. It has
+to tell a stale doc (replace it) from one the app's authors edited (keep it) with no record in
+the app, since apps made before 0.4.1 have none: `cli/agents-history.json` holds the SHA-256 of
+every version of every template doc ever committed (`scripts/agents-history.ts`, from
+`git log --all -m --raw`; `-m` because a version can come out of a merge resolution, and the
+old side of each change counts too), regenerated by `npm:build`. Content in the history is the
+framework's; anything else is the app's. Docs at paths that left the template (skills renamed
+from Portuguese) are removed when unedited, with their `.claude/skills` links. In `AGENTS.md`
+the framework owns only the block between the `nodebuilder:begin`/`end` markers (its hash is
+the block's); an `AGENTS.md` from before the markers that starts with a released version keeps
+whatever follows it (the app's appended notes) after the new block. The doctor runs the same
+plan in a folder that depends on `@nodebuilderjs/core` and warns when docs are behind.
 
 ## Porting to other systems
 
@@ -797,14 +882,16 @@ SCENE=dashboard scripts/compare.sh "electron" 3 5 -- \
 SCENE=dashboard scripts/compare.sh "tauri" 3 5 -- compare/tauri/target/release/nodebuilder-tauri-baseline
 ```
 
-Flutter (`compare/flutter/`) and egui (`compare/egui/`) have ports of both scenes, with the
-same data and the same per-frame updates:
+Flutter (`compare/flutter/`), egui (`compare/egui/`) and GPUI (`compare/gpui/`, Zed's
+framework) have ports of both scenes, with the same data and the same per-frame updates:
 
 ```sh
 (cd compare/flutter && /opt/flutter/bin/flutter build linux --release)
 scripts/compare.sh "flutter" 3 5 -- compare/flutter/build/linux/x64/release/bundle/nodebuilder_flutter_baseline
 (cd compare/egui && cargo build --release)
 scripts/compare.sh "egui" 3 5 -- compare/egui/target/release/nodebuilder-egui-baseline
+(cd compare/gpui && cargo build --release)
+scripts/compare.sh "gpui" 3 5 -- compare/gpui/target/release/nodebuilder-gpui-baseline
 ```
 
 On Linux, Tauri and Flutter do not go above 60 fps; to compare the same work, run the others
@@ -824,6 +911,27 @@ the README, before culling; fps · CPU · PSS in MB):
 | 3000 cells, all change | 50 · 173% · 427 | 45 · 81% · 128 | 51 · 96% · 190 |
 
 After culling, in the same session: table from 78 to 104 fps (CPU 82% → 51%).
+
+GPUI 0.2.2 (Zed's framework; Blade/Vulkan on Linux) against nodebuilder only, same session
+(2026-10-14; fps · CPU · PSS in MB). GPUI has no text input, so the dashboard's inputs are
+static boxes; every row is built, as in the other ports (Zed itself uses `uniform_list`, which
+only builds the visible rows):
+
+| Scene | GPUI (60 cap) | nodebuilder (60 cap) | GPUI (120 cap) | nodebuilder (120 cap) |
+|---|---|---|---|---|
+| Dashboard: overview | 60 · 31% · 74 | 58 · 38% · 147 | 114 · 37% · 73 | 109 · 47% · 146 |
+| Dashboard: table | 27 · 91% · 131 | 56 · 50% · 199 | 27 · 92% · 131 | 108 · 55% · 215 |
+| Dashboard: logs | 59 · 64% · 92 | 56 · 40% · 169 | 70 · 71% · 92 | 110 · 50% · 174 |
+| Dashboard: settings | 59 · 24% · 73 | 59 · 27% · 137 | 116 · 34% · 72 | 112 · 36% · 140 |
+| Dashboard: `CYCLE=30` | 43 · 65% · 134 | 57 · 44% · 231 | 57 · 76% · 134 | 106 · 49% · 220 |
+| 1000 static cells | 3% · 85 | 0.4% · 132 | | |
+| 1000 cells, 1 text changes | 59 · 42% · 85 | 59 · 36% · 165 | 103 · 67% · 85 | 106 · 45% · 154 |
+| 1000 cells, all change | 25 · 91% · 87 | 57 · 49% · 170 | 26 · 91% · 86 | 110 · 58% · 193 |
+| 3000 cells, all change | 9 · 97% · 114 | 51 · 75% · 242 | 9 · 98% · 115 | 74 · 99% · 266 |
+
+GPUI is single-threaded on the UI side: where it falls behind it sits at one full core.
+Building the view is cheap (1.3 ms/frame on the table); the rest is its own layout, text and
+paint over ~3500 text elements per frame. It uses about half of nodebuilder's memory.
 
 Things to watch when measuring:
 - Tauri took more than 3 s to become idle after opening: use a warm-up of ≥ 8 s for static

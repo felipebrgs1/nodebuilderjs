@@ -37,7 +37,7 @@ static struct {
   char cursor_name[64];
 
   Atom wm_protocols, wm_delete, net_wm_name, utf8_string, net_wm_state, net_wm_state_max_v,
-      net_wm_state_max_h, net_wm_moveresize, motif_hints, clipboard, targets, incr_atom, text_atom, paste_prop;
+      net_wm_state_max_h, net_wm_moveresize, net_wm_icon, motif_hints, clipboard, targets, incr_atom, text_atom, paste_prop;
 
   EGLDisplay egl_display;
   EGLContext egl_context;
@@ -359,7 +359,8 @@ static void handle_event(XEvent *ev) {
     case MotionNotify: {
       int x = ev->type == MotionNotify ? ev->xmotion.x : ev->xcrossing.x;
       int y = ev->type == MotionNotify ? ev->xmotion.y : ev->xcrossing.y;
-      nb_event e = {.type = NB_EV_POINTER_MOVE, .x = (double)x / X.scale, .y = (double)y / X.scale};
+      unsigned state = ev->type == MotionNotify ? ev->xmotion.state : ev->xcrossing.state;
+      nb_event e = {.type = NB_EV_POINTER_MOVE, .x = (double)x / X.scale, .y = (double)y / X.scale, .mods = mods_of(state)};
       nb_push_event(&e);
       break;
     }
@@ -390,7 +391,7 @@ static void handle_event(XEvent *ev) {
       }
       int button = b->button == Button1 ? 0 : b->button == Button2 ? 1 : b->button == Button3 ? 2 : 3;
       nb_event e = {.type = ev->type == ButtonPress ? NB_EV_POINTER_DOWN : NB_EV_POINTER_UP,
-                    .x = (double)b->x / X.scale, .y = (double)b->y / X.scale, .button = button};
+                    .x = (double)b->x / X.scale, .y = (double)b->y / X.scale, .button = button, .mods = mods_of(b->state)};
       nb_push_event(&e);
       break;
     }
@@ -476,6 +477,7 @@ static bool x_open(const nb_window_options *o) {
   X.net_wm_state_max_v = XInternAtom(X.dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
   X.net_wm_state_max_h = XInternAtom(X.dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
   X.net_wm_moveresize = XInternAtom(X.dpy, "_NET_WM_MOVERESIZE", False);
+  X.net_wm_icon = XInternAtom(X.dpy, "_NET_WM_ICON", False);
   X.motif_hints = XInternAtom(X.dpy, "_MOTIF_WM_HINTS", False);
   X.clipboard = XInternAtom(X.dpy, "CLIPBOARD", False);
   X.targets = XInternAtom(X.dpy, "TARGETS", False);
@@ -605,6 +607,27 @@ static void x_set_title(const char *title) {
   XFlush(X.dpy);
 }
 
+// _NET_WM_ICON: width, height, then ARGB pixels (straight alpha), one entry per size. Format
+// 32 properties are arrays of `long` in Xlib, whatever its width.
+static void x_set_icon(const nb_icon_image *images, int count) {
+  if (!X.dpy) return;
+  size_t n = 0;
+  for (int i = 0; i < count; i++) n += 2 + (size_t)images[i].size * images[i].size;
+  unsigned long *data = malloc(n * sizeof *data);
+  if (!data) return;
+  unsigned long *p = data;
+  for (int i = 0; i < count; i++) {
+    int size = images[i].size;
+    *p++ = size;
+    *p++ = size;
+    for (const uint8_t *px = images[i].rgba, *end = px + (size_t)size * size * 4; px < end; px += 4)
+      *p++ = (unsigned long)px[3] << 24 | px[0] << 16 | px[1] << 8 | px[2];
+  }
+  XChangeProperty(X.dpy, X.win, X.net_wm_icon, XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)data, (int)n);
+  free(data);
+  XFlush(X.dpy);
+}
+
 static void moveresize(int direction) {
   XUngrabPointer(X.dpy, CurrentTime);
   send_wm_message(X.net_wm_moveresize, X.root_x, X.root_y, direction, X.last_button ? X.last_button : 1, 1);
@@ -631,6 +654,14 @@ static void x_resize(uint32_t edges) {
 
 static void x_set_maximized(bool maximized) {
   if (X.dpy) send_wm_message(X.net_wm_state, maximized ? 1 : 0, X.net_wm_state_max_v, X.net_wm_state_max_h, 1, 0);
+}
+
+// Withdrawn, not iconified: the window leaves the taskbar. MapNotify sends the configure.
+static void x_set_visible(bool visible) {
+  if (!X.dpy) return;
+  if (visible) XMapRaised(X.dpy, X.win);
+  else XWithdrawWindow(X.dpy, X.win, X.screen);
+  XFlush(X.dpy);
 }
 
 static void x_minimize(void) {
@@ -689,6 +720,8 @@ const nb_linux_backend nb_x11_backend = {
     .scale = x_scale,
     .set_cursor = x_set_cursor,
     .set_title = x_set_title,
+    .set_icon = x_set_icon,
+    .set_visible = x_set_visible,
     .move = x_move,
     .resize = x_resize,
     .set_maximized = x_set_maximized,

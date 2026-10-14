@@ -11,7 +11,7 @@ export type DrawCommand =
   | { op: "text"; x: number; y: number; size: number; weight: number; italic: boolean; bold: boolean; letterSpacing: number; family: string; features: string; variations: string; color: Rgba; text: string }
   | { op: "clip"; x: number; y: number; w: number; h: number; radius: number; radii?: Radii }
   | { op: "unclip" }
-  | { op: "shadow"; x: number; y: number; w: number; h: number; color: Rgba; radius: number; radii?: Radii; blur: number }
+  | { op: "shadow"; x: number; y: number; w: number; h: number; color: Rgba; radius: number; radii?: Radii; blur: number; dy: number }
   | { op: "image"; x: number; y: number; w: number; h: number; uv: [number, number, number, number]; tint: Rgba; radius: number; id: number }
   | { op: "line"; x0: number; y0: number; x1: number; y1: number; width: number; color: Rgba; capStart: "butt" | "round"; capEnd: "butt" | "round" }
   | { op: "triangles"; color: Rgba; points: number[]; coverage: number[] }
@@ -53,8 +53,8 @@ export function decode(buffer: CommandBuffer): DrawCommand[] {
         out.push({ op: "unclip" });
         break;
       case 5:
-        out.push({ op: "shadow", x: d[i]!, y: d[i + 1]!, w: d[i + 2]!, h: d[i + 3]!, color: rgba(i + 4), ...corners(i + 8), blur: d[i + 12]! });
-        i += 13;
+        out.push({ op: "shadow", x: d[i]!, y: d[i + 1]!, w: d[i + 2]!, h: d[i + 3]!, color: rgba(i + 4), ...corners(i + 8), blur: d[i + 12]!, dy: d[i + 13]! });
+        i += 14;
         break;
       case 6:
         out.push({ op: "image", x: d[i]!, y: d[i + 1]!, w: d[i + 2]!, h: d[i + 3]!, uv: [d[i + 4]!, d[i + 5]!, d[i + 6]!, d[i + 7]!], tint: rgba(i + 8), radius: d[i + 12]!, id: d[i + 13]! });

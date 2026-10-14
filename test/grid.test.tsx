@@ -80,7 +80,7 @@ test("Grid: <For> adding and removing items reflows the cells, keeping the item 
   expect(grid.children.map(box)).toEqual([[0, 0, 100, 20]]);
 });
 
-test("Grid: absolute children are placed from the content box, outside the cells", () => {
+test("Grid: absolute children are placed from the padding box, outside the cells", () => {
   const { root } = mount(() => (
     <Grid columns={2} padding={4}>
       <Box height={10} />
@@ -91,7 +91,7 @@ test("Grid: absolute children are placed from the content box, outside the cells
   const [a, badge, b] = root.children[0]!.children;
   expect(box(a!)).toEqual([4, 4, 50, 10]);
   expect(box(b!)).toEqual([54, 4, 50, 10]);
-  expect(box(badge!)).toEqual([98, 4, 6, 6]);
+  expect(box(badge!)).toEqual([102, 0, 6, 6]);
 });
 
 test("Grid: rows outside a Scroll's view are culled", () => {

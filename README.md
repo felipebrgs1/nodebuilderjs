@@ -66,6 +66,18 @@ something is broken. `--json` is for scripts and coding agents; `--window` tests
 a small window for a moment (by default GL is tested offscreen, and on a laptop with two GPUs
 the window may use the other one). Paste its output in bug reports.
 
+The `AGENTS.md` and skills in `.agents/skills` that coding agents read describe the framework
+version the app was created with. After updating `@nodebuilderjs/core`, bring them along:
+
+```sh
+bun run agents:update   # or, in apps created before 0.4.1: bunx nodebuilder agents update
+```
+
+It replaces only docs the framework released (it knows the hash of every version). A doc
+edited in the app is kept and listed (`--force` replaces it), and in `AGENTS.md` only the block
+between the `nodebuilder:begin`/`end` markers is the framework's: notes after it stay. The
+doctor warns when the docs are behind.
+
 ## How it works, in 30 seconds
 
 - **Components run once.** There is no re-render and no virtual DOM. State is `createSignal`,
@@ -76,7 +88,7 @@ the window may use the other one). Paste its output in bug reports.
 - **Styles are props, not CSS:** `padding`, `gap`, `grow`, `align`, `justify`, `background`,
   `radius`, `color`, `fontSize`... The layout is flexbox.
 - **Built-in widgets:** `Window` (with `WindowControls` for a custom title bar), `Column`, `Row`, `Scroll`, `Text`, `Image`, `Icon`, `Canvas`,
-  `Button`, `TextField`, `Checkbox`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`,
+  `Button`, `TextField`, `TextArea`, `Checkbox`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`,
   `Tooltip`, `Dialog`, `ProgressBar`, `Spinner`, `Card`, `Divider`, `Spacer`, plus `<For>`/`<Index>`,
   `<Show>`/`<Switch>` and `<ErrorBoundary>` for lists, conditions and errors, and
   `createContext` for values shared down the tree.
@@ -146,8 +158,8 @@ parent's content box, as in CSS (`width="50%"`):
 - **Equal or proportional columns in a row:** `width={0} grow={1}` on each child (CSS
   `flex: 1 1 0`); the widths follow the `grow` values (1:1:2), not the content. In a column
   with a height, `height={0} grow={1}` does the same for rows.
-- **`position="absolute"`** with `left`/`top`/`right`/`bottom` (from the parent's content box,
-  inside its `padding`): out of the flow and at its natural size, unless both `left` and `right`
+- **`position="absolute"`** with `left`/`top`/`right`/`bottom` (from the parent's padding box,
+  as in CSS: inside its border, ignoring its `padding`): out of the flow and at its natural size, unless both `left` and `right`
   (or `top` and `bottom`) are set without a `width` (`height`): then it stretches between them,
   so `left={0} right={0} top={0} bottom={0}` fills the parent. `right` alone places it from the
   right edge. Inside a `Scroll` it scrolls with the content, like CSS. What sticks out of a parent
@@ -159,7 +171,8 @@ parent's content box, as in CSS (`width="50%"`):
 - `radius` is one number or one per corner, `[topLeft, topRight, bottomRight, bottomLeft]`
   (`radius={[0, 12, 12, 0]}`); borders, `clip` and `shadow` follow it.
 - `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
-  drawn even without a `background` (the blurred box shows through). Like CSS `overflow:
+  drawn around the box, never under it (as in CSS): without a `background`, or with a
+  translucent one, the inside stays clear. Like CSS `overflow:
   hidden`, a clipping node may shrink below its content (what it cuts is neither seen nor
   clicked); give it a `minHeight` where that must not happen. `run()` warns about it in
   development.
@@ -226,10 +239,42 @@ before or after the spread; nothing is replaced, and several interactions can sh
 
 ### Events
 
-Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onScroll`,
-`onKeyDown`, `onFocus` and `onBlur` (controls too: they are added to the control's own
-handlers, never replace them). Pointer events carry `x`/`y` (window), `localX`/`localY`
-(node), `button` (0 left, 1 middle, 2 right) and `clicks` (2 = double click).
+Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onContextMenu`,
+`onScroll`, `onKeyDown`, `onKeyUp`, `onFocus` and `onBlur` (controls too: they are added to the
+control's own handlers, never replace them). Pointer events carry `x`/`y` (window),
+`localX`/`localY` (node), `button` (0 left, 1 middle, 2 right) and `clicks` (2 = double click).
+Pointer, wheel and key events carry the modifiers `ctrl`, `shift`, `alt` and `meta` (Super):
+Ctrl+click, Shift+click to extend a selection, Ctrl+wheel to zoom.
+
+```tsx
+import { Column, Overlay, Show, Text, createSignal, type Point } from "@nodebuilderjs/core";
+
+const [menu, setMenu] = createSignal<Point | null>(null);
+<Column onContextMenu={(e) => setMenu({ x: e.x, y: e.y })}>
+  <Text onClick={(e) => (e.ctrl ? console.log("open link") : console.log("edit"))}>[[note]]</Text>
+  <Show when={menu}>
+    {(at) => (
+      <Overlay at={at} onDismiss={() => setMenu(null)}>
+        <Text>Rename</Text>
+      </Overlay>
+    )}
+  </Show>
+</Column>;
+```
+
+- `onContextMenu` runs on a right press (after `onPointerDown`, unless it called `e.stop()`) and
+  on the Menu key or Shift+F10 over the focused node (at its bottom-left corner, `button` -1);
+  only the innermost handler runs. `<Overlay at={{ x, y }}>` opens the menu there and moves it
+  to the other side of the point when it does not fit.
+- Key names are xkb's (`"Return"`, `"Escape"`, `"Tab"`, `"BackSpace"`, `"Delete"`, `"space"`,
+  `"Up"`/`"Down"`/`"Left"`/`"Right"`, `"Home"`, `"End"`, `"Page_Up"`, `"Page_Down"`, `"Insert"`,
+  `"F1"`…`"F12"`, `"Menu"`, letters and digits as typed), normalized: Shift+Tab is `"Tab"` with
+  `shift`, keypad keys have the plain names (`"KP_Enter"` is `"Return"`), and with Ctrl or Alt a
+  letter is always lowercase, so `e.ctrl && e.key === "o"` works with Shift or Caps Lock too.
+  `text` is what the key types (`""` for control keys and with Ctrl); modifier keys alone come
+  as `"Control_L"`, `"Shift_R"`, `"Alt_L"`, `"Super_L"`…
+- A press focuses the nearest focusable ancestor of what was pressed (or nothing: pressing empty
+  space blurs).
 
 - `onClick` is the left button only and runs on the innermost node that has one (pressed and
   released on it): a button inside a clickable card clicks the button, not the card.
@@ -346,6 +391,30 @@ to 1 at the second, in canvas coordinates) that every shape takes in place of a 
 Limits: a self-intersecting polygon is not drawn, and lines with a translucent color get darker
 at the joins.
 
+A canvas that draws a long document can size itself and draw only what shows:
+
+```tsx
+import { Canvas, Scroll, createSignal } from "@nodebuilderjs/core";
+
+const [lines, setLines] = createSignal<string[]>([]);
+<Scroll grow={1}>
+  <Canvas
+    measure={(width) => lines().length * 20} // height for the width it gets (wrap here with measureText)
+    draw={(g) => {
+      const { y, height } = g.visibleRect; // the part on screen; reading it redraws on scroll
+      for (let i = Math.floor(y / 20); i < Math.min(lines().length, Math.ceil((y + height) / 20)); i++)
+        g.text(lines()[i]!, 0, i * 20, "#222");
+    }}
+  />
+</Scroll>;
+```
+
+- `measure={(width) => height}`: the height of the content for the width the canvas gets (inside
+  its padding), as wrapping text does; the signals it reads lay it out again when they change.
+  `measureText` (exported) measures with the same metrics outside `draw`.
+- `g.visibleRect` (`{ x, y, width, height }`, local): the part on screen, cut by every `Scroll`
+  and `clip` around the canvas and by the window. Only a `draw` that reads it runs again on scroll.
+
 ### Charts
 
 ```tsx
@@ -418,6 +487,12 @@ const [scores] = createSignal([7, 9, 10]);
 </ErrorBoundary>;
 ```
 
+- **Unlike Solid, there is no compiler:** an expression written in JSX runs when that JSX is
+  evaluated, even inside a `<Show>` whose condition is false. `<Show when={() => t.due}><Text>
+  {shortDate(t.due!)}</Text></Show>` calls `shortDate(undefined)` at once. Put what depends on
+  the condition in a function: `{() => shortDate(t.due!)}`, or take the value from a function
+  child: `{(due) => <Text>{shortDate(due())}</Text>}`. Components (`<Row/>`, `<MyCard/>`) do wait:
+  their bodies run only when shown.
 - `when` accepts a value or an accessor. The function child must declare its parameter
   (`{(u) => ...}`); a function without parameters (`{() => ...}`) is still a plain reactive
   child. The accessor keeps the last truthy value, so an effect in the row that runs before
@@ -506,9 +581,11 @@ const rows: ElementRef[] = [];
   along the edge) when there is something to scroll.
 - Keyboard: PageUp/PageDown, Home/End and the arrow keys scroll the `Scroll` around the
   focused element (with no focus, the one under the mouse), unless an `onKeyDown` calls
-  `e.stop()`. `TextField` keeps Home/End and ←/→ for the cursor.
+  `e.stop()`. `TextField` and `TextArea` keep the keys they move the caret with.
 - `scrollIntoView()` scrolls each `Scroll` around the element by the minimum needed, on the
   next frame (also for an element that was just created or that is far away, off screen).
+  `scrollIntoView({ x, y, width, height })` shows only that region of the element (from its
+  top-left corner): the caret of an editor drawn in a `Canvas`.
 - The content of a `Scroll` doesn't hold up the size of its container: a column with a
   `Scroll grow={1}` inside shrinks without `minHeight={0}`.
 - An open `<Overlay modal>` blocks the wheel, keys and scrollbars of what is behind it.
@@ -542,8 +619,36 @@ const [volume, setVolume] = createSignal(40);
   `color` (the filled part) and `background` (the track).
 - `Button`'s `variant` may be a function: the colors, hover and weight follow it.
 - `<TextField password>` draws `•` for each character (the value stays real; a function
-  toggles it for a "show password" button). A `TextField` keeps the app's `borderColor` and
-  `borderWidth` when focused; `focusBorderColor`/`focusBorderWidth` restyle its focus ring.
+  toggles it for a "show password" button, and nothing can be copied out of it). A
+  `TextField` keeps the app's `borderColor` and `borderWidth` when focused;
+  `focusBorderColor`/`focusBorderWidth` restyle its focus ring.
+
+### Text input
+
+```tsx
+import { TextArea, TextField, createSignal, type TextSelection } from "@nodebuilderjs/core";
+
+const [title, setTitle] = createSignal("");
+const [body, setBody] = createSignal("");
+const [caret, setCaret] = createSignal<TextSelection>({ anchor: 0, focus: 0 });
+<TextField value={title} onInput={setTitle} onSubmit={() => {}} placeholder="Title" />;
+<TextArea value={body} onInput={setBody} rows={6} placeholder="Write here" onSelectionChange={setCaret} />;
+```
+
+- Both edit like a desktop text field: Shift+arrows, Shift+Home/End and a drag select;
+  Ctrl+arrows move by words; a double click picks a word, a triple click the line (`TextField`:
+  everything); Shift+click extends; Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V (also Ctrl+Insert,
+  Shift+Insert, Shift+Delete); Ctrl+Backspace/Delete delete a word; Ctrl+Z undoes (a run of
+  typing at a time) and Ctrl+Shift+Z or Ctrl+Y redoes. Typing replaces the selection.
+- `selection` (an accessor of `{ anchor, focus }`, in code points; `focus` is the caret) moves
+  the caret whenever it changes, and `onSelectionChange` reports every change: enough to split
+  a line at the caret in a block editor. A value the app sets keeps the selection inside it and
+  clears the undo history.
+- `TextArea` wraps at the width it gets (a word longer than the line is split), is at least
+  `rows` lines tall (3) and grows with its content: inside a `Scroll` the caret stays in view as
+  it moves. With a `height` (or `maxHeight`) that cuts the content, it scrolls by itself (wheel,
+  caret). Return inserts a line, Ctrl+Return calls `onSubmit`; Up/Down keep the column,
+  Home/End stay on the visual line, Ctrl+Home/End go to the ends, PageUp/PageDown move a page.
 
 ```tsx
 import { Button, Dialog, Match, Select, Switch, Tabs, Text, Tooltip, createSignal } from "@nodebuilderjs/core";
@@ -596,6 +701,10 @@ const panel = createPresence(open, { enter: 180, exit: 120 });
 
 - `setTheme("dark" | "light")` or a custom theme (`{ ...darkTheme, accent: { ...darkTheme.accent,
   base: "#9141ac" } }`); `colorScheme()` tells which one is in use. `theme.x = ...` also updates.
+- `createThemeTokens({ light: {...}, dark: {...} })` gives the app's own colors (sidebar, links,
+  code background) one value per scheme, switching with `setTheme` like `theme` does:
+  `const colors = createThemeTokens({ light: { sidebar: "#f3f3f3" }, dark: { sidebar: "#202020" } })`,
+  then `background={() => colors.sidebar}`. A custom theme takes the set of its `scheme`.
 - **Theme colors inside functions:** `color={() => theme.text.secondary}` follows the switch;
   `color={theme.text.secondary}` keeps the color from that moment. The built-in widgets
   already follow it.
@@ -643,6 +752,27 @@ import { Text } from "@nodebuilderjs/core";
 <Text fontSize={12} bold letterSpacing={1.5}>SECTION</Text>;
 <Text italic>An aside</Text>;
 ```
+
+`<RichText>` is one paragraph made of spans, each with its own style, wrapping across them
+(rendered markdown, chat messages, a link in the middle of a sentence):
+
+```tsx
+import { RichText, theme } from "@nodebuilderjs/core";
+
+<RichText spans={[
+  "Run ", { text: "bun test", family: "monospace", background: "#8882" }, " or read ",
+  { text: "the docs", color: theme.accent.base, underline: true, onClick: (e) => console.log(e.ctrl) },
+  ". ", { text: "Bold", bold: true }, " and ", { text: "italic", italic: true }, " words.",
+]} />;
+```
+
+- A span is a string or `{ text, color, size, bold, weight, italic, family, letterSpacing,
+  underline, background, onClick }`; unset fields come from the inherited style, as in `Text`.
+  `spans` may be an accessor. `lineHeight` and `textAlign` work as in `Text`.
+- Spans of different sizes share a baseline. A span with `onClick` is a link: the pointer
+  cursor shows over it and a click on it runs it (with the modifiers, for Ctrl+click); a click
+  elsewhere goes to the parent's `onClick`.
+- Not selectable yet, and a word longer than the line overflows, as in `Text`.
 
 ### Fonts
 
@@ -722,7 +852,11 @@ let button: ElementRef | undefined;
   through, unless it is `modal`.
 - With `anchor`: `placement` (`"bottom"`, `"top"`, `"right"`, `"left"`), `offset` (4) and
   `matchWidth`. Pass the anchor as a function (`() => button`), because `ref` is only filled
-  in when the button is created.
+  in when the button is created. Too wide to start at the anchor, it ends where the anchor
+  does.
+- `at={{ x, y }}` (or an accessor) instead of an anchor: a point in window coordinates (a context
+  menu at the pointer), placed like a zero-size anchor (`offset` 0) and flipped to the left or
+  above when it does not fit.
 - `onDismiss` is called on a click outside (for a modal, on the backdrop; never on the anchor)
   and on Esc.
 - An overlay opened later stays on top of the earlier ones.
@@ -748,8 +882,8 @@ Static text can be selected and copied with `<Text selectable>`: dragging select
 double-click picks the word, triple-click the line, Ctrl+A everything and Ctrl+C copies. It is
 off by default, so labels and buttons don't get selected by accident.
 
-It is the system clipboard (Wayland and X11), text only. `TextField` pastes with Ctrl+V or
-Shift+Insert (line breaks become spaces). Without a window, as in tests, it is an in-memory
+It is the system clipboard (Wayland and X11), text only. `TextField` and `TextArea` copy, cut
+and paste with the usual keys (in a `TextField` line breaks become spaces). Without a window, as in tests, it is an in-memory
 clipboard. On Wayland, the compositor only accepts a copy right after a key press or click
 (the usual case: Ctrl+C, a "Copy" button).
 
@@ -785,6 +919,59 @@ const [query, setQuery] = createSignal("");
   buttons, `windowControls.minimize()`, `.toggleMaximize()`, `.close()` and `.setTitle(t)`;
   `windowState.maximized()`, `.activated()` (the window has focus), `.width()` and
   `.height()` are reactive.
+
+**Icon.** `<Window icon={icon}>` sets the icon the taskbar and the window switcher show:
+SVG markup or an `.svg`, PNG, JPEG or WebP file, imported with `with { type: "file" }` so it
+gets into the package. Without one, the window gets the nodebuilder icon instead of the
+compositor's generic one. On Wayland it needs the `xdg-toplevel-icon` protocol (KDE Plasma 6.1+);
+without it (GNOME), the compositor shows the icon of the installed `.desktop` file whose name
+matches `appId`, which `nodebuilder package` installs.
+
+```tsx
+import { Window } from "@nodebuilderjs/core";
+import icon from "./icon.svg" with { type: "file" };
+
+<Window title="Notes" appId="com.example.notes" icon={icon}>{/* content */}</Window>;
+```
+
+**Hiding.** `windowControls.hide()` takes the window off the screen and the taskbar while the
+app keeps running (in the tray, below); `windowControls.show()` brings it back and
+`windowState.visible()` is reactive.
+
+### System tray
+
+`createTray` shows an icon in the system tray while the scope that created it lives (closing
+the window disposes it). Every option may be an accessor; the item updates when it changes:
+
+```tsx
+import { Window, createSignal, createTray, run, windowControls, windowState } from "@nodebuilderjs/core";
+
+run(() => {
+  const [unread, setUnread] = createSignal(0);
+  let quitting = false;
+  const tray = createTray({
+    tooltip: () => `${unread()} unread`,
+    onClick: () => (windowState.visible() ? windowControls.hide() : windowControls.show()),
+    menu: () => [
+      { label: "Mark all read", onClick: () => setUnread(0), enabled: unread() > 0 },
+      "separator",
+      { label: "Quit", onClick: () => ((quitting = true), windowControls.close()) },
+    ],
+  });
+  // Closing hides to the tray, if there is one.
+  return <Window title="Mail" onClose={() => quitting || !tray.available() || (windowControls.hide(), false)} />;
+});
+```
+
+- `icon` takes the same inputs as `<Window icon>` (default: the nodebuilder icon); `title` names
+  the item; `onMiddleClick` handles the middle button. Without `onClick`, a left click opens the
+  menu too.
+- Menu items: `label`, `onClick`, `enabled`, `visible`, `checked` (a checkmark; with `radio`, a
+  radio dot) and `children` (a submenu); `"separator"` draws a line.
+- `tray.available()` is true while a panel shows the item. It is a StatusNotifierItem over D-Bus
+  (our own client, no libdbus): KDE Plasma, Xfce, Cinnamon, Budgie and others show it; GNOME
+  only with the AppIndicator extension. Without a tray, `available()` stays false: keep a way to
+  quit that does not depend on it.
 
 ### Testing
 
@@ -828,9 +1015,12 @@ test("play and pause", () => {
   `interact(root).key(...)` right after `mount` reaches it. Nodes built by an `onResize`
   handler are placed by the same `relayout()`.
 - `click(node)` calls the nearest `onClick` directly; `interact(root)` delivers pointer and
-  keyboard input like a window does (`hover`, `press`, `release`, `drag`, `scroll`, `key`,
-  `type`, plus `down`/`up`/`move` at window positions). `frames()` controls time for
-  animations.
+  keyboard input like a window does (`hover`, `press`, `release`, `click`, `contextMenu`,
+  `drag`, `scroll`, `key`, `keyUp`, `type`, plus `down`/`up`/`move` at window positions;
+  modifiers as `{ ctrl: true }`). `frames()` controls time for animations.
+- `mount(view, { width, height, paint })`: with `paint: true` every layout also paints, so
+  `Canvas` draw callbacks run as in the app. To find a custom widget, give it an `ariaLabel`
+  (`<Canvas ariaLabel="Editor">`) and use `findByLabel`.
 - `click` and the node helpers of `interact` throw when a user could not reach the node: it
   is culled (outside the visible area in the last layout, e.g. overflowing a `clip` panel or
   a `Scroll`) or its center is clipped by an ancestor or the window. The error names the node
@@ -886,6 +1076,10 @@ file must not call `run()` itself; `--export` picks a named export instead of th
 nodebuilder screenshot src/App.tsx settings.png --export App --props '{"page":"settings"}'
 ```
 
+Arguments after `--` reach the app (`process.argv.slice(2)`):
+`nodebuilder screenshot src/main.tsx out.png -- --vault ./sample`. `isScreenshot()` tells the app
+it is being shot, to use sample data instead of the user's files or the network.
+
 In tests:
 
 ```tsx
@@ -902,7 +1096,8 @@ test.skipIf(!canScreenshot())("the banner is red", () => {
 ```
 
 `screenshot(root | view, { width, height, scale, background })` returns `{ width, height,
-scale, rgba, pixel(x, y), toPNG() }`; `rgba` has straight (not premultiplied) alpha, rows top
+scale, rgba, pixel(x, y), toPNG() }` (a view that is a `<Window>` is shot at its `width` and
+`height`, filled by it, as in the app; so is `mount()` without a size); `rgba` has straight (not premultiplied) alpha, rows top
 to bottom, and what nothing covers stays transparent (the window's rounded corners too). The
 tree is laid out with real fonts for the shot and gets its own metrics (fake, by default) back afterwards.
 Pixels depend on the installed fonts and GPU driver: compare colors at points, not whole images.
@@ -1024,7 +1219,10 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
   system's fallback fonts and color emoji are drawn in color (Noto Color Emoji and other
   CBDT, sbix or COLRv0 fonts; COLRv1-only fonts are not rendered in color). No bidi: a
   right-to-left run is shaped, but lines are not reordered.
-- Text field without selection, copy or undo (paste works).
+- Text input without IME (input methods for Asian languages), middle-click paste or dragging text; a `TextArea` that scrolls itself has no scrollbar.
+- The window icon needs the `xdg-toplevel-icon` Wayland protocol (KDE Plasma 6.1+); GNOME shows
+  the `.desktop` icon matching `appId` (installed by `nodebuilder package`). The tray needs a
+  StatusNotifierItem host (GNOME: the AppIndicator extension).
 - SVG only in the icon subset (no gradients, text, filters); AVIF/HEIC depend on the system
   `libheif`.
 - The dark theme doesn't follow the system preference on its own (on Linux it comes from the

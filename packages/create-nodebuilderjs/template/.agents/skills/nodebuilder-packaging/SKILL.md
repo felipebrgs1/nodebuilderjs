@@ -23,7 +23,8 @@ an AppImage, `.deb`, `.rpm` and `.tar.gz`, with a menu entry and icon. Runs on d
   "./data.json"` also bundles it.
 - The `<Window>`'s `appId` must match `--app-id` (the template already does this); otherwise the
   icon and taskbar grouping do not work.
-- `--icon`: `.svg` or a 256x256 PNG. `--name` is the executable/package name (lowercase).
+- `--icon`: `.svg` or a 256x256 PNG; pass the same file to `<Window icon>` (imported
+  `with { type: "file" }`) so the running window shows it too. `--name` is the executable/package name (lowercase).
 - System libraries (Wayland, X11, EGL, FreeType, HarfBuzz, fontconfig) are declared
   dependencies of the packages, never bundled. `libheif` (only for AVIF/HEIC) is
   only suggested.

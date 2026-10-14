@@ -74,9 +74,11 @@ static const char *fragment_src =
     "  } else if (v_params.z > 2.5) {\n"  // image (premultiplied texels), rounded like a rect
     "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
     "    c = texture2D(u_image, v_uv.xy) * pm * clamp(0.5 - d, 0.0, 1.0);\n"
-    "  } else if (v_params.z > 1.5) {\n"  // shadow
-    "    float d = sd_round_box(v_local, v_half, corner(v_local, vec4(v_params.x, v_uv)));\n"
-    "    c = pm * (1.0 - smoothstep(-v_params.y, v_params.y, d));\n"
+    "  } else if (v_params.z > 1.5) {\n"  // shadow, cut out where its box is (v_bcolor.x above it), as in CSS
+    "    vec4 radii = vec4(v_params.x, v_uv);\n"
+    "    float d = sd_round_box(v_local, v_half, corner(v_local, radii));\n"
+    "    vec2 b = v_local + vec2(0.0, v_bcolor.x);\n"
+    "    c = pm * (1.0 - smoothstep(-v_params.y, v_params.y, d)) * clamp(0.5 + sd_round_box(b, v_half, corner(b, radii)), 0.0, 1.0);\n"
     "  } else if (v_params.z > 0.5) {\n"  // glyph
     "    c = pm * texture2D(u_atlas, v_uv.xy).a;\n"
     "  } else {\n"  // rounded rect; the border is composited over the fill (premultiplied)
@@ -530,13 +532,15 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
                   MODE_RECT, r[1], r[2], r[1], r[2], r[3]);
         break;
       }
-      case NB_OP_SHADOW: {  // x y w h  r g b a  tl tr br bl (radii)  blur
+      case NB_OP_SHADOW: {  // x y w h  r g b a  tl tr br bl (radii)  blur  dy
         const float *a = cmd + i;
-        i += 13;
+        i += 14;
         float x = a[0] * scale, y = a[1] * scale, w = a[2] * scale, h = a[3] * scale;
         float hw = w / 2, hh = h / 2, blur = fmaxf(a[12] * scale, 0.5f), r[4];
+        // The casting box's offset rides in the (otherwise unused) border color: the shader cuts it out.
+        float box[4] = {a[13] * scale, 0, 0, 0};
         corner_radii(a + 8, scale, fminf(hw, hh), r);
-        push_quad(x - blur, y - blur, x + w + blur, y + h + blur, x + hw, y + hh, hw, hh, a + 4, none, r[0], blur,
+        push_quad(x - blur, y - blur, x + w + blur, y + h + blur, x + hw, y + hh, hw, hh, a + 4, box, r[0], blur,
                   MODE_SHADOW, r[1], r[2], r[1], r[2], r[3]);
         break;
       }

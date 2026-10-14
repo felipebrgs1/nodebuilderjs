@@ -11,6 +11,7 @@ bun run typecheck  # TypeScript 7
 bun run screenshot # screenshot.png of the app, without opening a window
 bun run package    # AppImage, .deb, .rpm and .tar.gz in dist/
 bun run doctor     # checks this machine (libraries, display, GL, fonts) and how to fix it
+bun run agents:update  # after updating @nodebuilderjs/core: AGENTS.md and skills to match
 ```
 
 ## Structure

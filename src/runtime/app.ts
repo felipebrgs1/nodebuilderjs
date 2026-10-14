@@ -3,22 +3,28 @@
 
 import { writeFileSync } from "node:fs";
 import { type Child, insert } from "../jsx-runtime.js";
+import { type IconImage, type IconInput, iconImages } from "../image/icon.js";
 import { setImageBackend } from "../image/source.js";
+import { sessionBusAddress } from "../dbus/connection.js";
+import { setTrayBus } from "../tray/tray.js";
 import { layout } from "../render/layout.js";
 import { overflowWarnings } from "../render/overflow.js";
 import { nativeClipboard, setClipboardBackend } from "./clipboard.js";
 import { createInput } from "./input.js";
 import { frameNow, hasFrameCallbacks, runFrameCallbacks, setAnimating, setFrameClock } from "./frames.js";
-import { type Native, type NativeEvent, loadNative, nativeImageBackend, nativeTextMeasurer } from "./native.js";
-import { UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer } from "../render/node.js";
+import { type Native, type NativeEvent, type NativeModifiers, loadNative, nativeImageBackend, nativeTextMeasurer } from "./native.js";
+import { type Modifiers, UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer } from "../render/node.js";
 import { CommandBuffer, paintTree } from "../render/paint.js";
-import { batch, createRoot, createSignal, untrack } from "../reactive/signals.js";
+import { type MaybeAccessor, batch, createRoot, createSignal, read, untrack } from "../reactive/signals.js";
 import { setTheme } from "../theme.js";
 import { type Screenshot, captureTree } from "./screenshot.js";
 
 export interface WindowOptions {
-  title: string;
+  /** An accessor follows changes (e.g. the open document's name). */
+  title: MaybeAccessor<string>;
   appId?: string;
+  /** Taskbar and switcher icon: SVG markup, or an .svg/PNG/JPEG/WebP file (`import icon from "./icon.svg" with { type: "file" }`). Default: the framework's. */
+  icon?: IconInput;
   width?: number;
   height?: number;
   /** Return false to keep the window open. */
@@ -33,23 +39,41 @@ export interface RunOptions {
 /** Nodes created by <Window> carry their options here. */
 export const windowOptionsKey = Symbol("window");
 
+/**
+ * The root's first node, which run() makes fill the window, and its <Window> options (undefined
+ * when it is not a <Window>). run(), screenshots and mount() in testing share it.
+ */
+export function windowOf(root: UINode): { node: UINode | undefined; options: WindowOptions | undefined } {
+  const node = root.children[0];
+  return { node, options: (node as any)?.[windowOptionsKey] };
+}
+
 const [width, setWidth] = createSignal(0);
 const [height, setHeight] = createSignal(0);
 const [maximized, setMaximized] = createSignal(false);
 const [activated, setActivated] = createSignal(true);
 const [transparent, setTransparent] = createSignal(true);
+const [visible, setVisible] = createSignal(true);
 
 let native: Native | null = null;
 let closeRequest: () => void = () => {};
+let visibilityRequest: (visible: boolean) => void = () => {};
 
-/** `transparent` is false when corners can't be see-through (e.g. X11 without a compositor). */
-export const windowState = { width, height, maximized, activated, transparent };
+/**
+ * `transparent` is false when corners can't be see-through (e.g. X11 without a compositor).
+ * `visible` is false after `windowControls.hide()`.
+ */
+export const windowState = { width, height, maximized, activated, transparent, visible };
 
 export const windowControls = {
   close: () => closeRequest(),
   minimize: () => native?.minimize(),
   toggleMaximize: () => native?.setMaximized(!maximized()),
   setTitle: (title: string) => native?.setTitle(title),
+  /** Unmaps the window (it leaves the taskbar; the app keeps running, e.g. in the tray). */
+  hide: () => visibilityRequest(false),
+  /** Maps a hidden window again. */
+  show: () => visibilityRequest(true),
 };
 
 export { requestAnimationFrame } from "./frames.js";
@@ -116,7 +140,18 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
     );
     return;
   }
+  setTrayBus(sessionBusAddress());
   runWith(loadNative(), app, runOptions);
+}
+
+const modifiers = (ev: NativeModifiers): Modifiers => ({ ctrl: !!ev.ctrl, shift: !!ev.shift, alt: !!ev.alt, meta: !!ev.super });
+
+/**
+ * True while `nodebuilder screenshot` runs the app (no window: one frame rendered to a PNG). An
+ * app can show sample data then instead of reading the user's files or the network.
+ */
+export function isScreenshot(): boolean {
+  return !!process.env.NB_SCREENSHOT;
 }
 
 /** Frames simulated (16 ms each) waiting for animations to finish, unless NB_SCREENSHOT_FRAMES says how many. */
@@ -160,8 +195,7 @@ export async function screenshotApp(nat: Native, app: () => Child, env: Record<s
       dispose = d;
       insert(root, untrack(app));
     });
-    const windowNode = root.children[0];
-    const options: WindowOptions = (windowNode as any)?.[windowOptionsKey] ?? { title: "nodebuilder" };
+    const { node: windowNode, options = { title: "nodebuilder" } } = windowOf(root);
     if (windowNode) windowNode.style.grow = 1;
     const w = forcedWidth ?? options.width ?? 800, h = forcedHeight ?? options.height ?? 600;
     setWidth(w);
@@ -203,8 +237,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
     dispose = d;
     insert(root, untrack(app));
   });
-  const windowNode = root.children[0];
-  const options: WindowOptions = (windowNode as any)?.[windowOptionsKey] ?? { title: "nodebuilder" };
+  const { node: windowNode, options = { title: "nodebuilder" } } = windowOf(root);
   if (windowNode) windowNode.style.grow = 1;
 
   // ---- frame scheduling ----------------------------------------------------
@@ -307,7 +340,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
 
   function renderFrame() {
     scheduled = false;
-    if (!dirty || !open) return;
+    if (!dirty || !open || !configured) return; // hidden since it was scheduled
     recordReason();
     const t0 = now();
     lastRender = t0;
@@ -393,6 +426,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
           setTextMeasurer(nativeTextMeasurer(nat, ev.scale)); // metrics are hinted per scale
           setDisplayScale(ev.scale);
         }
+        if (!visible()) break; // drawn once shown and configured again
         configured = true;
         request("ev", "configure", null); // its stack is just the event loop
         break;
@@ -404,22 +438,25 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
         closeRequest();
         break;
       case "pointermove":
-        input.pointerMove(ev.x, ev.y);
+        input.pointerMove(ev.x, ev.y, modifiers(ev));
         break;
       case "pointerleave":
         input.pointerLeave();
         break;
       case "pointerdown":
-        input.pointerDown(ev.x, ev.y, ev.button);
+        input.pointerDown(ev.x, ev.y, ev.button, modifiers(ev));
         break;
       case "pointerup":
-        input.pointerUp(ev.x, ev.y, ev.button);
+        input.pointerUp(ev.x, ev.y, ev.button, modifiers(ev));
         break;
       case "scroll":
-        input.scroll(ev.x, ev.y, ev.dx, ev.dy, ev.shift);
+        input.scroll(ev.x, ev.y, ev.dx, ev.dy, modifiers(ev));
         break;
       case "keydown":
-        input.keyDown(ev);
+        input.keyDown({ ...ev, meta: ev.super });
+        break;
+      case "keyup":
+        input.keyUp({ ...ev, meta: ev.super });
         break;
       case "clipboard":
         clip.received(ev.text);
@@ -440,9 +477,30 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
     dispose();
   };
 
+  setVisible(true);
+  visibilityRequest = (show) => {
+    if (!open || show === visible()) return;
+    nat.setVisible(show);
+    setVisible(show);
+    // Hidden: no frames until the window is mapped and configured again (no frame callbacks
+    // come for an unmapped surface).
+    configured = false;
+    framePending = false;
+  };
+
   nat.open(
-    { title: options.title, appId: options.appId ?? process.env.NB_APP_ID ?? "dev.nodebuilder.app", width: options.width ?? 800, height: options.height ?? 600 },
+    { title: untrack(() => read(options.title)), appId: options.appId ?? process.env.NB_APP_ID ?? "dev.nodebuilder.app", width: options.width ?? 800, height: options.height ?? 600 },
     (events) => batch(() => events.forEach(handle)),
   );
   setClipboardBackend(clip);
+  nat.setIcon(windowIcon(options.icon, warn));
+}
+
+function windowIcon(icon: IconInput | undefined, warn: (message: string) => void): IconImage[] {
+  try {
+    return iconImages(icon);
+  } catch (err) {
+    warn(`nodebuilder: could not load the window icon, using the default (${(err as Error).message})`);
+    return iconImages();
+  }
 }

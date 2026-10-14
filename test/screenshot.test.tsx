@@ -158,6 +158,36 @@ test.skipIf(!offscreen)("screenshot(view) mounts, shoots at the given size and s
   expect(shot.pixel(70, 30)).toEqual([255, 255, 255, 255]);
 });
 
+test.skipIf(!offscreen)("screenshot(view) of a <Window>: its width and height, filled by the window as in run()", () => {
+  const view = () => (
+    <Window title="x" width={120} height={150} background="#00ff00">
+      <Box height={10} background="#ff0000" />
+    </Window>
+  );
+  const shot = screenshot(view);
+  expect([shot.width, shot.height]).toEqual([120, 150]);
+  // Far below the content (under the title bar), the window's own background: it fills the
+  // shot instead of ending under its content with transparency below.
+  expect(shot.pixel(60, 140)).toEqual([0, 255, 0, 255]);
+  // Options still win.
+  const wide = screenshot(view, { width: 200, height: 40 });
+  expect([wide.width, wide.height]).toEqual([200, 40]);
+});
+
+test("mount() of a <Window>: laid out at the window's size, which it fills, like run()", () => {
+  const { root } = mount(() => (
+    <Window title="x" width={300} height={200}>
+      <Box height={10} />
+    </Window>
+  ));
+  const win = root.children[0]!;
+  expect([root.width, root.height]).toEqual([300, 200]);
+  expect([win.width, win.height]).toEqual([300, 200]);
+  // An explicit size wins.
+  const { root: other } = mount(() => <Window title="x" width={300} height={200} />, { width: 500, height: 400 });
+  expect([other.children[0]!.width, other.children[0]!.height]).toEqual([500, 400]);
+});
+
 test.skipIf(!offscreen)("screenshot lays out with real text metrics, then restores the fake ones", () => {
   const { root, dispose } = mount(() => (
     <Column align="start">

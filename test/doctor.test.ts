@@ -57,6 +57,7 @@ function probes(over: Partial<DoctorProbes> = {}): DoctorProbes {
     missingLibs: () => [],
     hasLib: () => true,
     loadNative: () => native,
+    agents: () => ({ version: "0.3.0", changes: [{ path: "AGENTS.md", action: "same" }] }),
     ...over,
   };
 }
@@ -80,6 +81,7 @@ describe("diagnose", () => {
       ["emoji", "ok"],
       ["cjk", "ok"],
       ["heif", "ok"],
+      ["agents", "ok"],
     ]);
     expect(exitCode(checks)).toBe(0);
     const report = formatReport(checks, { color: false });
@@ -244,6 +246,23 @@ describe("diagnose", () => {
     expect(formatReport(checks, { color: false })).toContain("- libheif not found: AVIF/HEIC images disabled");
   });
 
+  test("agent docs behind the installed core warn with the update command; edited ones only count as kept", async () => {
+    const stale = await diagnose(probes({
+      agents: () => ({ version: "0.4.1", changes: [
+        { path: "AGENTS.md", action: "update" },
+        { path: ".agents/skills/nodebuilder-testing/SKILL.md", action: "add" },
+        { path: ".agents/skills/nodebuilder-ui/SKILL.md", action: "keep" },
+      ] }),
+    }));
+    expect(byId(stale, "agents")).toMatchObject({ status: "warn", fix: "bun run agents:update (or bunx nodebuilder agents update)" });
+    expect(byId(stale, "agents").title).toBe("agent docs (AGENTS.md, skills): 2 behind @nodebuilderjs/core 0.4.1");
+    expect(exitCode(stale)).toBe(0);
+    const edited = byId(await diagnose(probes({ agents: () => ({ version: "0.4.1", changes: [{ path: "AGENTS.md", action: "keep" }] }) })), "agents");
+    expect(edited.status).toBe("ok");
+    expect(edited.title).toContain("1 edited in this app");
+    expect(byId(await diagnose(probes({ agents: () => undefined })), "agents").status).toBe("skip");
+  });
+
   test("the report: fixes under their check, a summary line, ANSI colors only when asked", async () => {
     const checks = await diagnose(probes({ bun: "1.0.0", hasLib: () => false }));
     const plain = formatReport(checks, { color: false });
@@ -301,7 +320,9 @@ describe("on this machine", () => {
   test("nodebuilder doctor --json: every check, parseable, exit code matching the failures", () => {
     const p = Bun.spawnSync([process.execPath, join(import.meta.dir, "../cli/nodebuilder.ts"), "doctor", "--json"]);
     const report = JSON.parse(p.stdout.toString()) as { version: string; checks: Check[] };
-    expect(report.checks.map((c) => c.id)).toEqual(["runtime", "addon", "display", "keyboard", "gl", "fonts", "emoji", "cjk", "heif"]);
+    expect(report.checks.map((c) => c.id)).toEqual(["runtime", "addon", "display", "keyboard", "gl", "fonts", "emoji", "cjk", "heif", "agents"]);
+    // The framework's own repo is not an app: no agent docs to compare.
+    expect(report.checks.at(-1)!.status).toBe("skip");
     expect(p.exitCode).toBe(report.checks.some((c) => c.status === "fail") ? 1 : 0);
     if (built) expect(report.checks[1]!.status).toBe("ok");
   });

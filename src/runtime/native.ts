@@ -6,13 +6,16 @@ import { type TextMeasurer, fontId, fontSpec, metricsGeneration } from "../rende
 
 export { fontId };
 
-export type NativeKeyEvent = { type: "keydown" | "keyup"; key: string; text: string; repeat: boolean; ctrl: boolean; shift: boolean; alt: boolean; super: boolean };
+/** Modifier keys held during an input event, as the addon reports them. */
+export type NativeModifiers = { ctrl: boolean; shift: boolean; alt: boolean; super: boolean };
+
+export type NativeKeyEvent = { type: "keydown" | "keyup"; key: string; text: string; repeat: boolean } & NativeModifiers;
 
 export type NativeEvent =
   | { type: "configure"; width: number; height: number; scale: number; maximized: boolean; activated: boolean; transparent: boolean }
   | { type: "close" | "frame" | "pointerleave" }
-  | { type: "pointermove" | "pointerdown" | "pointerup"; x: number; y: number; button: number }
-  | { type: "scroll"; x: number; y: number; dx: number; dy: number; shift: boolean }
+  | ({ type: "pointermove" | "pointerdown" | "pointerup"; x: number; y: number; button: number } & NativeModifiers)
+  | ({ type: "scroll"; x: number; y: number; dx: number; dy: number } & NativeModifiers)
   | NativeKeyEvent
   | { type: "focus"; focused: boolean }
   | { type: "clipboard"; text: string };
@@ -64,6 +67,10 @@ export interface Native {
   decodeImage(bytes: Uint8Array): { width: number; height: number; data: Uint8Array };
   setCursor(name: string): void;
   setTitle(title: string): void;
+  /** Unmaps (false) or maps again (true) the window; a configure event follows a map. */
+  setVisible(visible: boolean): void;
+  /** Square straight-alpha RGBA images of one icon at several sizes (taskbar, switcher). */
+  setIcon(images: { size: number; rgba: Uint8Array }[]): void;
   move(): void;
   /** xdg_toplevel resize edges bitmask: top 1, bottom 2, left 4, right 8. */
   resize(edges: number): void;

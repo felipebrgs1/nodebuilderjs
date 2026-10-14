@@ -69,11 +69,56 @@ test.skipIf(!canScreenshot())("screenshot --props: renders the entry's exported 
   expect(missing.err).toContain("Nope");
 });
 
+test.skipIf(!canScreenshot())("screenshot: arguments after -- reach the app's process.argv, and isScreenshot() is true there", () => {
+  const seen = join(dir, "argv.json");
+  const app = (name: string, body: string) =>
+    writeFileSync(
+      join(dir, name),
+      `import { writeFileSync } from "node:fs";
+       import { jsx } from ${JSON.stringify(join(repo, "src/jsx-runtime.ts"))};
+       import { Box, isScreenshot, run } from ${JSON.stringify(join(repo, "src/index.ts"))};
+       const record = () => writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ args: process.argv.slice(2), shot: isScreenshot() }));
+       ${body}`,
+    );
+  app("argv-app.ts", `record(); run(() => jsx(Box, { grow: 1 }));`);
+  const r = nodebuilder("screenshot", "argv-app.ts", "argv.png", "--width", "10", "--height", "10", "--", "--vault", "/tmp/notes");
+  expect(r.err).toBe("");
+  expect(JSON.parse(readFileSync(seen, "utf8"))).toEqual({ args: ["--vault", "/tmp/notes"], shot: true });
+  // A component rendered with --props sees them too.
+  app("argv-page.ts", `export default function Page() { record(); return jsx(Box, { grow: 1 }); }`);
+  const p = nodebuilder("screenshot", "argv-page.ts", "argv-page.png", "--props", "{}", "--width", "10", "--height", "10", "--", "x");
+  expect(p.err).toBe("");
+  expect(JSON.parse(readFileSync(seen, "utf8"))).toEqual({ args: ["x"], shot: true });
+});
+
+test("isScreenshot() is false outside `nodebuilder screenshot`", async () => {
+  const { isScreenshot } = await import("../src/index.js");
+  expect(isScreenshot()).toBe(!!process.env.NB_SCREENSHOT);
+});
+
+test("screenshot: a file that only exports a component (no run()) renders its default export", () => {
+  writeFileSync(
+    join(dir, "shot-only.ts"),
+    `import { jsx } from ${JSON.stringify(join(repo, "src/jsx-runtime.ts"))};
+     import { Box } from ${JSON.stringify(join(repo, "src/index.ts"))};
+     export default function Shot() {
+       return jsx(Box, { grow: 1, background: "#0000ff" });
+     }`,
+  );
+  const r = nodebuilder("screenshot", "shot-only.ts", "shot-only.png", "--width", "10", "--height", "10");
+  expect(r.err).toBe("");
+  expect(r.code).toBe(0);
+  const png = decodeImage(new Uint8Array(readFileSync(join(dir, "shot-only.png"))));
+  expect(Array.from(png.data.subarray(0, 4))).toEqual([0, 0, 255, 255]);
+});
+
 test("screenshot: an app that never calls run() is an error, and so are missing arguments", () => {
   writeFileSync(join(dir, "norun.ts"), "export {};\n");
   const r = nodebuilder("screenshot", "norun.ts", "never.png");
   expect(r.code).toBe(1);
   expect(r.err).toContain("run()");
+  // Neither run() nor a default export: the message says how to pick a component.
+  expect(r.err).toContain("--export");
   expect(existsSync(join(dir, "never.png"))).toBe(false);
   const usage = nodebuilder("screenshot");
   expect(usage.code).toBe(1);

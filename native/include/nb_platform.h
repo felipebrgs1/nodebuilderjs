@@ -35,9 +35,18 @@ int nb_platform_scale(void);
 
 void nb_platform_set_cursor(const char *name);  // freedesktop cursor names ("default", "pointer", "text", "n-resize"...)
 void nb_platform_set_title(const char *title);
+/** One icon at several square sizes: `rgba` is size*size*4 bytes, straight alpha, top row first. */
+typedef struct {
+  int size;
+  const uint8_t *rgba;
+} nb_icon_image;
+/** Sets the window's icon (taskbar, switcher); the backend copies the pixels. Ignored where unsupported. */
+void nb_platform_set_icon(const nb_icon_image *images, int count);
 void nb_platform_move(void);                    // interactive move, started from the last pointer press
 void nb_platform_resize(uint32_t edges);        // interactive resize (NB_EDGE_* bitmask)
 void nb_platform_set_maximized(bool maximized);
+/** Unmaps (false) or maps again (true) the window. Mapping again queues an NB_EV_CONFIGURE; no NB_EV_FRAME comes while hidden. */
+void nb_platform_set_visible(bool visible);
 void nb_platform_minimize(void);
 
 // ---- offscreen rendering (screenshots) ---------------------------------------

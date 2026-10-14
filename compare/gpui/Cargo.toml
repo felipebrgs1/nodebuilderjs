@@ -1,0 +1,19 @@
+[package]
+name = "nodebuilder-gpui-baseline"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Same scenes as examples/bench.tsx and examples/dashboard.tsx, in GPUI (Zed's framework), for comparison."
+
+[dependencies]
+gpui = "0.2.2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+# gpui 0.2.2 -> gpui_http_client -> zed-async-tar pulls xattr 0.2.3, which uses libc::ENOATTR
+# (removed from current libc on Linux, where it equals ENODATA).
+[patch.crates-io]
+xattr = { path = "patches/xattr" }

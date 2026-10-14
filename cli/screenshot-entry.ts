@@ -1,4 +1,5 @@
-// Run by `nodebuilder screenshot --props/--export`: renders a component the entry module
+// Run by `nodebuilder screenshot --props/--export`, and for a file that neither calls run() nor
+// is given those flags (NB_SCREENSHOT_FALLBACK): renders a component the entry module
 // exports (default unless NB_SCREENSHOT_EXPORT names another) with the props in
 // NB_SCREENSHOT_PROPS (JSON), through run(), which takes the shot (NB_SCREENSHOT).
 import { pathToFileURL } from "node:url";
@@ -12,6 +13,13 @@ const mod = (await import(pathToFileURL(entry).href)) as Record<string, unknown>
 const component = mod[name];
 if (typeof component !== "function") {
   const found = Object.keys(mod).filter((k) => typeof mod[k] === "function");
+  if (process.env.NB_SCREENSHOT_FALLBACK) {
+    console.error(
+      `nodebuilder screenshot: ${entry} exited without calling run() and has no default export to render: ` +
+        `call run(), export a component as default${found.length ? `, or pick one with --export <name> (it exports: ${found.join(", ")})` : ", or pick one with --export <name>"}`,
+    );
+    process.exit(1);
+  }
   console.error(`nodebuilder screenshot: ${entry} has no exported component "${name}"${found.length ? ` (it exports: ${found.join(", ")})` : ""}`);
   process.exit(1);
 }

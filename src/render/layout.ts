@@ -6,7 +6,7 @@
 // two steps: the natural (max-content) size of every node, cached per layout, and
 // `heightAt(node, width)`, which only does real work in subtrees that contain them.
 
-import { type Edges, type Size, type UINode, invalidationCount, overlayLayers, revealRequests, scrolls } from "./node.js";
+import { type Edges, type Region, type Size, type UINode, invalidationCount, overlayLayers, revealRequests, scrolls } from "./node.js";
 import { scrollRange } from "./scrollbar.js";
 import { checkOverflow, reportResizeLoop, resetOverflow } from "./overflow.js";
 import { batch } from "../reactive/signals.js";
@@ -69,7 +69,7 @@ function* containers(node: UINode) {
 /** Handles this root's scrollIntoView() requests; true if anything moved. */
 function reveal(root: UINode): boolean {
   let moved = false;
-  for (const target of revealRequests) {
+  for (const [target, region] of revealRequests) {
     const top = rootOf(target);
     if (top !== root) {
       if (!top.isRoot) revealRequests.delete(target); // removed from the tree
@@ -77,7 +77,7 @@ function reveal(root: UINode): boolean {
     }
     revealRequests.delete(target);
     moved = freshen(target) || moved;
-    moved = scrollToShow(target) || moved;
+    moved = scrollToShow(target, region) || moved;
   }
   return moved;
 }
@@ -107,21 +107,24 @@ function revealDelta(start: number, end: number, viewStart: number, viewEnd: num
   return 0;
 }
 
-/** Scrolls each Scroll around `node`, innermost first, as little as needed to show it. */
-function scrollToShow(node: UINode): boolean {
-  let { x, y } = node;
+/** Scrolls each Scroll around `node`, innermost first, as little as needed to show it (or `region` of it). */
+function scrollToShow(node: UINode, region?: Region): boolean {
+  let x = node.x + (region?.x ?? 0);
+  let y = node.y + (region?.y ?? 0);
+  const width = region ? (region.width ?? 0) : node.width;
+  const height = region ? (region.height ?? 0) : node.height;
   let moved = false;
   for (const n of containers(node)) {
     const b = n.style.borderWidth ?? 0;
     if (n.scrollable) {
       const before = n.scrollY;
-      n.scrollY = clamp(before + revealDelta(y, y + node.height, n.y + b, n.y + n.height - b), 0, scrollRange(n, "y"));
+      n.scrollY = clamp(before + revealDelta(y, y + height, n.y + b, n.y + n.height - b), 0, scrollRange(n, "y"));
       y -= n.scrollY - before;
       moved ||= n.scrollY !== before;
     }
     if (n.scrollableX) {
       const before = n.scrollX;
-      n.scrollX = clamp(before + revealDelta(x, x + node.width, n.x + b, n.x + n.width - b), 0, scrollRange(n, "x"));
+      n.scrollX = clamp(before + revealDelta(x, x + width, n.x + b, n.x + n.width - b), 0, scrollRange(n, "x"));
       x -= n.scrollX - before;
       moved ||= n.scrollX !== before;
     }
@@ -138,22 +141,23 @@ function rootOf(node: UINode): UINode {
 /** False when an anchored layer has nowhere to go (anchor gone, or its box is stale from culling). */
 function placeLayer(layer: UINode, width: number, height: number, view: Rect): boolean {
   const o = layer.overlay!;
-  if (!o.anchor || o.modal) {
+  if ((!o.anchor && !o.at) || o.modal) {
     const [t, r, b, l] = edges(o.inset);
     place(layer, l, t, Math.max(0, width - l - r), Math.max(0, height - t - b), view);
     return true;
   }
-  const a = o.anchor() as UINode | undefined;
-  if (!a || rootOf(a) !== rootOf(layer)) return false;
-  for (let n: UINode | null = a; n; n = n.parent) if (n.culled) return false;
+  const a = anchorBox(layer);
+  if (!a) return false;
 
   const w = o.matchWidth ? a.width : intrinsic(layer).width;
   const h = heightAt(layer, w);
   const gap = o.offset;
   const below = a.y + a.height + gap, above = a.y - gap - h;
   const after = a.x + a.width + gap, before = a.x - gap - w;
-  let x = a.x;
-  let y = a.y;
+  // Along the anchor: aligned with its start, or with its end when only that fits (a menu at
+  // the pointer near the right edge opens to its left).
+  let x = a.x + w > width && a.x + a.width - w >= 0 ? a.x + a.width - w : a.x;
+  let y = a.y + h > height && a.y + a.height - h >= 0 ? a.y + a.height - h : a.y;
   // Preferred side, or the opposite one when only that fits.
   switch (o.placement) {
     case "bottom": y = below + h > height && above >= 0 ? above : below; break;
@@ -163,6 +167,39 @@ function placeLayer(layer: UINode, width: number, height: number, view: Rect): b
   }
   place(layer, clamp(x, 0, Math.max(0, width - w)), clamp(y, 0, Math.max(0, height - h)), w, h, view);
   return true;
+}
+
+/** The box an anchored layer is placed next to: its anchor's, or a zero-size box at its point. Null when the anchor is gone or culled. */
+function anchorBox(layer: UINode): { x: number; y: number; width: number; height: number } | null {
+  const o = layer.overlay!;
+  if (o.at) {
+    const p = o.at();
+    return p ? { x: p.x, y: p.y, width: 0, height: 0 } : null;
+  }
+  const a = o.anchor!() as UINode | undefined;
+  if (!a || rootOf(a) !== rootOf(layer)) return null;
+  for (let n: UINode | null = a; n; n = n.parent) if (n.culled) return null;
+  return a;
+}
+
+/**
+ * The part of a box of `n` (window coordinates x, y, w, h: usually its content box) on screen,
+ * cut by every clipping or scrolling ancestor and the window, relative to the box's corner
+ * (zero-size when none of it shows). For widgets that draw only what is visible.
+ */
+export function visibleRegion(n: UINode, x: number, y: number, w: number, h: number): { x: number; y: number; width: number; height: number } {
+  let view = { x0: x, y0: y, x1: x + w, y1: y + h };
+  let top = n;
+  let layered = n.overlay !== undefined;
+  for (let a = n.parent; a; a = a.parent) {
+    // Past an overlay layer only the window cuts it (the layer is drawn above the tree).
+    if (!layered && (scrolls(a) || a.style.clip)) view = clipView(a, view);
+    layered ||= a.overlay !== undefined;
+    top = a;
+  }
+  const x0 = Math.max(view.x0, 0), y0 = Math.max(view.y0, 0);
+  const x1 = Math.min(view.x1, top.width), y1 = Math.min(view.y1, top.height);
+  return x1 > x0 && y1 > y0 ? { x: x0 - x, y: y0 - y, width: x1 - x0, height: y1 - y0 } : { x: 0, y: 0, width: 0, height: 0 };
 }
 
 /** How far a node's own drawing reaches outside its box (shadows). */
@@ -249,6 +286,7 @@ export function intrinsic(node: UINode): Natural {
     width = m.width + pl + pr;
     height = m.height + pt + pb;
     wraps = node.minContentWidth !== undefined;
+    fluid = wraps && node.fluidMeasure;
   } else if (s.direction === "grid") {
     const kids = node.children.filter(inFlow);
     let cell = s.minColumnWidth ?? 0;
@@ -608,13 +646,18 @@ function mainMargins(kids: UINode[], row: boolean): number {
  * their content the first time, like CSS percentages in intrinsic sizes.
  */
 function resolvePercents(node: UINode, innerW: number, innerH: number) {
+  // Absolute children take percentages of the padding box (inside the border), as in CSS.
+  const b = node.style.borderWidth ?? 0;
+  const boxW = Math.max(0, node.width - 2 * b);
+  const boxH = Math.max(0, node.height - 2 * b);
   for (const c of node.children) {
     const p = c.percents;
     if (!p) continue;
+    const flow = inFlow(c);
     let changed = false;
     for (const key in p) {
       const k = key as keyof typeof p;
-      const v = (p[k]! * (k.endsWith("idth") ? innerW : innerH)) / 100;
+      const v = (p[k]! * (k.endsWith("idth") ? (flow ? innerW : boxW) : flow ? innerH : boxH)) / 100;
       if (c.style[k] !== v) {
         c.style[k] = v;
         changed = true;
@@ -657,12 +700,12 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   const kids = node.children.filter(inFlow);
   if (s.direction === "grid") {
     const offsetY = placeGrid(node, kids, innerX, innerY, innerW, view);
-    placeAbsolute(node, innerX, innerY - offsetY, innerW, innerH, view);
+    placeAbsolute(node, 0, offsetY, view);
     return;
   }
   if (s.wrap && kids.length > 1) {
     const [offsetX, offsetY] = placeWrapped(node, kids, innerX, innerY, innerW, innerH, view);
-    placeAbsolute(node, innerX - offsetX, innerY - offsetY, innerW, innerH, view);
+    placeAbsolute(node, offsetX, offsetY, view);
     return;
   }
 
@@ -721,7 +764,7 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   });
   if (kids.length) checkOverflow(node, kids, row, content, innerMain, widest, innerCross, view);
 
-  placeAbsolute(node, innerX - offsetX, innerY - offsetY, innerW, innerH, view);
+  placeAbsolute(node, offsetX, offsetY, view);
 }
 
 /** A Row with `wrap`: its height depends on its width (a wrapping Column breaks at its height instead). */
@@ -833,8 +876,16 @@ function placeWrapped(node: UINode, kids: UINode[], innerX: number, innerY: numb
   return [offsetX, offsetY];
 }
 
-/** Absolute children are measured from the content box (at x, y once scrolled) and scroll with the content. */
-function placeAbsolute(node: UINode, x: number, y: number, innerW: number, innerH: number, view: Rect) {
+/**
+ * Absolute children are measured from the padding box, as in CSS: inside the border, ignoring
+ * the padding. They scroll with the content (`offsetX`/`offsetY`: the scroll position).
+ */
+function placeAbsolute(node: UINode, offsetX: number, offsetY: number, view: Rect) {
+  const b = node.style.borderWidth ?? 0;
+  const x = node.x + b - offsetX;
+  const y = node.y + b - offsetY;
+  const innerW = Math.max(0, node.width - 2 * b);
+  const innerH = Math.max(0, node.height - 2 * b);
   for (const c of node.children) {
     if (inFlow(c)) continue;
     const cs = c.style;
@@ -882,7 +933,7 @@ function placeGrid(node: UINode, kids: UINode[], innerX: number, innerY: number,
 }
 
 /**
- * Offset and size of an absolute child along one axis of a `room`-long content box, as in CSS:
+ * Offset and size of an absolute child along one axis of a `room`-long padding box, as in CSS:
  * both edges and no fixed size stretch it (within min/max); otherwise it keeps `natural` and
  * sits at `start`, or `end` away from the far edge when only that is set. Its margins
  * (`mStart`, `mEnd`) add to the edges' distances.

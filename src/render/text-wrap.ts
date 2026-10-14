@@ -16,6 +16,8 @@ export interface WrapOptions {
   wrap?: boolean;
   /** Lines kept; the last one (and any that overflows) ends in "…". */
   maxLines?: number;
+  /** Split a word longer than the line at characters (CSS `overflow-wrap: anywhere`), as editors do. */
+  breakWords?: boolean;
 }
 
 const ELLIPSIS = "…";
@@ -69,7 +71,8 @@ export function wrapText(value: string, maxWidth: number, widthOf: (s: string) =
       start = k + 1;
       continue;
     }
-    const words = tokens(chars, start, k);
+    let words = tokens(chars, start, k);
+    if (options.breakWords) words = words.flatMap(([a, b]) => splitLong(chars, a, b, maxWidth, widthOf));
     let lineStart = start;
     let full = 0; // width with every token's trailing spaces
     let lastEnd = start;
@@ -107,6 +110,23 @@ export function wrapText(value: string, maxWidth: number, widthOf: (s: string) =
     }
   });
   return kept;
+}
+
+/** A token wider than `maxWidth` as pieces that fit (at least one character each); its trailing spaces stay on the last. */
+function splitLong(chars: string[], a: number, b: number, maxWidth: number, widthOf: (s: string) => number): [number, number][] {
+  let wordEnd = b;
+  while (wordEnd > a && chars[wordEnd - 1] === " ") wordEnd--;
+  if (widthOf(chars.slice(a, wordEnd).join("")) <= maxWidth) return [[a, b]];
+  const out: [number, number][] = [];
+  let from = a;
+  for (let j = a + 1; j < wordEnd; j++) {
+    if (widthOf(chars.slice(from, j + 1).join("")) > maxWidth) {
+      out.push([from, j]);
+      from = j;
+    }
+  }
+  out.push([from, b]);
+  return out;
 }
 
 /** The longest start of `chars` followed by `mark` that fits in `maxWidth` (just `mark` if none does). */

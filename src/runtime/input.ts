@@ -2,7 +2,7 @@
 // cursor, focus, clicks, scrolling and keyboard. Window side effects go through `InputHost`,
 // so this runs (and is tested) without a window.
 
-import { type Axis, type KeyEvent, type PointerEvent, type UINode, scrolls, stacked } from "../render/node.js";
+import { type Axis, type KeyEvent, type Modifiers, type PointerEvent, type UINode, scrolls, stacked } from "../render/node.js";
 import { batch } from "../reactive/signals.js";
 import { LINE_STEP, type Scrollbar, overflows, pageStep, scrollBy, scrollPosition, scrollRange, scrollTo, scrollbarAt } from "../render/scrollbar.js";
 
@@ -27,7 +27,27 @@ export interface KeyInput {
   ctrl: boolean;
   shift: boolean;
   alt: boolean;
+  meta?: boolean;
   repeat: boolean;
+}
+
+export const NO_MODIFIERS: Modifiers = Object.freeze({ ctrl: false, shift: false, alt: false, meta: false });
+
+// Keys with more than one xkb name, by the one apps see.
+const KEY_ALIASES: Record<string, string> = {
+  ISO_Left_Tab: "Tab", Prior: "Page_Up", Next: "Page_Down", KP_Enter: "Return", KP_Tab: "Tab", KP_Space: "space",
+};
+for (const name of ["Home", "End", "Up", "Down", "Left", "Right", "Insert", "Delete", "Begin"]) KEY_ALIASES[`KP_${name}`] = name;
+KEY_ALIASES.KP_Prior = KEY_ALIASES.KP_Page_Up = "Page_Up";
+KEY_ALIASES.KP_Next = KEY_ALIASES.KP_Page_Down = "Page_Down";
+
+/** The key name apps see (see KeyEvent.key). */
+export function normalizeKey(key: string, ctrl: boolean, alt: boolean): string {
+  const alias = KEY_ALIASES[key];
+  if (alias) return alias;
+  // Shortcuts compare lowercase letters whatever Shift or Caps Lock did.
+  if ((ctrl || alt) && key.length === 1 && key >= "A" && key <= "Z") return key.toLowerCase();
+  return key;
 }
 
 const RESIZE_BORDER = 6;
@@ -45,12 +65,12 @@ for (const [names, key] of [
   [["Down"], { axis: "y", step: "line", dir: 1 }],
   [["Left"], { axis: "x", step: "line", dir: -1 }],
   [["Right"], { axis: "x", step: "line", dir: 1 }],
-  [["Prior", "Page_Up"], { axis: "y", step: "page", dir: -1 }],
-  [["Next", "Page_Down"], { axis: "y", step: "page", dir: 1 }],
+  [["Page_Up"], { axis: "y", step: "page", dir: -1 }],
+  [["Page_Down"], { axis: "y", step: "page", dir: 1 }],
   [["Home"], { axis: "y", step: "edge", dir: -1 }],
   [["End"], { axis: "y", step: "edge", dir: 1 }],
 ] as const) {
-  for (const name of names) SCROLL_KEYS[name] = SCROLL_KEYS[`KP_${name}`] = key;
+  for (const name of names) SCROLL_KEYS[name] = key;
 }
 
 export type Input = ReturnType<typeof createInput>;
@@ -98,7 +118,7 @@ export function createInput(root: UINode, host: InputHost) {
     for (let i = root.layers.length - 1; i >= 0; i--) {
       const layer = root.layers[i]!;
       const hit = hitTest(layer, x, y);
-      if (hit && (hit !== layer || layer.overlay!.anchor || layer.overlay!.modal)) return hit;
+      if (hit && (hit !== layer || layer.overlay!.anchor || layer.overlay!.at || layer.overlay!.modal)) return hit;
     }
     return hitTest(root, x, y);
   }
@@ -200,9 +220,14 @@ export function createInput(root: UINode, host: InputHost) {
     const bar = pointer ? barUnder(next[0], pointer.x, pointer.y) : null;
     if (barPress) setActiveBar(barPress.node, barPress.axis, !!barPress.drag);
     else setActiveBar(bar ? next[0]! : null, bar?.axis ?? null, false);
+    updateCursor(bar);
+  }
+
+  /** The cursor for the pointer's spot: resize edges, a scrollbar, or the nearest node that sets one. */
+  function updateCursor(bar = pointer ? barUnder(hoverPath[0], pointer.x, pointer.y) : null) {
     if (!pointer) return;
     const edges = resizeEdges(pointer.x, pointer.y);
-    const shape = bar || barPress ? "default" : next.find((n) => n.style.cursor)?.style.cursor;
+    const shape = bar || barPress ? "default" : hoverPath.find((n) => n.style.cursor)?.style.cursor;
     setCursor(edges ? EDGE_CURSORS[edges]! : (shape ?? "default"));
   }
 
@@ -221,12 +246,33 @@ export function createInput(root: UINode, host: InputHost) {
     refreshHover();
   }
 
-  function pointerEvent(x: number, y: number, button: number, clicks = 1) {
+  function pointerEvent(x: number, y: number, button: number, clicks: number, mods: Modifiers) {
     let stopped = false;
     const e: PointerEvent & { stopped: () => boolean } = {
-      x, y, localX: 0, localY: 0, button, clicks, stop: () => (stopped = true), stopped: () => stopped,
+      x, y, localX: 0, localY: 0, button, clicks, ctrl: mods.ctrl, shift: mods.shift, alt: mods.alt, meta: mods.meta,
+      stop: () => (stopped = true), stopped: () => stopped,
     };
     return e;
+  }
+
+  /** The innermost onContextMenu along `path`. */
+  function contextMenu(path: readonly UINode[], e: PointerEvent) {
+    const n = path.find((n) => n.handlers.onContextMenu);
+    n?.handlers.onContextMenu!(at(n, e));
+  }
+
+  function keyEvent(ev: KeyInput, stop: () => void): KeyEvent {
+    const text = [...ev.text].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127) || ev.ctrl ? "" : ev.text;
+    return { key: normalizeKey(ev.key, ev.ctrl, ev.alt), text, ctrl: ev.ctrl, shift: ev.shift, alt: ev.alt, meta: !!ev.meta, repeat: ev.repeat, stop };
+  }
+
+  /** Runs `handler` from each key target up to the root, until stop(); true if stopped. */
+  function sendKey(e: KeyEvent, stopped: () => boolean, handler: "onKeyDown" | "onKeyUp"): boolean {
+    if (focused && !focused.attached) setFocus(null);
+    for (const start of keyTargets()) {
+      for (let n: UINode | null = start; n && !stopped(); n = n.parent) n.handlers[handler]?.(e);
+    }
+    return stopped();
   }
 
   /** Sets the local position for `node`, which is about to handle `e`. */
@@ -284,7 +330,7 @@ export function createInput(root: UINode, host: InputHost) {
     /** After a layout: the node under a still pointer may have changed. */
     refreshHover,
 
-    pointerMove(x: number, y: number) {
+    pointerMove(x: number, y: number, mods: Modifiers = NO_MODIFIERS) {
       pointer = { x, y };
       const drag = barPress?.drag;
       if (drag) {
@@ -294,11 +340,12 @@ export function createInput(root: UINode, host: InputHost) {
         return;
       }
       refreshHover();
-      const e = pointerEvent(x, y, pressed ? pressedButton : -1, 0);
+      const e = pointerEvent(x, y, pressed ? pressedButton : -1, 0, mods);
       for (const n of pressed ? pathTo(pressed) : hoverPath) {
         n.handlers.onPointerMove?.(at(n, e));
         if (e.stopped()) break;
       }
+      updateCursor(); // a handler may have changed it (a link under the pointer inside a RichText)
     },
 
     pointerLeave() {
@@ -307,7 +354,7 @@ export function createInput(root: UINode, host: InputHost) {
       cursor = "";
     },
 
-    pointerDown(x: number, y: number, button: number) {
+    pointerDown(x: number, y: number, button: number, mods: Modifiers = NO_MODIFIERS) {
       pointer = { x, y };
       const edges = button === 0 ? resizeEdges(x, y) : 0;
       if (edges) {
@@ -333,7 +380,7 @@ export function createInput(root: UINode, host: InputHost) {
       pressedButton = button;
       setFocus(path.find((n) => n.focusable) ?? null);
 
-      const e = pointerEvent(x, y, button, lastClick.clicks);
+      const e = pointerEvent(x, y, button, lastClick.clicks, mods);
       // The press bubbles to every ancestor until stop() (a list's context menu sees a press on
       // a clickable row). Controls inside a drag region (clickables, fields, sliders,
       // focusables) take the press: an ancestor drag region does not move the window.
@@ -348,9 +395,10 @@ export function createInput(root: UINode, host: InputHost) {
         }
         if (n.handlers.onClick || n.handlers.onPointerDown || n.focusable) taken = true;
       }
+      if (button === 2) contextMenu(path, pointerEvent(x, y, button, lastClick.clicks, mods));
     },
 
-    pointerUp(x: number, y: number, button: number) {
+    pointerUp(x: number, y: number, button: number, mods: Modifiers = NO_MODIFIERS) {
       if (barPress) {
         if (button === 0) {
           barPress = null;
@@ -359,21 +407,21 @@ export function createInput(root: UINode, host: InputHost) {
         return;
       }
       const path = pathTo(hitTop(x, y));
-      const e = pointerEvent(x, y, button, lastClick.clicks);
+      const e = pointerEvent(x, y, button, lastClick.clicks, mods);
       for (const n of path) {
         n.handlers.onPointerUp?.(at(n, e));
         if (e.stopped()) break;
       }
       const target = pathTo(pressed).find((n) => n.handlers.onClick);
       pressed = null;
-      if (target && path.includes(target) && button === 0) target.handlers.onClick!(at(target, pointerEvent(x, y, button, lastClick.clicks)));
+      if (target && path.includes(target) && button === 0) target.handlers.onClick!(at(target, pointerEvent(x, y, button, lastClick.clicks, mods)));
     },
 
     /** A wheel or touchpad turn; with Shift, a vertical turn scrolls sideways. */
-    scroll(x: number, y: number, dx: number, dy: number, shift = false) {
-      if (shift && !dx) [dx, dy] = [dy, 0];
+    scroll(x: number, y: number, dx: number, dy: number, mods: Modifiers = NO_MODIFIERS) {
+      if (mods.shift && !dx) [dx, dy] = [dy, 0];
       let stopped = false;
-      const e = { dx, dy, stop: () => (stopped = true) };
+      const e = { dx, dy, ctrl: mods.ctrl, shift: mods.shift, alt: mods.alt, meta: mods.meta, stop: () => (stopped = true) };
       // Each axis goes to the nearest node that scrolls that way and has something to scroll.
       let wantX = dx !== 0;
       let wantY = dy !== 0;
@@ -394,16 +442,15 @@ export function createInput(root: UINode, host: InputHost) {
 
     keyDown(ev: KeyInput) {
       let stopped = false;
-      const text = [...ev.text].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127) || ev.ctrl ? "" : ev.text;
-      const e: KeyEvent = { key: ev.key, text, ctrl: ev.ctrl, shift: ev.shift, alt: ev.alt, repeat: ev.repeat, stop: () => (stopped = true) };
-      if (focused && !focused.attached) setFocus(null);
-      for (const start of keyTargets()) {
-        for (let n: UINode | null = start; n && !stopped; n = n.parent) n.handlers.onKeyDown?.(e);
-      }
-      if (stopped) return;
+      const e = keyEvent(ev, () => (stopped = true));
+      if (sendKey(e, () => stopped, "onKeyDown")) return;
       const layer = dismissible();
-      if (ev.key === "Escape" && layer) return layer.overlay!.onDismiss!();
-      if (ev.key === "Tab" || ev.key === "ISO_Left_Tab") {
+      if (e.key === "Escape" && layer) return layer.overlay!.onDismiss!();
+      if ((e.key === "Menu" || (e.key === "F10" && e.shift)) && focused) {
+        // Where a menu opened from the keyboard goes: under the focused node.
+        return contextMenu(pathTo(focused), pointerEvent(focused.x, focused.y + focused.height, -1, 0, e));
+      }
+      if (e.key === "Tab") {
         const modal = root.layers.findLastIndex((l) => l.overlay!.modal);
         const scope = modal >= 0 ? root.layers.slice(modal) : [root, ...root.layers];
         const list = scope.flatMap((n) => focusables(n));
@@ -413,8 +460,13 @@ export function createInput(root: UINode, host: InputHost) {
         setFocus(list[(i + step + list.length) % list.length]!);
         return;
       }
-      const scroll = SCROLL_KEYS[ev.key];
+      const scroll = SCROLL_KEYS[e.key];
       if (scroll && !ev.alt) scrollByKey(scroll);
+    },
+
+    keyUp(ev: KeyInput) {
+      let stopped = false;
+      sendKey(keyEvent(ev, () => (stopped = true)), () => stopped, "onKeyUp");
     },
   };
 }

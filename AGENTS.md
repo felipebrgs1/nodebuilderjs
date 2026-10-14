@@ -17,7 +17,7 @@ well, so as much of the framework as possible lives in TS, and the C stays small
 | `ARCHITECTURE.md` | how it works inside and how to measure performance |
 | `ROADMAP.md` | priorities and what has been done (still in Portuguese) |
 | `FONTS.md` | the fonts roadmap: what is done and everything left to make fonts complete |
-| `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps |
+| `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps, and inside core for `nodebuilder agents update` (only the block between the `nodebuilder:begin/end` markers of `AGENTS.md` is the framework's) |
 
 ## Non-negotiable rules
 
@@ -49,7 +49,7 @@ bun run typecheck           # tsc 7 --noEmit (~0.1 s)
 bun test                    # all tests, no window (~0.1 s)
 bun test test/svg.test.tsx  # one file; -t "pattern" filters by test name
 bun run check:snippets      # typechecks the ts/tsx snippets of README.md and the template docs
-bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll | widgets   # examples
+bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll | widgets | tray   # examples
 bun run dev                 # todo with --watch
 bun run bench               # stress test with NB_STATS=1 (env: N=1000 MODE=one|all|static)
 bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settings ROWS=500
@@ -60,6 +60,9 @@ bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 
                             # PNG of the app without a window or display server (EGL offscreen)
 bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
                             # icon imports for an app (validated in its node_modules); `icons list [filter]`
+bun cli/nodebuilder.ts agents update [--dry-run] [--force]
+                            # in an app: AGENTS.md and .agents/skills up to this version (keeps edited ones)
+bun scripts/agents-history.ts   # cli/agents-history.json (hashes of every committed template doc; npm:build runs it)
 bun cli/nodebuilder.ts doctor [--json] [--window]
                             # checks the machine (addon, system libs, display, keyboard, GL, fonts,
                             #   libheif) with the command that fixes each problem; exit 1 on failure
@@ -133,7 +136,11 @@ What cannot be tested automatically is documented when closing the task:
   (percentage sizes), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
   `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
   `doctor` (each check on fake probes, the ELF and `ldd` readers, `diagnostics()` and one spawn),
-  `clipboard`, `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
+  `agents` (`agents update` on temp apps: stale, edited, renamed docs, AGENTS.md markers),
+  `text-area` (wrapping, caret across lines, scrolling to the caret), `rich-text` (spans: fonts,
+  wrapping across spans, baseline, links), `clipboard`, `window-icon` (`iconImages`: sizes, fitting, the default; `run()` covers the
+  prop and `hide`/`show` in `app`), `dbus` (wire format, connection against `fake-bus.ts`),
+  `tray` (`createTray` against `fake-bus.ts`), `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
   pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
 - Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
@@ -205,7 +212,10 @@ src/                   one module per folder; relative imports with `.js`
     select.ts tabs.ts tooltip.ts dialog.ts     on top of Overlay (Tabs opens nothing, but uses roving.ts)
     roving.ts          group with a single Tab stop and arrow keys (RadioGroup, Tabs)
     overlay.ts         <Overlay>: layer above the window (marker in the tree + root.layers)
-    text-selection.ts  character positions, word under the click (Text selectable; TextField)
+    text-selection.ts  character positions, word under the click (Text selectable; TextField, TextArea)
+    text-edit.ts       EditSession (selection, undo/redo), editKey (keys every text input shares), editable (border, focus ring, caret blink, selection props)
+    rich-text.ts       RichText: spans with their own font/color/background/underline/onClick, wrapped across spans, shared baseline
+    text-area.ts       TextArea: multi-line (wrapText with breakWords), caret across lines, scrolls to the caret
   image/
     source.ts          image sources: cache by path, usage count, GPU handle
     decode.ts          decodeImage: picks the decoder by the file signature
@@ -213,6 +223,13 @@ src/                   one module per folder; relative imports with `.js`
     jpeg.ts            baseline/progressive JPEG, CMYK/YCCK, EXIF; identical to libjpeg-turbo
     webp.ts            WebP VP8 (lossy), VP8L, alpha, first animation frame; identical to libwebp
     png-encode.ts      PNG encoder (RGBA, Sub/Up filters, node:zlib) for screenshots
+    icon.ts            app icons: SVG/raster -> square sizes (window and tray icons; DEFAULT_ICON_SVG)
+  dbus/                D-Bus client in TS over node:net (no libdbus)
+    wire.ts            marshalling by signature, message framing (MessageReader)
+    connection.ts      auth, Hello, calls, signal matches, exported objects (properties, introspection)
+  tray/
+    tray.ts            createTray: StatusNotifierItem + menu; setTrayBus (run() only)
+    menu.ts            TrayMenuEntry -> com.canonical.dbusmenu layout
   svg/                 SVG for icons (<Icon>)
     parse.ts           XML, presentation attributes, style="", transform
     render.ts          shapes -> geometry -> bitmap
@@ -244,17 +261,18 @@ native/
     codecs.c            AVIF/HEIC via libheif (dlopen; own declarations, no header)
     offscreen.c         EGL context with no display server (surfaceless/device) + FBO, for screenshots
     build.sh            backend build (called by scripts/build-native.sh)
-    protocols/          xdg-shell.xml (vendored; wayland-protocols is not installed)
+    protocols/          xdg-shell.xml, xdg-toplevel-icon-v1.xml (vendored; wayland-protocols is not installed)
   build/<platform>-<arch>/  output (names from process.platform/arch: linux-x64, ...)
 test/            one file per module (bun:test; bunfig.toml limits bun test to test/)
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> named commands
   charts/        tests for src/charts (scales and each chart type)
   fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
-examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
+examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, tray, bench, dashboard (.tsx) + assets/
 cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
                  (+ screenshot-entry.ts: renders an exported component for `--props`/`--export`),
                  icons.ts (`icons add/list`: writes an app's icon imports), doctor.ts (checks
-                 over injected probes; `systemProbes()` is the real machine)
+                 over injected probes; `systemProbes()` is the real machine), agents.ts
+                 (`agents update`) + agents-history.json (generated: released doc hashes)
   package/       common.ts (SYSTEM_LIBS: soname -> deb/pacman package, for packaging and doctor),
                  deb.ts, rpm.ts, appimage.ts, native.ts (addon build, `elfGlibc`), Dockerfile, icon.svg
 packages/        workspaces published together with core (see "Publishing to npm")
@@ -262,7 +280,7 @@ packages/        workspaces published together with core (see "Publishing to npm
   create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/ (AGENTS.md and
                          .agents/skills/; index.js creates the links in .claude/skills/)
 lib/             JS + .d.ts for Node (generated by scripts/npm.ts, not in git)
-compare/         the same scenes in Electron, Tauri, Flutter and egui (benchmarks)
+compare/         the same scenes in Electron, Tauri, Flutter, egui and GPUI (benchmarks)
 scripts/         build-native.sh, measure.sh, compare.sh, npm.ts, check-snippets.ts
 ```
 
@@ -294,10 +312,12 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   `<Index>`, one per position.
 - **Effect queue:** writes made during the queue (`flushPending`) are only enqueued; the
   effect finishes before the ones it triggered. An unhandled error does not stall the queue
-  (the others run; the first error is rethrown at the end).
+  (the others run in a `finally`; the first error goes on to the writer).
 - **Errors propagate up through owners:** `execute` catches the error of an effect/memo and
   hands it to the `onError` of the nearest scope (`catchError`, used by `<ErrorBoundary>`);
-  without a handler, it rethrows. Event handlers do not go through this.
+  without a handler it does not catch at all, so the error keeps the app's frame on top (Bun
+  prints where an error was last thrown: never catch and rethrow an unhandled error).
+  Event handlers do not go through this.
 
 ## Code conventions
 
@@ -336,6 +356,9 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   blocks the window move: `onPointerDown` keeps bubbling to every ancestor until `stop()`,
   past clickable nodes too (a parent's `pressStyle` shows like CSS `:active`); only `onClick`
   stops at the innermost node that has one.
+- Key names reach handlers normalized (`normalizeKey` in `runtime/input.ts`): compare only the
+  plain names (`"Tab"`, `"Return"`, `"Page_Up"`, `"Delete"`), never `ISO_Left_Tab`, `Prior` or
+  `KP_*`.
 - Handlers are **chained, never replaced**: `applyProps` adds the app's handlers (and the
   ones from spread `createInteraction().props`, carried under a unique symbol key so a later
   `onPointerEnter={...}` cannot drop them) after the node's; a widget sets its own handlers
@@ -456,7 +479,7 @@ Keep **`native/include/nb.h`, `src/render/paint.ts` and `native/core/render_gles
 | TEXT | 2 | x y(line top) size font id (weight * 2 + italic, `fontId()`) · r g b a · index into `texts[]` · letterSpacing · font spec index into `texts[]` (`fontSpec()`; -1: none) |
 | CLIP | 3 | x y w h · tl tr br bl (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
-| SHADOW | 5 | x y w h · r g b a · tl tr br bl · blur |
+| SHADOW | 5 | x y w h · r g b a · tl tr br bl · blur · dy (the casting box is at y - dy: cut out, as in CSS) |
 | IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tint; a = opacity) · radius · id (from `createImage`) |
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · capStart capEnd (0 butt, 1 round) |
 | TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
@@ -471,7 +494,8 @@ the stop lines and colors their vertices: exact for linear gradients, any shape.
 ### Layout (render/layout.ts)
 - Flex: `direction` (column by default in `Column`/`Box`), `gap`, `padding`, `grow`,
   `align` (**stretch** by default; `alignSelf` overrides it per child, read through `alignOf()`),
-  `justify`, `min/max`, `position: "absolute"` (`left/top/right/bottom` from the content box;
+  `justify`, `min/max`, `position: "absolute"` (`left/top/right/bottom` and percentages from the padding box: inside the
+  border, ignoring the padding, as in CSS;
   both edges without a size stretch, as in CSS; it scrolls with a `Scroll`'s content).
 - **Stacking:** `zIndex` orders siblings only (no global stacking contexts): `stacked(node)`
   (`render/node.ts`) gives the children by zIndex, then child order (stable sort, and the
@@ -492,6 +516,8 @@ the stop lines and colors their vertices: exact for linear gradients, any shape.
   or the content if taller; measured nodes take the ratio as is). A fixed `height` gives the
   width (`ratioWidth`); a child stretched in a row of known inner height gets
   `height * ratio` as its flex basis (`rowBasis`).
+- A measured node with `fluidMeasure` (`<Canvas measure>`) is "height depends on width" at any
+  width: `wraps` and `fluid`, so `heightAt` always asks `measure(inner)`.
 - **Grid** (`direction: "grid"` + `columns` or `minColumnWidth`, `rowGap`; the `Grid` widget;
   `columnsOf(node, inner)` gives the column count, auto-fill with `minColumnWidth`): equal cells
   (`cellWidth`), rows as tall as their tallest cell (`gridRows`, shared by `intrinsic`,
@@ -642,7 +668,8 @@ packages, all with the version from the root `package.json`:
 
 ## Current limitations
 
-- TextField: no selection, copy, undo (paste exists; `password` masks the drawing only); Text: a word longer than the line
+- TextField/TextArea: no IME, no primary selection (middle-click paste), no drag and drop of text, no
+  scrollbar on a TextArea that scrolls itself; Text: a word longer than the line
   overflows (selection only with `selectable`, no Shift+click or keyboard); a family without a
   weight or slant gets the closest face, emboldened or slanted (synthetic); app fonts are
   registered synchronously (no `unicode-range`, no async loading); `underline` is painted in
@@ -670,13 +697,16 @@ packages, all with the version from the root `package.json`:
   edge; holding a click on the scrollbar track advances only one page (no repeat).
   Shift+wheel depends on the event's modifiers: on Wayland they only apply while the window
   has keyboard focus.
-- Dark theme does not follow the system (missing the XDG portal over D-Bus); a theme color
+- Dark theme does not follow the system (the XDG portal is reachable now with `src/dbus/`, not read yet); a theme color
   copied as a fixed value (`color={theme.x}`) does not follow the switch. Animations without
   `scale`/`rotate` or declarative `transition`.
 - Screenshots need EGL (Mesa surfaceless or an EGL device); a process that took one cannot
   open a window afterwards (and vice versa).
 - No accessibility (AT-SPI), multi-window, IME
   (text-input-v3), DnD, real fractional scaling (KDE 125% renders at 2x and downscales).
+- Window icon on Wayland only with `xdg-toplevel-icon-v1` (KDE 6.1+; GNOME uses the `.desktop`
+  matching the app id). Tray only with a StatusNotifierItem host (GNOME needs the AppIndicator
+  extension; no XEmbed tray). The tray's menu is drawn by the panel (no icons in items yet).
 - Window always uses its own decoration (CSD): title bar, move, maximize,
   resize from the edges (6 px); `decorations={false}` swaps the bar for the app's own
   (`dragRegion` + `<WindowControls />`). `xdg-decoration` (SSD on KDE) not yet.

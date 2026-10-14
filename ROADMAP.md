@@ -39,6 +39,16 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - 0.4 (2026-10-14): font families and app fonts (`fontFamily`, `registerFont`, OpenType
   features and variable axes), paged glyph atlases, `nodebuilder doctor` and the fixes from a
   user report below
+- Window icon (2026-10-14): `<Window icon>` (SVG or raster) via `xdg-toplevel-icon-v1` on
+  Wayland and `_NET_WM_ICON` on X11; the nodebuilder icon by default instead of the
+  compositor's generic one
+- System tray (2026-10-14): `createTray` (StatusNotifierItem + dbusmenu, reactive icon, tooltip
+  and menu) on our own D-Bus client in TypeScript; `windowControls.hide()`/`show()` to close to
+  the tray
+- 0.4.1 (2026-10-14): window icons, system tray, `TextArea`, selection/copy/undo in
+  `TextField`, `RichText`, modifiers and `onKeyUp`/`onContextMenu`, `<Overlay at>`, Canvas
+  `measure`/`visibleRect`, `position="absolute"` from the padding box as in CSS, error stacks
+  that show the app's frame, and the fixes from two user reports
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 - `nodebuilder doctor` (2026-10-14): checks the machine (runtime, native core and system
   libraries, display, keyboard, GL, fonts, libheif) and prints the command that fixes each
@@ -139,9 +149,11 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
   (TTF, OTF/CFF, TTC, WOFF, WOFF2, variable; CSS weight/slant matching), synthetic bold and
   italic, `fontFeatures`, `fontVariations`, `fontFamilies()`. Everything still missing for
   fonts (bugs, core, API, CLI, tests, order of work) is mapped in [FONTS.md](FONTS.md).
-- Seleção no `TextField` (com Ctrl+C/Ctrl+X); seleção primária (colar com o botão do meio);
-  Shift+clique e setas para estender a seleção do `<Text selectable>`
-- `TextField`: desfazer/refazer, campo de várias linhas
+- ~~Rich text (several styles in one paragraph)~~ **done** (2026-10-14: `RichText`). Missing:
+  selecting it.
+- ~~Selection, copy/cut and undo/redo in `TextField`; a multi-line field~~ **done**
+  (2026-10-14: `TextArea`, `selection`/`onSelectionChange`). Missing: primary selection
+  (middle-click paste), Shift+click and arrows to extend `<Text selectable>`'s selection
 - IME (`text-input-v3`) para teclados de idiomas asiáticos
 
 ## Widgets e visual

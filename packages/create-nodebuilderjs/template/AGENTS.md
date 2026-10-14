@@ -1,3 +1,4 @@
+<!-- nodebuilder:begin (the framework's guide, kept current by `nodebuilder agents update`; write your notes after the end marker) -->
 # AGENTS.md
 
 nodebuilder app: native Linux UI in TSX, **no DOM and no React**. Read this before changing code.
@@ -12,6 +13,9 @@ nodebuilder app: native Linux UI in TSX, **no DOM and no React**. Read this befo
   fails to load, text shows boxes or a screenshot fails**, before changing code: the problem is
   often a missing package, and each failure comes with the command that installs it.
   `bun run doctor -- --json` for a machine-readable report.
+- After updating `@nodebuilderjs/core` (`bun update`), `bun run agents:update` brings this guide
+  and the skills to the new version (the doctor warns when they are behind). Docs edited in
+  this app are kept and listed, not overwritten.
 - Before finishing: `bun run typecheck && bun test`. **After a visual change, take a screenshot
   and look at it** (open the PNG): tests check boxes, not colors, alignment or clipping.
 - A screen other than the first: `nodebuilder screenshot src/App.tsx shot.png --export App
@@ -42,7 +46,7 @@ that support skills load them on their own; others should read the topic's skill
 
 | Skill | When |
 |---|---|
-| `nodebuilder-ui` | screens, widgets (incl. custom title bar with `dragRegion`/`WindowControls`, `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`, `Tooltip`, `Dialog`, `ProgressBar`, `disabled`), style props (incl. gradient `background={{ linear, angle }}`), fonts (`fontFamily`, `registerFont`, `fontFeatures`, `fontVariations`, `fontFamilies()`), hover/press/focus (`hoverStyle`, `pressStyle`, `focusStyle`, `createInteraction`), layout (`Grid` of equal columns or `minColumnWidth`, percentages `width="50%"`, `radius={[tl, tr, br, bl]}`, `wrap` rows of chips, `margin`, `aspectRatio`, equal columns in a row with `width={0} grow={1}`, `position="absolute"`, `zIndex`, `clip`, `shadow`, overflow warnings), events, own components, `For`/`Index`/`Show`/`Switch`, `ErrorBoundary`, scrolling (horizontal, scrollbars, keyboard, `scrollIntoView`), context, `ref` (focus, scroll), `onMount`, `onResize`, window-wide keys (`<Window onKeyDown>`, `focusable`), `TextField password`, `Overlay` (dialog, menu, tooltip, `inset`), `opacity`/`translate`, theme (light/dark, `setTheme`), animations (`createTween`, `animate`, `easing`, `mixColor`), selectable text, copy/paste |
+| `nodebuilder-ui` | screens, widgets (incl. custom title bar with `dragRegion`/`WindowControls`, window `icon`, system tray (`createTray`, `windowControls.hide/show`), `TextArea` and text selection/undo, `RichText` (styled spans, links), `Toggle`, `RadioGroup`, `Slider`, `Select`, `Tabs`, `Tooltip`, `Dialog`, `ProgressBar`, `disabled`), style props (incl. gradient `background={{ linear, angle }}`), fonts (`fontFamily`, `registerFont`, `fontFeatures`, `fontVariations`, `fontFamilies()`), hover/press/focus (`hoverStyle`, `pressStyle`, `focusStyle`, `createInteraction`), layout (`Grid` of equal columns or `minColumnWidth`, percentages `width="50%"`, `radius={[tl, tr, br, bl]}`, `wrap` rows of chips, `margin`, `aspectRatio`, equal columns in a row with `width={0} grow={1}`, `position="absolute"`, `zIndex`, `clip`, `shadow`, overflow warnings), events, own components, `For`/`Index`/`Show`/`Switch`, `ErrorBoundary`, scrolling (horizontal, scrollbars, keyboard, `scrollIntoView`), context, `ref` (focus, scroll), `onMount`, `onResize`, window-wide keys (`<Window onKeyDown>`, `focusable`), `TextField password`, `Overlay` (dialog, menu, tooltip, `inset`), `opacity`/`translate`, theme (light/dark, `setTheme`), animations (`createTween`, `animate`, `easing`, `mixColor`), selectable text, copy/paste |
 | `nodebuilder-from-react` | before installing libraries or porting React/web code |
 | `nodebuilder-images` | images (PNG, JPEG, WebP, AVIF), files in the app |
 | `nodebuilder-icons` | icons (Lucide, Phosphor) and SVG with `Icon`; `bun run icons:add <names...>` writes their imports into `src/icons.ts` |
@@ -51,3 +55,9 @@ that support skills load them on their own; others should read the topic's skill
 | `nodebuilder-testing` | tests without a window (`mount`, `findByText`/`findAllByText` (`{ in: "Button" }`), `findByLabel` (`ariaLabel`), `findByValue`/`findByPlaceholder`/`shownText` (fields), `click`, `interact`, hidden targets that throw, `layoutWarnings()`, real text metrics (`useRealTextMetrics`), `frames`, clipboard), screenshots (`nodebuilder screenshot`, `--props` for a given page, `screenshot()`) |
 | `nodebuilder-packaging` | AppImage/.deb/.rpm, embedded files, icon and app id |
 | `nodebuilder-performance` | slowness, long lists, live data, animation, CPU use while idle (`NB_STATS`, `NB_TRACE=frames`) |
+<!-- nodebuilder:end -->
+
+## This app
+
+Notes for agents about this app (conventions, commands, decisions) go here, after the marker
+above: `nodebuilder agents update` replaces only the framework guide between the markers.

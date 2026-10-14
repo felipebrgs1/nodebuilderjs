@@ -262,7 +262,7 @@ test("equal rows: height={0} grow={1} splits a column's height the same way", ()
   expect(col.children.map((c) => [c.y, c.height])).toEqual([[0, 150], [150, 150]]);
 });
 
-test("absolute children: natural size (no stretch), placed inside the padding, not counted in the parent's size", () => {
+test("absolute children: natural size (no stretch), placed from the parent's padding box (as in CSS), not counted in its size", () => {
   const { root } = mount(() => (
     <Column align="start">
       <Column padding={10} gap={5}>
@@ -277,11 +277,11 @@ test("absolute children: natural size (no stretch), placed inside the padding, n
   const parent = outer.children[0]!;
   expect([parent.width, parent.height]).toEqual([56 + 20, 20 + 20]); // only the Text in flow
   const [, badge, fixed] = parent.children;
-  expect([badge!.x, badge!.y, badge!.width, badge!.height]).toEqual([14, 16, 136, 20]);
-  expect([fixed!.x, fixed!.y, fixed!.width, fixed!.height]).toEqual([10, 10, 30, 12]);
+  expect([badge!.x, badge!.y, badge!.width, badge!.height]).toEqual([4, 6, 136, 20]); // the padding does not move it
+  expect([fixed!.x, fixed!.y, fixed!.width, fixed!.height]).toEqual([0, 0, 30, 12]);
 });
 
-test("absolute children: left and right stretch to the parent's inner width, top and bottom to its height", () => {
+test("absolute children: left and right stretch over the parent's padding box, top and bottom too", () => {
   const { root } = mount(() => (
     <Column align="start">
       <Box width={320} height={120} padding={10}>
@@ -293,8 +293,24 @@ test("absolute children: left and right stretch to the parent's inner width, top
   const outer = root.children[0]!;
   layout(outer, 400, 300);
   const [fill, inset] = outer.children[0]!.children;
-  expect([fill!.x, fill!.y, fill!.width, fill!.height]).toEqual([10, 10, 300, 100]);
-  expect([inset!.x, inset!.y, inset!.width, inset!.height]).toEqual([30, 15, 250, 10]);
+  expect([fill!.x, fill!.y, fill!.width, fill!.height]).toEqual([0, 0, 320, 120]);
+  expect([inset!.x, inset!.y, inset!.width, inset!.height]).toEqual([20, 5, 270, 10]);
+});
+
+test("absolute children start inside the parent's border, as in CSS (a stripe on the left edge of a card)", () => {
+  const { root } = mount(() => (
+    <Column align="start">
+      <Box width={200} height={60} padding={[3, 6, 3, 9]} borderWidth={1}>
+        <Box position="absolute" left={0} top={0} bottom={0} width={4} />
+        <Box position="absolute" right={0} bottom={0} width={10} height={10} />
+      </Box>
+    </Column>
+  ));
+  const outer = root.children[0]!;
+  layout(outer, 400, 300);
+  const [stripe, corner] = outer.children[0]!.children;
+  expect([stripe!.x, stripe!.y, stripe!.width, stripe!.height]).toEqual([1, 1, 4, 58]);
+  expect([corner!.x, corner!.y]).toEqual([189, 49]);
 });
 
 test("absolute children: right or bottom alone places the child from that edge", () => {

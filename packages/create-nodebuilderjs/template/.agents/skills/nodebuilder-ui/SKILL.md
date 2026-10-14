@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-ui
-description: nodebuilder widgets, style props and layout (gradient backgrounds, per-corner radius, percentage sizes, responsive Grid minColumnWidth, password fields, window-wide keys (Window onKeyDown, focusable containers), onMount, Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking (zIndex), clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
+description: nodebuilder widgets, style props and layout (gradient backgrounds, per-corner radius, percentage sizes, responsive Grid minColumnWidth, password fields, window-wide keys (Window onKeyDown, focusable containers), onMount, Window, custom title bar with dragRegion and WindowControls, Column, Row, Scroll, Text, Button, TextField, TextArea (multi-line, selection, undo), RichText (styled spans, links), Checkbox, Toggle, RadioGroup, Slider, Select, Tabs, Tooltip, Dialog, ProgressBar, Spinner, Card, For, Index, Show, Switch/Match, ErrorBoundary, theme), scrolling (vertical, horizontal, scrollbars, keyboard, scrollIntoView), context (createContext), ref (focus, scroll, measure), onResize, dark theme (setTheme), animations (createTween, createPresence, animate, easing, mixColor), equal-width columns, absolute positioning and stacking (zIndex), clip with rounded corners, shadows, events (double/right click, key names), reusable components (MaybeAccessor, read, batch), overlays (modal dialog, dropdown menu, hint/tooltip), opacity and translate, selectable text and clipboard (copy/paste). Use when creating or changing any screen, form, list, sidebar or layout of a nodebuilder app, when the user needs to copy text from the screen, or when an element does not show up, grow or scroll as expected.
 ---
 
 # UI with nodebuilder
@@ -12,17 +12,19 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 
 | Widget | What for | Main props |
 |---|---|---|
-| `Window` | root, one per app, with its own title bar | `title`, `width`, `height` (initial size), `appId`, `onClose` (return `false` to keep it open), `decorations={false}` (your own title bar, see "Theme and window") |
+| `Window` | root, one per app, with its own title bar | `title`, `width`, `height` (initial size), `appId`, `icon` (SVG markup or an imported `.svg`/PNG file; default: the nodebuilder icon), `onClose` (return `false` to keep it open), `decorations={false}` (your own title bar, see "Theme and window") |
 | `WindowControls` | minimize, maximize/restore and close buttons, for a custom title bar | style (`gap`...) |
 | `Column` / `Row` / `Box` | flex container (column, row; `Box` is a column) | style + events |
 | `Grid` | children in rows of equal-width cells (cards, covers, galleries) | `columns`, `gap`, `rowGap` (default `gap`); see "Layout rules" |
 | `Scroll` | scrolling: vertical (default), `horizontal` or `horizontal vertical` (both) | needs `grow={1}` or a size; see "Scrolling" below |
+| `RichText` | one paragraph of styled spans (markdown, links inside a sentence) | `spans` (array or accessor) of strings or `{ text, color, size, bold, weight, italic, family, letterSpacing, underline, background, onClick }`, `lineHeight`, `textAlign`; a span with `onClick` is a link (pointer cursor; other clicks go to the parent) |
 | `Text` | text; wraps at spaces to fit the width | children (`{count}`, `"a"`) or `text={() => ...}`, `wrap` (default `true`), `maxLines` (truncates with "…"), `textAlign`, `lineHeight`, `underline`, `selectable` |
 | `Image` | PNG, JPEG, WebP, AVIF | see the `nodebuilder-images` skill |
 | `Icon` | SVG icon (Lucide, Phosphor), color inherited like text | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icons` |
 | `Canvas` | free drawing: lines, polygons, arcs, text | `draw={(g) => ...}` + size; skill `nodebuilder-drawing` |
 | `Button` | button with focus and keyboard | `label` or children, `variant` (`default`, `primary`, `danger`, `flat`; a value or a function), `disabled`, `onClick` |
-| `TextField` | controlled text field | `value` (accessor), `onInput(value)`, `onSubmit`, `placeholder`, `disabled`, `password` (draws `•`; a function for "show password"), `borderColor`/`borderWidth` (kept when focused), `focusBorderColor`/`focusBorderWidth` |
+| `TextField` | controlled text field, one line | `value` (accessor), `onInput(value)`, `onSubmit` (Return), `placeholder`, `disabled`, `password` (draws `•`; a function for "show password"), `selection` (accessor of `{ anchor, focus }`: moves the caret), `onSelectionChange`, `borderColor`/`borderWidth` (kept when focused), `focusBorderColor`/`focusBorderWidth` |
+| `TextArea` | controlled multi-line text (notes, editors) | the `TextField` props (no `password`) plus `rows` (minimum lines, 3); grows with its content (in a `Scroll`, the caret stays in view) or scrolls itself with a `height`; Return inserts a line, Ctrl+Return is `onSubmit` |
 | `Checkbox` | checkbox | `checked` (accessor), `onChange(checked)`, `label`, `disabled` |
 | `Toggle` | on/off switch (`Switch` is the control-flow component) | `checked` (accessor), `onChange(on)`, `label`, `disabled` |
 | `RadioGroup` | one option among several; a single Tab stop, arrows switch | `value` (accessor), `onChange(v)`, `options=[{ value, label, disabled? }]`, `disabled` |
@@ -37,8 +39,8 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 | `Divider` / `Spacer` | 1 px line / flexible space (optional fixed `size`) | |
 | `<For each={list}>{(item, i) => ...}</For>` | list keyed by reference; `i` is an accessor | `fallback` |
 | `<Index each={list}>{(item, i) => ...}</Index>` | list by position (primitives); `item` is an accessor, `i` a number | `fallback` |
-| `<Show when={() => ...} fallback={...}>` | conditional; a `{(v) => ...}` child gets the value as an accessor | |
-| `<Switch fallback={...}><Match when={...}>...</Match></Switch>` | several cases: the first true `Match` | `Match` accepts `{(v) => ...}` |
+| `<Show when={() => ...} fallback={...}>` | conditional; a `{(v) => ...}` child gets the value as an accessor. **No compiler:** `{f(x)}` inside runs even when `when` is false; write `{() => f(x)}` or use the `{(v) => ...}` child (components inside do wait) | |
+| `<Switch fallback={...}><Match when={...}>...</Match></Switch>` | several cases: the first true `Match`; the content is recreated only when a different `Match` wins, not when the value of `when` changes (read it with `{(v) => ...}`) | `Match` accepts `{(v) => ...}` |
 | `<ErrorBoundary fallback={(error, reset) => ...}>` | replaces children that threw with the `fallback` | `reset()` tries again |
 
 ```tsx
@@ -66,7 +68,7 @@ color). On a control, an `onKeyDown` runs first and `e.stop()` keeps the key fro
   `wrap` (on a `Row`/`Column`: lines; on a `Text`: word wrapping), `rowGap`,
   `position: "absolute"` + `left`/`top`/`right`/`bottom`, `zIndex`, `clip`.
 - Visual: `background`, `radius` (one number, or per corner `[topLeft, topRight, bottomRight,
-  bottomLeft]`: `radius={[0, 12, 12, 0]}`; `clip` and `shadow` follow it), `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}`,
+  bottomLeft]`: `radius={[0, 12, 12, 0]}`; `clip` and `shadow` follow it), `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}` (around the box, never under it, as in CSS),
   `opacity` (0 to 1, applies to children), `translateX`/`translateY` (shifts after
   layout, without pushing siblings; for animation).
 - **Gradient background** (CSS `linear-gradient`): `background={{ linear: ["#1db954", "#121212"], angle: 180 }}`.
@@ -141,14 +143,20 @@ color). On a control, an `onKeyDown` runs first and `e.stop()` keeps the key fro
   the `Window`, so `<Window onKeyDown={(e) => e.key === "Escape" && close()}>` is a window-wide
   shortcut (Ctrl+K too: a text field lets keys with Ctrl through). A page or a menu that
   should hold the focus without being a control: `<Column focusable onKeyDown={...}>` (a click
-  focuses it; no focus ring; `tabStop` adds it to the Tab order). It gets `key`
-  (xkb names: `"Return"`, `"Escape"`, `"Tab"`, `"BackSpace"`, `"space"`, `"Up"`, `"Left"`, `"a"`),
-  `text`, `ctrl`, `shift`, `alt`, `repeat`. `onScroll` gets `dx`/`dy`. `onClick` is the left button only
-  (context menu: `onPointerDown` with `e.button === 2`) and runs only on the innermost node that
-  has one (a button inside a clickable card clicks only the button); the other events go up
-  through the parents until a handler calls `e.stop()`, also past nodes with `onClick` (a
-  list's `onPointerDown` with `e.button === 2` sees a right press on any of its clickable
-  rows; on keys and the wheel, `stop()` also keeps the surrounding `Scroll` still).
+  focuses it; no focus ring; `tabStop` adds it to the Tab order). A press focuses the nearest
+  focusable ancestor of what was pressed (empty space: nothing). Key events (`onKeyDown`,
+  `onKeyUp`) get `key` (xkb names, normalized: `"Return"`, `"Escape"`, `"Tab"` (Shift+Tab too,
+  with `shift`), `"BackSpace"`, `"Delete"`, `"space"`, `"Up"`, `"Left"`, `"Home"`, `"End"`,
+  `"Page_Up"`, `"Page_Down"`, `"F2"`, `"Menu"`, `"a"`; keypad keys have the plain names; with
+  Ctrl or Alt a letter is always lowercase), `text` (what it types; `""` with Ctrl), `ctrl`,
+  `shift`, `alt`, `meta`, `repeat`. Pointer and wheel events carry `ctrl`/`shift`/`alt`/`meta`
+  too (Ctrl+click, Shift+click, Ctrl+wheel); `onScroll` gets `dx`/`dy`. `onClick` is the left
+  button only and runs only on the innermost node that has one (a button inside a clickable
+  card clicks only the button); `onContextMenu` (right press, Menu key, Shift+F10) also runs
+  only on the innermost one; the other events go up through the parents until a handler
+  calls `e.stop()`, also past nodes with `onClick` (on keys and the wheel, `stop()` also keeps
+  the surrounding `Scroll` still). A context menu at the pointer: `onContextMenu={(e) =>
+  setMenu({ x: e.x, y: e.y })}` and `<Overlay at={menu} onDismiss={...}>` (it flips to fit).
 - Any prop accepts a fixed value or a function: `background={() => (sel() ? a : b)}`.
 - `onResize={(s) => ...}`: the node's size (`s.width`, `s.height`) after layout, the first
   time and whenever it changes. Use it to adapt the screen to the available width; what it
@@ -352,14 +360,16 @@ const rows: ElementRef[] = [];
 - The user scrolls with the wheel (Shift+wheel goes sideways; touchpad on both axes), by dragging
   the scrollbar thumb, by clicking the track (one page) and with the keyboard: PageUp/PageDown,
   Home/End and the arrows scroll the `Scroll` around the focused element (with no focus, the one under
-  the mouse), unless an `onKeyDown` calls `e.stop()`. `TextField` keeps Home/End and ←/→;
+  the mouse), unless an `onKeyDown` calls `e.stop()`. `TextField`/`TextArea` keep their caret keys;
   ↑/↓ scroll.
 - Scrollbars sit **on top of** the content, in a 14 px strip along the right edge (and the
   bottom one), and only exist when there is something to scroll: leave `padding` on that edge if
   buttons touch it (like the `padding={[0, 0, 14, 0]}` above).
 - `el.scrollIntoView()` (on any element, via `ref`) scrolls the surrounding `Scroll`s the minimum
   needed for it to show; it takes effect on the next frame, even for a just-created or off-screen
-  element. `el.scrollTo({ x, y })` accepts just one of the axes.
+  element. `el.scrollIntoView({ x, y, width, height })` shows only that region of it, from its
+  top-left corner (a caret in an editor drawn on a `Canvas`). `el.scrollTo({ x, y })` accepts just
+  one of the axes.
 - An open `<Overlay modal>` blocks the wheel, keys and scrollbars of what is behind it.
 
 ## Dialogs, menus and hints: `<Overlay>`
@@ -404,6 +414,8 @@ let button: ElementRef | undefined;
 - `anchor={() => el}` (always as a function): sits next to the element, `placement`
   `"bottom"` (default), `"top"`, `"right"` or `"left"`, flips side if it does not fit, never leaves the
   window; `offset` (4) and `matchWidth` (same width, for menus).
+- `at={{ x, y }}` (or an accessor) instead of `anchor`: opens at a point in window coordinates
+  (context menu at `e.x`/`e.y` of `onContextMenu`), to its left or above when it does not fit.
 - Without `anchor`: covers the window; position it with `align`/`justify`/`padding` or with
   `position="absolute"` + `left`/`top`. Empty space lets clicks through (toasts, hints).
 - `modal`: blocks clicks and Tab on what is behind; `background` dims the backdrop. With
@@ -477,7 +489,8 @@ let button: ElementRef | undefined;
   into the next one (`clip` cuts it), and the row's own natural width is just its gaps: give it
   room (stretched in a column, or `grow`).
 - **`position="absolute"`** takes the child out of the flow: `left`/`top`/`right`/`bottom`
-  count from the parent's content box (inside its `padding`; negative values work), as in CSS.
+  count from the parent's padding box, as in CSS: inside its border, **ignoring its `padding`**
+  (`left={0}` is the parent's left edge; negative values work). Percentages too.
   It keeps its natural size, unless both `left` and `right` (or `top` and `bottom`) are set and
   no `width` (`height`): then it stretches between them, within `min`/`max`. `right` (or
   `bottom`) alone places it from that edge. It does not take space or change the parent's size.
@@ -523,13 +536,13 @@ const [albums] = createSignal([{ title: "Blue", cover: "blue.jpg" }]);
 // A count badge sticking out of a card's corner (no `clip`, so it is drawn and clicked
 // outside too); `zIndex` keeps it above the content even though it is declared first.
 <Box width={160} padding={12} radius={10} background="#e8eaf2">
-  <Text position="absolute" right={-22} top={-22} zIndex={1} padding={[2, 8]} radius={10} background="#e5484d" color="#ffffff">3</Text>
+  <Text position="absolute" right={-10} top={-10} zIndex={1} padding={[2, 8]} radius={10} background="#e5484d" color="#ffffff">3</Text>
   <Box padding={8} radius={6} background="#3e63dd"><Text color="#ffffff">Inbox</Text></Box>
 </Box>;
 ```
 
-Keep the `padding` on an inner child (as above) when an absolute layer must cover the padding
-too: the edges count from inside the parent's `padding`.
+An absolute layer covers the parent's padding too (`left={0}` is the parent's edge): a colored
+stripe at `left={0} top={0} bottom={0}` sits on the edge of a padded card.
 
 ## Theme and window
 
@@ -538,8 +551,31 @@ too: the edges count from inside the parent's `padding`.
   `{ ...darkTheme, accent: {...} }`), at any time; `colorScheme()` tells which one is active.
 - **Theme colors always inside a function** (`color={() => theme.text.secondary}`): that way they
   follow theme changes. `color={theme.text.secondary}` keeps the color of that moment.
-- `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`;
-  `windowState.width()`, `.height()`, `.maximized()`, `.activated()` are accessors.
+- `title` may be an accessor (`title={() => \`${note()} - Notes\`}`): the title bar and the
+  window list follow it.
+- Colors of the app's own (sidebar, links, code background) that follow `setTheme`:
+  `const colors = createThemeTokens({ light: { sidebar: "#f3f3f3" }, dark: { sidebar: "#202020" } })`,
+  then `background={() => colors.sidebar}`.
+- `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`, `.hide()`/`.show()`
+  (off the screen and the taskbar, the app keeps running); `windowState.width()`, `.height()`,
+  `.maximized()`, `.activated()`, `.visible()` are accessors.
+- **System tray:** `createTray({ icon, tooltip, title, menu, onClick, onMiddleClick })`, every
+  option may be an accessor; it lives while the calling scope does. Menu entries: `{ label,
+  onClick, enabled, visible, checked, radio, children }` or `"separator"`. `tray.available()` is
+  false without a tray host (GNOME without the AppIndicator extension), so closing to the tray
+  must check it, and there must be another way to quit:
+
+```tsx
+import { Window, createTray, windowControls, windowState } from "@nodebuilderjs/core";
+
+let quitting = false;
+const tray = createTray({
+  tooltip: "My app",
+  onClick: () => (windowState.visible() ? windowControls.hide() : windowControls.show()),
+  menu: [{ label: "Quit", onClick: () => ((quitting = true), windowControls.close()) }],
+});
+<Window title="My app" onClose={() => quitting || !tray.available() || (windowControls.hide(), false)} />;
+```
 - **Custom title bar** (navigation or search merged with the window buttons): `<Window
   decorations={false}>` drops the built-in bar (border, corners and edge resizing stay);
   `dragRegion` on any widget makes it move the window, and a double click maximizes. Plain
@@ -561,8 +597,8 @@ const [query, setQuery] = createSignal("");
 </Window>
 ```
 - Animation: see the next section.
-- Not available yet: theme following the system, `scale`/`rotate`, selection in `TextField`
-  (and Ctrl+C in it), IME, multiple windows.
+- Not available yet: theme following the system, `scale`/`rotate`, IME, multiple windows,
+  selecting `RichText`.
 
 ## Animation
 

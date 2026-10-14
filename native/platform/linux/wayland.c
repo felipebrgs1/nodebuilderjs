@@ -23,6 +23,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "xdg-shell-client-protocol.h"
+#include "xdg-toplevel-icon-v1-client-protocol.h"
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -30,6 +31,7 @@
 
 #define MAX_SENDS 4                // clipboard transfers to other clients at once
 #define MAX_PASTE (64 << 20)       // bytes; a bigger paste is cut here
+#define MAX_ICON_BUFFERS 16
 
 // A clipboard transfer to another client: our text written into its pipe.
 typedef struct {
@@ -78,6 +80,13 @@ static struct {
   int repeat_fd;  // timerfd driving key repeat, polled next to the display fd
   uint32_t repeat_key;
 
+  // Window icon (xdg-toplevel-icon-v1): the buffers must outlive the icon object, so all of it
+  // is kept until the icon is replaced or the window closes.
+  struct xdg_toplevel_icon_manager_v1 *icon_manager;
+  struct xdg_toplevel_icon_v1 *icon;
+  struct wl_buffer *icon_buffers[MAX_ICON_BUFFERS];
+  int icon_buffer_count;
+
   struct wl_surface *surface;
   struct xdg_surface *xdg_surface;
   struct xdg_toplevel *toplevel;
@@ -86,6 +95,10 @@ static struct {
   EGLDisplay egl_display;
   EGLContext egl_context;
   EGLSurface egl_surface;
+
+  // Unmapping discards the toplevel's attributes, so they are kept to send again on map.
+  char *title, *app_id;
+  bool hidden;
 
   int width, height, pending_w, pending_h;
   int buffer_w, buffer_h;
@@ -152,13 +165,15 @@ static void wl_set_cursor(const char *name) {
 
 // ---- pointer ----------------------------------------------------------------
 
+static int current_mods(void);
+
 static void pointer_enter(void *d, struct wl_pointer *p, uint32_t serial, struct wl_surface *s,
                           wl_fixed_t x, wl_fixed_t y) {
   S.pointer_serial = serial;
   S.px = wl_fixed_to_double(x);
   S.py = wl_fixed_to_double(y);
   apply_cursor();
-  nb_event e = {.type = NB_EV_POINTER_MOVE, .x = S.px, .y = S.py};
+  nb_event e = {.type = NB_EV_POINTER_MOVE, .x = S.px, .y = S.py, .mods = current_mods()};
   nb_push_event(&e);
 }
 
@@ -170,7 +185,7 @@ static void pointer_leave(void *d, struct wl_pointer *p, uint32_t serial, struct
 static void pointer_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed_t x, wl_fixed_t y) {
   S.px = wl_fixed_to_double(x);
   S.py = wl_fixed_to_double(y);
-  nb_event e = {.type = NB_EV_POINTER_MOVE, .x = S.px, .y = S.py};
+  nb_event e = {.type = NB_EV_POINTER_MOVE, .x = S.px, .y = S.py, .mods = current_mods()};
   nb_push_event(&e);
 }
 
@@ -180,11 +195,9 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t serial, uint3
   if (state == WL_POINTER_BUTTON_STATE_PRESSED) S.input_serial = serial;
   int b = button == BTN_LEFT ? 0 : button == BTN_MIDDLE ? 1 : button == BTN_RIGHT ? 2 : 3;
   nb_event e = {.type = state == WL_POINTER_BUTTON_STATE_PRESSED ? NB_EV_POINTER_DOWN : NB_EV_POINTER_UP,
-                .x = S.px, .y = S.py, .button = b};
+                .x = S.px, .y = S.py, .button = b, .mods = current_mods()};
   nb_push_event(&e);
 }
-
-static int current_mods(void);
 
 static void pointer_axis(void *d, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t value) {
   // Modifiers too: Shift turns a vertical wheel into horizontal scrolling.
@@ -544,6 +557,8 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
   } else if (!strcmp(iface, wl_data_device_manager_interface.name)) {
     S.data_manager_version = MIN(version, 3);
     S.data_manager = wl_registry_bind(r, name, &wl_data_device_manager_interface, S.data_manager_version);
+  } else if (!strcmp(iface, xdg_toplevel_icon_manager_v1_interface.name)) {
+    S.icon_manager = wl_registry_bind(r, name, &xdg_toplevel_icon_manager_v1_interface, 1);
   }
 }
 
@@ -651,6 +666,13 @@ static bool init_egl(void) {
   return true;
 }
 
+static void set_toplevel_attributes(void) {
+  xdg_toplevel_set_title(S.toplevel, S.title);
+  xdg_toplevel_set_app_id(S.toplevel, S.app_id);
+  xdg_toplevel_set_min_size(S.toplevel, 240, 160);
+  if (S.icon) xdg_toplevel_icon_manager_v1_set_icon(S.icon_manager, S.toplevel, S.icon);
+}
+
 static bool wl_open(const nb_window_options *options) {
   const char *title = options->title, *app_id = options->app_id;
   S.scale = 1;
@@ -694,9 +716,9 @@ static bool wl_open(const nb_window_options *options) {
   xdg_surface_add_listener(S.xdg_surface, &xdg_surface_listener, NULL);
   S.toplevel = xdg_surface_get_toplevel(S.xdg_surface);
   xdg_toplevel_add_listener(S.toplevel, &toplevel_listener, NULL);
-  xdg_toplevel_set_title(S.toplevel, title);
-  xdg_toplevel_set_app_id(S.toplevel, app_id);
-  xdg_toplevel_set_min_size(S.toplevel, 240, 160);
+  S.title = strdup(title);
+  S.app_id = strdup(app_id);
+  set_toplevel_attributes();
   wl_surface_commit(S.surface);
 
   while (!S.configured)
@@ -746,6 +768,13 @@ static bool wl_probe(nb_display_probe *out) {
   return true;
 }
 
+static void release_icon(void) {
+  if (S.icon) xdg_toplevel_icon_v1_destroy(S.icon);
+  for (int i = 0; i < S.icon_buffer_count; i++) wl_buffer_destroy(S.icon_buffers[i]);
+  S.icon = NULL;
+  S.icon_buffer_count = 0;
+}
+
 static void wl_close(void) {
   stop_repeat();
   if (S.repeat_fd > 0) close(S.repeat_fd);
@@ -761,6 +790,8 @@ static void wl_close(void) {
     else wl_data_device_destroy(S.data_device);
   }
   if (S.data_manager) wl_data_device_manager_destroy(S.data_manager);
+  release_icon();
+  if (S.icon_manager) xdg_toplevel_icon_manager_v1_destroy(S.icon_manager);
   if (S.egl_display) {
     eglMakeCurrent(S.egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     if (S.egl_surface) eglDestroySurface(S.egl_display, S.egl_surface);
@@ -772,6 +803,8 @@ static void wl_close(void) {
   if (S.toplevel) xdg_toplevel_destroy(S.toplevel);
   if (S.xdg_surface) xdg_surface_destroy(S.xdg_surface);
   if (S.surface) wl_surface_destroy(S.surface);
+  free(S.title);
+  free(S.app_id);
   if (S.cursor_surface) wl_surface_destroy(S.cursor_surface);
   if (S.cursor_theme) wl_cursor_theme_destroy(S.cursor_theme);
   if (S.display) {
@@ -820,6 +853,7 @@ static void wl_begin_frame(int *bw, int *bh, int *scale) {
 }
 
 static void wl_end_frame(void) {
+  if (S.hidden) return;  // a buffer would map it without a configure (protocol error)
   if (!S.frame_cb) {
     S.frame_cb = wl_surface_frame(S.surface);
     wl_callback_add_listener(S.frame_cb, &frame_listener, NULL);
@@ -828,14 +862,79 @@ static void wl_end_frame(void) {
 }
 
 static void wl_request_frame(void) {
-  if (S.frame_cb || !S.surface) return;
+  if (S.frame_cb || !S.surface || S.hidden) return;
   S.frame_cb = wl_surface_frame(S.surface);
   wl_callback_add_listener(S.frame_cb, &frame_listener, NULL);
   wl_surface_commit(S.surface);
   wl_display_flush(S.display);
 }
 
-static void wl_set_title(const char *title) { if (S.toplevel) xdg_toplevel_set_title(S.toplevel, title); }
+// Without the protocol (GNOME), the compositor keeps using the icon of the .desktop file that
+// matches the app id.
+static void wl_set_icon(const nb_icon_image *images, int count) {
+  if (!S.icon_manager || !S.toplevel || !S.shm || count <= 0) return;
+  if (count > MAX_ICON_BUFFERS) count = MAX_ICON_BUFFERS;
+  size_t total = 0;
+  for (int i = 0; i < count; i++) total += (size_t)images[i].size * images[i].size * 4;
+  int fd = memfd_create("nodebuilder-icon", MFD_CLOEXEC);
+  if (fd < 0) return;
+  uint8_t *mem = ftruncate(fd, (off_t)total) == 0 ? mmap(NULL, total, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0) : MAP_FAILED;
+  if (mem == MAP_FAILED) {
+    close(fd);
+    return;
+  }
+  release_icon();
+  struct wl_shm_pool *pool = wl_shm_create_pool(S.shm, fd, (int32_t)total);
+  S.icon = xdg_toplevel_icon_manager_v1_create_icon(S.icon_manager);
+  size_t offset = 0;
+  for (int i = 0; i < count; i++) {
+    int size = images[i].size;
+    // wl_shm ARGB8888 is premultiplied, little endian: B G R A in memory.
+    const uint8_t *src = images[i].rgba;
+    uint8_t *dst = mem + offset;
+    for (size_t p = 0, n = (size_t)size * size; p < n; p++, src += 4, dst += 4) {
+      unsigned a = src[3];
+      dst[0] = (uint8_t)((src[2] * a + 127) / 255);
+      dst[1] = (uint8_t)((src[1] * a + 127) / 255);
+      dst[2] = (uint8_t)((src[0] * a + 127) / 255);
+      dst[3] = (uint8_t)a;
+    }
+    struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, (int32_t)offset, size, size, size * 4, WL_SHM_FORMAT_ARGB8888);
+    xdg_toplevel_icon_v1_add_buffer(S.icon, buffer, 1);
+    S.icon_buffers[S.icon_buffer_count++] = buffer;
+    offset += (size_t)size * size * 4;
+  }
+  wl_shm_pool_destroy(pool);  // the buffers keep the memory alive
+  munmap(mem, total);
+  close(fd);
+  if (S.hidden) return;  // sent with the other attributes when mapped again
+  xdg_toplevel_icon_manager_v1_set_icon(S.icon_manager, S.toplevel, S.icon);
+  wl_surface_commit(S.surface);  // set_icon is double-buffered
+  wl_display_flush(S.display);
+}
+
+static void wl_set_title(const char *title) {
+  if (!S.toplevel) return;
+  free(S.title);
+  S.title = strdup(title);
+  xdg_toplevel_set_title(S.toplevel, title);
+}
+
+// A null buffer unmaps the toplevel; mapping again is like a new one: attributes, a commit
+// without a buffer, then the compositor's configure (which JS answers with a frame).
+static void wl_set_visible(bool visible) {
+  if (!S.surface || visible == !S.hidden) return;
+  S.hidden = !visible;
+  if (visible) {
+    set_toplevel_attributes();
+  } else {
+    if (S.frame_cb) wl_callback_destroy(S.frame_cb);  // an unmapped surface gets no frame callback
+    S.frame_cb = NULL;
+    wl_surface_attach(S.surface, NULL, 0, 0);
+  }
+  wl_surface_commit(S.surface);
+  wl_display_flush(S.display);
+}
 static void wl_move(void) { if (S.toplevel && S.seat) xdg_toplevel_move(S.toplevel, S.seat, S.last_serial); }
 static void wl_resize(uint32_t edges) { if (S.toplevel && S.seat) xdg_toplevel_resize(S.toplevel, S.seat, S.last_serial, edges); }
 static void wl_minimize(void) { if (S.toplevel) xdg_toplevel_set_minimized(S.toplevel); }
@@ -884,6 +983,8 @@ const nb_linux_backend nb_wayland_backend = {
     .scale = wl_scale,
     .set_cursor = wl_set_cursor,
     .set_title = wl_set_title,
+    .set_visible = wl_set_visible,
+    .set_icon = wl_set_icon,
     .move = wl_move,
     .resize = wl_resize,
     .set_maximized = wl_set_maximized,

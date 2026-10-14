@@ -135,31 +135,42 @@ export interface Style {
   translateY?: number;
 }
 
-export interface PointerEvent {
+/** Modifier keys held during a pointer, wheel or key event (`meta`: the Super/Windows key). */
+export interface Modifiers {
+  ctrl: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+}
+
+export interface PointerEvent extends Modifiers {
   /** Window coordinates (logical px). */
   x: number;
   y: number;
   /** Position relative to the node handling the event (its top-left corner). */
   localX: number;
   localY: number;
-  /** 0 left, 1 middle, 2 right; on moves, the held button or -1. */
+  /** 0 left, 1 middle, 2 right; on moves, the held button or -1 (also -1 for a context menu opened from the keyboard). */
   button: number;
   /** Number of quick successive clicks (2 = double click). */
   clicks: number;
   stop(): void;
 }
 
-export interface KeyEvent {
+export interface KeyEvent extends Modifiers {
+  /**
+   * xkb key name ("Return", "Escape", "Tab", "BackSpace", "Delete", "space", "Up", "Page_Up",
+   * "Home", "F10", "a"...). Normalized: Shift+Tab is "Tab" with `shift`, keypad navigation keys
+   * have the plain names ("KP_Enter" is "Return"), and with Ctrl or Alt a letter is lowercase.
+   */
   key: string;
+  /** What the key types ("" for control keys and with Ctrl). */
   text: string;
-  ctrl: boolean;
-  shift: boolean;
-  alt: boolean;
   repeat: boolean;
   stop(): void;
 }
 
-export interface ScrollEvent {
+export interface ScrollEvent extends Modifiers {
   dx: number;
   dy: number;
   stop(): void;
@@ -175,6 +186,12 @@ export interface Handlers {
   onPointerMove?: (e: PointerEvent) => void;
   onScroll?: (e: ScrollEvent) => void;
   onKeyDown?: (e: KeyEvent) => void;
+  onKeyUp?: (e: KeyEvent) => void;
+  /**
+   * Right press (after `onPointerDown`, unless it called stop()), or the Menu key / Shift+F10 on
+   * the focused node (at its bottom-left corner, `button` -1). Only the innermost handler runs.
+   */
+  onContextMenu?: (e: PointerEvent) => void;
   onFocus?: () => void;
   onBlur?: () => void;
   /** After a layout that gave the node a new size (and after the first one). */
@@ -191,7 +208,7 @@ export interface Painter {
   /** 0..1, multiplies the alpha of everything drawn (set by paintTree from `opacity`). */
   opacity: number;
   rect(x: number, y: number, w: number, h: number, color: Paint, radius?: Radius, borderWidth?: number, borderColor?: Color): void;
-  shadow(x: number, y: number, w: number, h: number, color: Color, radius: Radius, blur: number): void;
+  shadow(x: number, y: number, w: number, h: number, color: Color, radius: Radius, blur: number, dy?: number): void;
   /** `font`: true for bold (the old flag), or the weight, italic and letter spacing. */
   text(x: number, y: number, text: string, size: number, color: Color, font?: FontInput): void;
   /** Draws `uv` (a sub-rectangle of the image, 0..1) stretched over the box, multiplied by `tint` (default white). */
@@ -318,6 +335,8 @@ export type Placement = "bottom" | "top" | "right" | "left";
 export interface OverlayOptions {
   /** Absent: the layer covers the window. Present: the layer is sized to its content next to the anchor. */
   anchor?: () => ElementRef | undefined;
+  /** A point instead of an anchor (window coordinates): placed like a zero-size anchor there. */
+  at?: () => Point | undefined;
   placement: Placement;
   offset: number;
   matchWidth: boolean;
@@ -331,8 +350,21 @@ export interface OverlayOptions {
 /** Every live overlay layer, in creation order (later ones draw above). Each root picks its own in layout(). */
 export const overlayLayers = new Set<UINode>();
 
-/** Nodes waiting for scrollIntoView(); the next layout of their root brings them into view. */
-export const revealRequests = new Set<UINode>();
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** A region of an element, from its top-left corner (missing fields are 0). */
+export interface Region {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}
+
+/** Nodes waiting for scrollIntoView() (with the region to show, if any); the next layout of their root brings them into view. */
+export const revealRequests = new Map<UINode, Region | undefined>();
 
 /** The element with the keyboard focus in `node`'s window (null outside a window or without focus). */
 export function focusedElement(node: UINode): UINode | null {
@@ -353,8 +385,11 @@ export interface ElementRef {
   blur(): void;
   /** On a Scroll: moves its content to `y`, or to `{ x, y }` (either may be left out). */
   scrollTo(to: number | { x?: number; y?: number }): void;
-  /** Scrolls the Scrolls around the element as little as needed to show it (on the next layout). */
-  scrollIntoView(): void;
+  /**
+   * Scrolls the Scrolls around the element as little as needed to show it (on the next layout),
+   * or only `region` of it (from its top-left corner; e.g. the caret of a custom editor).
+   */
+  scrollIntoView(region?: Region): void;
 }
 
 export class UINode implements ElementRef {
@@ -378,6 +413,8 @@ export class UINode implements ElementRef {
   measure?: (maxWidth: number) => Size;
   /** Content that wraps: the narrowest width it can take (its longest word). Its height then depends on the width given to measure(). */
   minContentWidth?: () => number;
+  /** With `minContentWidth`: the height keeps changing with the width at any width (measure has no natural width past which nothing wraps). */
+  fluidMeasure = false;
   /** Optional custom drawing, called after background and before children. */
   paint?: (p: Painter, node: UINode) => void;
   /** Debug label shown by `debugTree`. */
@@ -537,8 +574,8 @@ export class UINode implements ElementRef {
    * Done by the next layout, where the boxes are current: even when the node is new, or was
    * culled (outside the view, its own coordinates are stale).
    */
-  scrollIntoView() {
-    revealRequests.add(this);
+  scrollIntoView(region?: Region) {
+    revealRequests.set(this, region);
     invalidate();
   }
 }

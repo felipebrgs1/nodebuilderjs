@@ -1,5 +1,87 @@
 # Changelog
 
+## 0.4.1 (2026-10-14)
+
+From a second report of the Discord clone (with 0.4.0) and from the Dia report (an Obsidian
+clone: text editing, rich text, input), plus window icons and the system tray.
+
+- The addon gained `setIcon`, `setVisible` and modifiers on pointer events: core 0.4.1 needs
+  `@nodebuilderjs/linux-x64` 0.4.1, which it installs with it. `nodebuilder doctor` reports a
+  mismatch.
+- Two changes may need edits in apps (marked **Breaking** below): normalized key names, and
+  `position="absolute"` placed from the padding box.
+
+### Fixed
+- Layout got slower with each release (a 500-row table: 1.1 ms in 0.2.5, 1.8 ms in 0.4.0): every
+  text measurement walked up the tree once per inherited font prop, and 0.4 added three more.
+  One walk now, done again only after an `invalidate()`: 1.2 ms.
+- A `shadow` was drawn under its box too: without a `background` (or with a translucent one)
+  the box filled with the shadow's color. Like CSS, it is now cut out of the box. Command
+  buffer: SHADOW has one more float, the offset of the box casting it.
+- `screenshot(() => <Window width height>)` and `mount()` of a `<Window>` used 800x600 and the
+  window only as tall as its content; they now use the window's size, filled by it, as the app
+  and `nodebuilder screenshot` do.
+- `interact(root)` called twice kept two pointers: a `press` from one and a `release` from the
+  other did not click, silently. Every `interact()` on a root now shares one pointer and focus.
+- `nodebuilder screenshot` of a file that does not call `run()` failed; it now renders the
+  file's default export (as with `--props '{}'`), and says how to pick one when there is none.
+
+### New
+- From the Obsidian clone report (with 0.2.5): pointer and wheel events carry `ctrl`, `shift`,
+  `alt` and `meta` (keys get `meta` too), `onKeyUp`, `onContextMenu` (right press, Menu key,
+  Shift+F10) and `<Overlay at={{ x, y }}>` that flips to fit, `measureText` exported,
+  `scrollIntoView({ x, y, width, height })` for a region of an element, `createThemeTokens`
+  for app colors that follow `setTheme`, a reactive `<Window title>`, `mount(view, { paint })`
+  and `interact()` `click`/`contextMenu`/`keyUp` with modifiers.
+- `TextField` selects, copies, cuts and undoes: Shift+arrows, Ctrl+arrows by words, mouse drag,
+  double and triple click, Shift+click, Ctrl+A/C/X/V/Z/Y, Ctrl+Backspace/Delete; typing replaces
+  the selection; `selection` and `onSelectionChange` control and report the caret.
+- `TextArea`: multi-line input that wraps (splitting words longer than a line), grows with its
+  content (`rows` minimum), keeps the caret in view in a `Scroll` or scrolls itself with a
+  `height`, with the same editing keys and undo.
+- `RichText`: a paragraph of spans with their own font, size, color, background and underline,
+  wrapping across spans on a shared baseline; a span with `onClick` is a link (pointer cursor).
+- The cursor follows what an `onPointerMove` handler sets at once (it waited for the next move).
+- `<Canvas measure={(width) => height}>` (a canvas that sizes itself, e.g. a wrapped document
+  in a `Scroll`) and `g.visibleRect` (the part on screen; reading it redraws on scroll).
+- **Breaking:** `position="absolute"` children are placed from the parent's padding box, as in
+  CSS (inside the border, ignoring the padding), and their percentages are of it too. They were
+  placed inside the padding: an app that compensated with negative offsets (`left={-9}` in a
+  card with `padding={[3, 6, 3, 9]}`) can use `left={0}` now.
+- `bun create nodebuilderjs` installs the newest `@nodebuilderjs/core` on npm (`bun add
+  @nodebuilderjs/core@latest`, pinned as `^x.y.z`), not the version of `create-nodebuilderjs`
+  itself, which could lag behind or be ahead of what is published; with `--no-install` the
+  dependency stays `latest`.
+- `nodebuilder screenshot app.tsx out.png -- args...` passes the arguments to the app, and
+  `isScreenshot()` tells the app it is being shot (to use sample data).
+- Errors that no `ErrorBoundary` catches reach the caller from where they were thrown: `bun test`
+  and the runtime show the app's frame on top (the framework caught and rethrew them, which
+  hid it).
+- Key names are normalized: Shift+Tab is `"Tab"` with `shift`, `Prior`/`Next` are
+  `"Page_Up"`/`"Page_Down"`, keypad keys have the plain names, and with Ctrl or Alt a letter
+  is lowercase. **Breaking** for apps that compared `"ISO_Left_Tab"`, `"Prior"`, `"Next"` or
+  `"KP_*"` names.
+- An anchored overlay too wide to start at its anchor now ends where the anchor does (it was
+  pushed against the window's edge).
+- Window icon: `<Window icon>` (SVG markup or an `.svg`/PNG/JPEG/WebP file) through
+  `xdg-toplevel-icon-v1` on Wayland and `_NET_WM_ICON` on X11. Without one, the window shows the
+  nodebuilder icon instead of the compositor's generic one (in development there is no
+  `.desktop` file to take it from).
+- System tray: `createTray({ icon, tooltip, title, menu, onClick })`, a StatusNotifierItem with a
+  menu (checkmarks, radios, submenus), reactive, on a D-Bus client of our own in TypeScript.
+  `windowControls.hide()`/`show()` and `windowState.visible()` to close to the tray.
+- `nodebuilder agents update` (`bun run agents:update` in new apps): brings an app's `AGENTS.md`
+  and `.agents/skills` up to the installed `@nodebuilderjs/core`, which now ships them. Docs the
+  framework released are replaced (it knows every version's hash, so apps from 0.2 on work),
+  docs edited in the app are kept and listed (`--force` replaces them), skills renamed since
+  are removed, and `.claude/skills` links follow. `AGENTS.md` gets markers around the
+  framework's guide; notes after them (or appended to an older `AGENTS.md`) stay.
+  `nodebuilder doctor` warns when the docs are behind.
+
+### Docs
+- Testing skill: a click inside a `Scroll` focuses it (keys bubble from there), and testing a
+  reactive prop on the same node, since a screen switch can recreate it.
+
 ## 0.4.0 (2026-10-14)
 
 ### New

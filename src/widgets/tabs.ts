@@ -45,7 +45,7 @@ export function Tabs<T>(
     const select = () => !disabled() && !selected() && props.onChange(tab.value);
     node.handlers.onClick = select;
     node.handlers.onKeyDown = (e) => {
-      if (e.key !== "space" && e.key !== "Return" && e.key !== "KP_Enter") return;
+      if (e.key !== "space" && e.key !== "Return") return;
       select();
       e.stop();
     };

@@ -40,7 +40,7 @@ export function Button(
   const activate = () => !disabled() && props.onClick?.();
   ownHandler(node, "onClick", activate);
   ownHandler(node, "onKeyDown", (e) => {
-    if (e.key === "Return" || e.key === "space" || e.key === "KP_Enter") {
+    if (e.key === "Return" || e.key === "space") {
       activate();
       e.stop();
     }

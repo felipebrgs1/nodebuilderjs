@@ -28,8 +28,12 @@ test("adds a task", () => {
 
 ## API (`@nodebuilderjs/core/testing`)
 
-- `mount(view, size?)` → `{ root, relayout, dispose, layoutWarnings }`. Layout runs once in
-  `mount`; call `relayout()` before checking `x`, `y`, `width`, `height` after changing state.
+- `mount(view, { width?, height?, paint? })` → `{ root, relayout, dispose, layoutWarnings }`.
+  Layout runs once in `mount`; call `relayout()` before checking `x`, `y`, `width`, `height` after
+  changing state. Without a size: a `<Window>`'s `width`/`height` (the window fills it, as in the
+  app), else 800x600. `paint: true` also paints after every layout, so `Canvas` draw callbacks run.
+- A custom widget (a `Canvas` editor) is found by `ariaLabel`: `<Canvas ariaLabel="Editor">`
+  and `findByLabel(root, "Editor")`.
 - `layoutWarnings()` (from `mount`, or `layoutWarnings(root)`): overflow warnings of the last
   layout, e.g. `layout: Row > Text("Artists") overflows Box(panel) by 42px (children need
   342px, 300px available)`: children that need more room than they get, cut off by a `clip`
@@ -53,10 +57,14 @@ test("adds a task", () => {
 - `click(node)`: fires the `onClick` of the node or of its nearest ancestor (quick shortcut),
   at the node's center.
 - `interact(root)`: mouse and keyboard delivered as in the real app (hover, focus, capture
-  while dragging, Tab): `hover(n)`, `press(n)`, `release(n)`, `drag(n, dx, dy)`, `move(x, y)`,
+  while dragging, Tab): `hover(n)`, `press(n)`, `release(n)`, `click(n, { ctrl: true })`,
+  `contextMenu(n)` (right press), `drag(n, dx, dy)`, `move(x, y)`,
   `down(x, y)`/`up(x, y)` (button at a window position, e.g. on the scrollbar),
-  `scroll(n, dy, { dx, shift })`, `key("Return")`, `key("c", { ctrl: true })`,
-  `type("text")`, `focused` and `cursor` (the cursor the window would show).
+  `scroll(n, dy, { dx, shift, ctrl })`, `key("Return")`, `key("c", { ctrl: true })`,
+  `keyUp("Control_L")`, `type("text")`, `focused` and `cursor` (the cursor the window would
+  show). Modifiers are `{ ctrl, shift, alt, meta }`. Every
+  `interact(root)` on the same root shares one pointer and one focus, like the real window:
+  a `press` from one call and a `release` from another still click.
 
 ```tsx
 const ui = interact(root);
@@ -131,6 +139,16 @@ test.skipIf(!canUseRealTextMetrics())("the header fits with real fonts", () => {
   from the width) is placed by that same layout: clickable right away.
 - With nothing focused (a click on empty space), keys go to the top node (the `Window`'s
   `onKeyDown`): `interact(root).key("Escape")` tests a window-wide shortcut.
+- **A click inside a `Scroll` focuses the `Scroll`** (so the arrow and page keys scroll it),
+  and keys bubble up from there. "Empty space" inside a scrolling page is not empty: a test
+  of "Escape after clicking on empty space" that clicks inside a `Scroll` passes even
+  without the page's `focusable`. Click outside every `Scroll`, and check where focus went
+  with `interact(root).focused`.
+- **Test that a prop is reactive on the same node.** Mount the component alone (not the
+  whole `App`), keep the node, change the state, and check that node again. Through the
+  whole app, a screen switch can recreate the node, and a new node already reads the new
+  value, so the test passes even when the prop is not reactive. Check that the test fails
+  without the fix.
 - Scrolling: `n.scrollY`/`n.scrollX` give the position; `ui.scroll(n, 60)` uses the wheel,
   `ui.key("Next")` (PageDown; PageUp is `"Prior"`) the keyboard. `scrollTo` and `scrollIntoView()`
   apply on the next layout: call `relayout()` before checking.
@@ -160,9 +178,17 @@ the file exports with `--props` (the file must not call `run()` itself, so point
 nodebuilder screenshot src/App.tsx settings.png --props '{"page":"settings"}' --export App
 ```
 
+**An app that reads arguments or the user's files:** arguments after `--` reach it
+(`nodebuilder screenshot src/main.tsx out.png -- --vault ./sample`), and `isScreenshot()` from
+`@nodebuilderjs/core` is true during a shot: use sample data then, so the shot never reads or
+creates the user's real files.
+
 Or keep small shot files in the repo (they double as visual fixtures):
 `src/shots/settings.tsx` = `run(() => <App page="settings" />)`, then
-`nodebuilder screenshot src/shots/settings.tsx settings.png`.
+`nodebuilder screenshot src/shots/settings.tsx settings.png`. A file that does not call
+`run()` gets its default export rendered: `export default function Shot() { ... }` with
+whatever state the shot needs (a server already added, a dialog open). Keep shot files under
+`src/` so the JSX settings of `tsconfig.json` and the `@nodebuilderjs/core` import apply.
 
 In a test, `screenshot()` gives the real pixels of a mounted tree, with real fonts:
 
@@ -180,8 +206,9 @@ test.skipIf(!canScreenshot())("the banner is red", () => {
 ```
 
 - `screenshot(root | () => view, { width, height, scale, background })` →
-  `{ width, height, scale, rgba, pixel(x, y), toPNG() }`; size in device pixels. Uncovered
-  areas stay transparent. The test's text metrics (fake by default) come back after the shot.
+  `{ width, height, scale, rgba, pixel(x, y), toPNG() }`; size in device pixels. A view
+  that is a `<Window>` is shot at the window's size, filled by it (as `nodebuilder screenshot`
+  does). Uncovered areas stay transparent. The test's text metrics (fake by default) come back after the shot.
 - Pixels depend on the machine's fonts and GPU: assert colors at chosen points, not whole
   images. `canScreenshot()` is false without a GPU driver (e.g. some CI runners).
 

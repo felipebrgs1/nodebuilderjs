@@ -1,6 +1,6 @@
 {
   "name": "@nodebuilderjs/core",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Native Linux UI in TypeScript: TSX components with SolidJS-style reactivity, drawn by its own native core (Wayland/X11 + GLES2 + FreeType/HarfBuzz). No DOM, no Electron, no GTK/Qt.",
   "keywords": [
     "gui",
@@ -57,6 +57,8 @@
     "src",
     "lib",
     "cli",
+    "packages/create-nodebuilderjs/template/AGENTS.md",
+    "packages/create-nodebuilderjs/template/.agents",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
@@ -78,6 +80,7 @@
     "overlays": "bun examples/overlays.tsx",
     "text": "bun examples/text.tsx",
     "widgets": "bun examples/widgets.tsx",
+    "tray": "bun examples/tray.tsx",
     "scroll": "bun examples/scroll.tsx",
     "dev": "bun --watch examples/todo.tsx",
     "bench": "NB_STATS=1 bun examples/bench.tsx",

@@ -108,8 +108,9 @@ export class CommandBuffer implements Painter {
     this.push(OP_RECT, x, y, w, h, ...this.fill(color), ...corners(radius), borderWidth, ...border);
   }
 
-  shadow(x: number, y: number, w: number, h: number, color: Color, radius: Radius, blur: number) {
-    this.push(OP_SHADOW, x, y, w, h, ...this.rgba(color), ...corners(radius), blur);
+  /** The shadow of the box at (x, y), moved down by `dy`; not drawn under the box itself (CSS). */
+  shadow(x: number, y: number, w: number, h: number, color: Color, radius: Radius, blur: number, dy = 0) {
+    this.push(OP_SHADOW, x, y + dy, w, h, ...this.rgba(color), ...corners(radius), blur, dy);
   }
 
   text(x: number, y: number, text: string, size: number, color: Color, font?: FontInput) {
@@ -186,7 +187,7 @@ export function paintTree(node: UINode, p: Painter) {
   p.opacity = outer * opacity;
   if (s.shadow) {
     const blur = s.shadow.blur;
-    p.shadow(node.x, node.y + (s.shadow.y ?? 0), node.width, node.height, s.shadow.color, s.radius ?? 0, blur);
+    p.shadow(node.x, node.y, node.width, node.height, s.shadow.color, s.radius ?? 0, blur, s.shadow.y ?? 0);
   }
   if (s.background || s.borderWidth) {
     const bg = s.background ?? "transparent";

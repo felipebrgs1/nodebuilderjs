@@ -37,7 +37,7 @@ typedef struct {
   int width, height, scale;
   bool maximized, activated, focused, repeat;
   bool transparent;  // window can show see-through (rounded) corners
-  int mods;        // NB_MOD_* held during a key or scroll event
+  int mods;        // NB_MOD_* held during a pointer, scroll or key event
   char key[64];    // xkb keysym name, e.g. "Return", "a", "BackSpace"
   char text[32];   // UTF-8 produced by the key (after compose / dead keys)
   char *data;      // malloc'd payload (NB_EV_CLIPBOARD text, NULL = empty); the core frees it
@@ -111,7 +111,7 @@ enum {
   NB_OP_TEXT = 2 /* x y(line top) size font(id)  r g b a  text_index  letter_spacing  spec_index (-1: none) */,
   NB_OP_CLIP = 3 /* x y w h  tl tr br bl (corner radii) */,
   NB_OP_UNCLIP = 4,
-  NB_OP_SHADOW = 5 /* x y w h  r g b a  tl tr br bl (corner radii)  blur */,
+  NB_OP_SHADOW = 5 /* x y w h  r g b a  tl tr br bl (corner radii)  blur  dy (the box casting it is at y - dy: not drawn there, as in CSS) */,
   NB_OP_IMAGE = 6 /* x y w h  u0 v0 u1 v1  r g b a (tint, a = opacity)  radius id */,
   NB_OP_LINE = 7 /* x0 y0 x1 y1  width  r g b a  capStart capEnd (0 butt, 1 round) */,
   NB_OP_TRIANGLES = 8 /* count  r g b a  then count x (x y coverage) */,

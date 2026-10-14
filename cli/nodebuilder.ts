@@ -2,6 +2,7 @@
 // `nodebuilder` command (bin of @nodebuilderjs/core). Needs Bun: packaging uses `bun build --compile`.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { agentsCommand } from "./agents.js";
 import { doctorCommand } from "./doctor.js";
 import { iconsCommand } from "./icons.js";
 import { packageCommand } from "./package.js";
@@ -20,6 +21,9 @@ switch (command) {
   case "icons":
     iconsCommand(args);
     break;
+  case "agents":
+    agentsCommand(args);
+    break;
   case "doctor":
     await doctorCommand(args, version);
     break;
@@ -35,6 +39,7 @@ switch (command) {
   nodebuilder screenshot <app.tsx> <out.png>    renders the app to a PNG without a window (--help for options)
   nodebuilder icons add <names...>              adds icon imports to src/icons.ts (--help for options)
   nodebuilder doctor [--json] [--window]        checks this machine can run an app, and how to fix it
+  nodebuilder agents update                     brings AGENTS.md and the agent skills up to this version
   nodebuilder version
 
 New project: bun create nodebuilderjs my-app`);

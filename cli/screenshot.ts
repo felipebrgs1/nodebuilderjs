@@ -6,7 +6,7 @@ import { existsSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-export const SCREENSHOT_USAGE = `usage: nodebuilder screenshot <app.tsx> <out.png> [options]
+export const SCREENSHOT_USAGE = `usage: nodebuilder screenshot <app.tsx> <out.png> [options] [-- app arguments]
 
   --width <px>        logical width (default: the <Window>'s width, or 800)
   --height <px>       logical height (default: the <Window>'s height, or 600)
@@ -15,12 +15,19 @@ export const SCREENSHOT_USAGE = `usage: nodebuilder screenshot <app.tsx> <out.pn
   --wait-frames <n>   frames (16 ms of simulated time each) to run before the shot
                       (default: until animations finish, at most 120)
   --props <json>      render the component the file exports (default export) with these
-                      props, e.g. '{"page":"settings"}'; the file must not call run() itself
-  --export <name>     render this named export instead of the default one`;
+                      props, e.g. '{"page":"settings"}'; the file must not call run() itself.
+                      A file that does not call run() gets its default export rendered anyway
+  --export <name>     render this named export instead of the default one
+
+Arguments after -- go to the app (process.argv.slice(2)), e.g. -- --vault ./notes.
+Inside, isScreenshot() from @nodebuilderjs/core is true (the app can skip real files or
+the network and show sample data).`;
 
 export function screenshotCommand(argv: string[]) {
+  const dashes = argv.indexOf("--");
+  const appArgs = dashes < 0 ? [] : argv.slice(dashes + 1);
   const { values: opts, positionals } = parseArgs({
-    args: argv,
+    args: dashes < 0 ? argv : argv.slice(0, dashes),
     allowPositionals: true,
     options: {
       width: { type: "string" },
@@ -58,14 +65,20 @@ export function screenshotCommand(argv: string[]) {
   for (const [name, value] of Object.entries(pass)) if (value !== undefined) env[`NB_SCREENSHOT_${name}`] = value;
   // With --props/--export, a runner imports the file and renders the component it exports.
   const component = opts.props !== undefined || opts.export !== undefined;
-  if (component) Object.assign(env, { NB_SCREENSHOT_ENTRY: resolve(app), NB_SCREENSHOT_PROPS: opts.props ?? "{}", NB_SCREENSHOT_EXPORT: opts.export ?? "" });
-  const script = component ? join(import.meta.dir, "screenshot-entry.ts") : resolve(app);
-  const child = spawnSync(process.execPath, [script], { env, stdio: "inherit", timeout: 60_000 });
-  if (child.error) {
-    console.error(`nodebuilder screenshot: ${child.error.message}`);
-    process.exit(1);
-  }
-  if (child.status !== 0) process.exit(child.status ?? 1);
+  const runner = { NB_SCREENSHOT_ENTRY: resolve(app), NB_SCREENSHOT_PROPS: opts.props ?? "{}", NB_SCREENSHOT_EXPORT: opts.export ?? "" };
+  const spawn = (script: string, extra: Record<string, string> = {}) => {
+    const child = spawnSync(process.execPath, [script, ...appArgs], { env: { ...env, ...extra }, stdio: "inherit", timeout: 60_000 });
+    if (child.error) {
+      console.error(`nodebuilder screenshot: ${child.error.message}`);
+      process.exit(1);
+    }
+    if (child.status !== 0) process.exit(child.status ?? 1);
+  };
+  const entry = join(import.meta.dir, "screenshot-entry.ts");
+  spawn(component ? entry : resolve(app), component ? runner : {});
+  // A file that only exports a component (a page in a given state, made for the shot): its
+  // default export, as with --props '{}'.
+  if (!component && !existsSync(path)) spawn(entry, { ...runner, NB_SCREENSHOT_FALLBACK: "1" });
   if (!existsSync(path)) {
     console.error(`nodebuilder screenshot: ${app} exited without calling run(), so nothing was rendered`);
     process.exit(1);

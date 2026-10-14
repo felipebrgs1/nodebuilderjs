@@ -28,6 +28,7 @@ const [data, setData] = createSignal([12, 40, 33, 70, 55, 90]);
 | Method | What |
 |---|---|
 | `g.width`, `g.height` | canvas size (inside the `padding`) |
+| `g.visibleRect` | `{ x, y, width, height }` on screen (local), cut by `Scroll`s, `clip` and the window; reading it redraws on scroll (draw only the visible lines of a long document) |
 | `rect(x, y, w, h, color, radius?)` | rectangle (bars) |
 | `line(x0, y0, x1, y1, color, width = 1, cap = "round", dash?)` | segment; cap `round`, `butt` (flat) or `square`; `dash` like `[4, 3]` (dash, gap...) |
 | `polyline(points, color, width = 1, { cap, closed, dash })` | line through several points `[x0, y0, x1, y1, ...]`, round joins |
@@ -86,4 +87,10 @@ For wrapping paragraphs, a `<Text>` next to the canvas (or over it: an absolute 
   and translucent ones for areas.
 - Interaction (tooltip, clicking a point, dragging): use `onPointerMove`/`onClick` on the
   `Canvas` itself; `e.localX`/`e.localY` are in the same coordinates as the drawing (the `padding`
-  offsets them: subtract it).
+  offsets them: subtract it). Keys need focus: `<Canvas focusable onKeyDown={...}>`.
+- A canvas that sizes itself (a document in a `Scroll`): `<Canvas measure={(width) => height}>`
+  gives the content's height for the width it gets (inside the padding); signals it reads lay it
+  out again. With `g.visibleRect` in `draw`, it draws only what is on screen.
+- Measuring outside `draw` (to size the content, e.g. a `Box` around the `Canvas` as tall as the
+  wrapped text): `measureText(text, size, { weight, italic, family })` from `@nodebuilderjs/core`
+  gives `{ width, ascent, descent }` with the same metrics as layout and `g.measureText`.

@@ -82,6 +82,13 @@ static void set_str(napi_env env, napi_value obj, const char *k, const char *v) 
   napi_set_named_property(env, obj, k, s);
 }
 
+static void set_mods(napi_env env, napi_value o, int mods) {
+  set_bool(env, o, "ctrl", mods & NB_MOD_CTRL);
+  set_bool(env, o, "shift", mods & NB_MOD_SHIFT);
+  set_bool(env, o, "alt", mods & NB_MOD_ALT);
+  set_bool(env, o, "super", mods & NB_MOD_SUPER);
+}
+
 static napi_value event_to_js(napi_env env, const nb_event *e) {
   napi_value o;
   napi_create_object(env, &o);
@@ -101,23 +108,21 @@ static napi_value event_to_js(napi_env env, const nb_event *e) {
       set_num(env, o, "x", e->x);
       set_num(env, o, "y", e->y);
       set_num(env, o, "button", e->button);
+      set_mods(env, o, e->mods);
       break;
     case NB_EV_SCROLL:
       set_num(env, o, "x", e->x);
       set_num(env, o, "y", e->y);
       set_num(env, o, "dx", e->dx);
       set_num(env, o, "dy", e->dy);
-      set_bool(env, o, "shift", e->mods & NB_MOD_SHIFT);
+      set_mods(env, o, e->mods);
       break;
     case NB_EV_KEY_DOWN:
     case NB_EV_KEY_UP:
       set_str(env, o, "key", e->key);
       set_str(env, o, "text", e->text);
       set_bool(env, o, "repeat", e->repeat);
-      set_bool(env, o, "ctrl", e->mods & NB_MOD_CTRL);
-      set_bool(env, o, "shift", e->mods & NB_MOD_SHIFT);
-      set_bool(env, o, "alt", e->mods & NB_MOD_ALT);
-      set_bool(env, o, "super", e->mods & NB_MOD_SUPER);
+      set_mods(env, o, e->mods);
       break;
     case NB_EV_FOCUS:
       set_bool(env, o, "focused", e->focused);
@@ -562,6 +567,38 @@ static napi_value js_set_title(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
+#define MAX_ICON_IMAGES 16
+
+// setIcon([{ size, rgba: Uint8Array }]): one icon at several square sizes, straight alpha.
+static napi_value js_set_icon(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  uint32_t count = 0;
+  CHECK(napi_get_array_length(env, argv[0], &count));
+  if (count > MAX_ICON_IMAGES) count = MAX_ICON_IMAGES;
+  nb_icon_image images[MAX_ICON_IMAGES];
+  for (uint32_t i = 0; i < count; i++) {
+    napi_value item, v;
+    CHECK(napi_get_element(env, argv[0], i, &item));
+    CHECK(napi_get_named_property(env, item, "size", &v));
+    int32_t size;
+    CHECK(napi_get_value_int32(env, v, &size));
+    CHECK(napi_get_named_property(env, item, "rgba", &v));
+    napi_typedarray_type type;
+    size_t length;
+    void *data;
+    CHECK(napi_get_typedarray_info(env, v, &type, &length, &data, NULL, NULL));
+    if (type != napi_uint8_array || size <= 0 || size > 1024 || length < (size_t)size * size * 4) {
+      napi_throw_type_error(env, NULL, "setIcon expects [{ size, rgba }] with size*size*4 bytes of RGBA");
+      return NULL;
+    }
+    images[i] = (nb_icon_image){.size = size, .rgba = data};
+  }
+  if (g_open) nb_platform_set_icon(images, (int)count);
+  return NULL;
+}
+
 static napi_value js_move(napi_env env, napi_callback_info info) {
   if (g_open) nb_platform_move();
   return NULL;
@@ -584,6 +621,16 @@ static napi_value js_set_maximized(napi_env env, napi_callback_info info) {
   CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
   CHECK(napi_get_value_bool(env, argv[0], &max));
   if (g_open) nb_platform_set_maximized(max);
+  return NULL;
+}
+
+static napi_value js_set_visible(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  bool visible;
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  CHECK(napi_get_value_bool(env, argv[0], &visible));
+  if (g_open) nb_platform_set_visible(visible);
   return NULL;
 }
 
@@ -694,6 +741,8 @@ static napi_value js_diagnostics(napi_env env, napi_callback_info info) {
 NAPI_MODULE_INIT() {
   napi_property_descriptor props[] = {
       {"open", NULL, js_open, NULL, NULL, NULL, napi_default, NULL},
+      {"setIcon", NULL, js_set_icon, NULL, NULL, NULL, napi_default, NULL},
+      {"setVisible", NULL, js_set_visible, NULL, NULL, NULL, napi_default, NULL},
       {"close", NULL, js_close, NULL, NULL, NULL, napi_default, NULL},
       {"render", NULL, js_render, NULL, NULL, NULL, napi_default, NULL},
       {"renderOffscreen", NULL, js_render_offscreen, NULL, NULL, NULL, napi_default, NULL},
