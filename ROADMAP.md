@@ -49,6 +49,8 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   `TextField`, `RichText`, modifiers and `onKeyUp`/`onContextMenu`, `<Overlay at>`, Canvas
   `measure`/`visibleRect`, `position="absolute"` from the padding box as in CSS, error stacks
   that show the app's frame, and the fixes from two user reports
+- 0.4.2 (2026-10-14): releases published by CI from `main` with npm provenance, branch and PR
+  rules (`CONTRIBUTING.md`), the `<Show>` caveat up front in the template docs
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 - `nodebuilder doctor` (2026-10-14): checks the machine (runtime, native core and system
   libraries, display, keyboard, GL, fonts, libheif) and prints the command that fixes each
