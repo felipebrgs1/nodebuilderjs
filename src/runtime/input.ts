@@ -103,9 +103,13 @@ export function createInput(root: UINode, host: InputHost) {
     return hitTest(root, x, y);
   }
 
-  /** A press that should close `layer`: outside it, or on a modal's backdrop, but never on its anchor. */
+  /**
+   * A press that should close `layer`: outside it, or on a modal's backdrop, but never on its
+   * anchor, nor (for a modal with an inset) on what it leaves uncovered.
+   */
   function pressOutside(layer: UINode, path: UINode[]) {
     const o = layer.overlay!;
+    if (o.modal && !path.includes(layer)) return false;
     if (path.includes(layer) && !(o.modal && path[0] === layer)) return false;
     const anchor = o.anchor?.() as UINode | undefined;
     return !(anchor && path.includes(anchor));
@@ -248,6 +252,21 @@ export function createInput(root: UINode, host: InputHost) {
     },
     setFocus,
   };
+  // focus() asked for before there was input (mount() and then interact() in a test).
+  const early = root.pendingFocus;
+  root.pendingFocus = null;
+  if (early?.focusable && early.attached) setFocus(early);
+
+  /**
+   * Where a key starts bubbling: the focused node; with nothing focused, the topmost modal
+   * layer (its parents lead to the Window), or else the root's top nodes (the Window).
+   */
+  function keyTargets(): readonly UINode[] {
+    if (focused) return [focused];
+    const modal = root.layers.findLast((l) => l.overlay!.modal);
+    if (modal) return [modal];
+    return root.children.length ? root.children : [root];
+  }
 
   function focusables(node: UINode, out: UINode[] = []) {
     if (node.focusable && node.tabStop) out.push(node);
@@ -378,7 +397,9 @@ export function createInput(root: UINode, host: InputHost) {
       const text = [...ev.text].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127) || ev.ctrl ? "" : ev.text;
       const e: KeyEvent = { key: ev.key, text, ctrl: ev.ctrl, shift: ev.shift, alt: ev.alt, repeat: ev.repeat, stop: () => (stopped = true) };
       if (focused && !focused.attached) setFocus(null);
-      for (let n = focused; n && !stopped; n = n.parent) n.handlers.onKeyDown?.(e);
+      for (const start of keyTargets()) {
+        for (let n: UINode | null = start; n && !stopped; n = n.parent) n.handlers.onKeyDown?.(e);
+      }
       if (stopped) return;
       const layer = dismissible();
       if (ev.key === "Escape" && layer) return layer.overlay!.onDismiss!();

@@ -2,7 +2,7 @@
 // control when it opens and gives the focus back when it closes.
 
 import { type Child, jsx } from "../jsx-runtime.js";
-import { UINode, focusedElement } from "../render/node.js";
+import { type Edges, UINode, focusedElement } from "../render/node.js";
 import { createPresence } from "../animation/index.js";
 import { Show } from "../reactive/control.js";
 import { type Accessor, type MaybeAccessor, onCleanup, untrack } from "../reactive/signals.js";
@@ -30,6 +30,8 @@ export function Dialog(props: {
   /** Escape and the backdrop close it (default true). */
   dismissible?: boolean;
   width?: number;
+  /** Space the backdrop leaves uncovered at the window's edges (the title bar: `[theme.window.titlebarHeight + 1, 0, 0, 0]`). */
+  inset?: Edges;
   children?: Child;
 }): Child {
   // In the tree where the Dialog is declared, so the focus to give back can be found.
@@ -59,6 +61,7 @@ export function Dialog(props: {
       queueMicrotask(() => firstFocusable(card)?.focus());
       return jsx(Overlay, {
         modal: true,
+        inset: props.inset,
         opacity: presence.progress,
         background: () => theme.backdrop,
         align: "center",

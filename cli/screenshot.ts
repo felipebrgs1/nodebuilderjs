@@ -3,7 +3,7 @@
 // then exits. Needs no display server: works in CI, containers and agent sandboxes.
 import { spawnSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 export const SCREENSHOT_USAGE = `usage: nodebuilder screenshot <app.tsx> <out.png> [options]
@@ -13,7 +13,10 @@ export const SCREENSHOT_USAGE = `usage: nodebuilder screenshot <app.tsx> <out.pn
   --scale <n>         device scale; 2 renders a HiDPI image twice the size (default 1)
   --theme <name>      light or dark (default: whatever the app sets)
   --wait-frames <n>   frames (16 ms of simulated time each) to run before the shot
-                      (default: until animations finish, at most 120)`;
+                      (default: until animations finish, at most 120)
+  --props <json>      render the component the file exports (default export) with these
+                      props, e.g. '{"page":"settings"}'; the file must not call run() itself
+  --export <name>     render this named export instead of the default one`;
 
 export function screenshotCommand(argv: string[]) {
   const { values: opts, positionals } = parseArgs({
@@ -25,6 +28,8 @@ export function screenshotCommand(argv: string[]) {
       scale: { type: "string" },
       theme: { type: "string" },
       "wait-frames": { type: "string" },
+      props: { type: "string" },
+      export: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -37,12 +42,25 @@ export function screenshotCommand(argv: string[]) {
     console.error(SCREENSHOT_USAGE);
     process.exit(1);
   }
+  if (opts.props !== undefined) {
+    try {
+      const props = JSON.parse(opts.props);
+      if (typeof props !== "object" || props === null || Array.isArray(props)) throw new Error("not an object");
+    } catch (err) {
+      console.error(`nodebuilder screenshot: --props must be a JSON object (${(err as Error).message})`);
+      process.exit(1);
+    }
+  }
   const path = resolve(out);
   rmSync(path, { force: true }); // so a stale file is never taken for this run's output
   const env: Record<string, string | undefined> = { ...process.env, NB_SCREENSHOT: path };
   const pass = { WIDTH: opts.width, HEIGHT: opts.height, SCALE: opts.scale, THEME: opts.theme, FRAMES: opts["wait-frames"] };
   for (const [name, value] of Object.entries(pass)) if (value !== undefined) env[`NB_SCREENSHOT_${name}`] = value;
-  const child = spawnSync(process.execPath, [resolve(app)], { env, stdio: "inherit", timeout: 60_000 });
+  // With --props/--export, a runner imports the file and renders the component it exports.
+  const component = opts.props !== undefined || opts.export !== undefined;
+  if (component) Object.assign(env, { NB_SCREENSHOT_ENTRY: resolve(app), NB_SCREENSHOT_PROPS: opts.props ?? "{}", NB_SCREENSHOT_EXPORT: opts.export ?? "" });
+  const script = component ? join(import.meta.dir, "screenshot-entry.ts") : resolve(app);
+  const child = spawnSync(process.execPath, [script], { env, stdio: "inherit", timeout: 60_000 });
   if (child.error) {
     console.error(`nodebuilder screenshot: ${child.error.message}`);
     process.exit(1);

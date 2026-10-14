@@ -8,7 +8,7 @@ import { type Child, insert } from "./jsx-runtime.js";
 import { layout } from "./render/layout.js";
 import { overflowWarnings } from "./render/overflow.js";
 import { type TextMeasurer, UINode, setTextMeasurer } from "./render/node.js";
-import { createRoot } from "./reactive/signals.js";
+import { createRoot, untrack } from "./reactive/signals.js";
 import { runFrameCallbacks, setAnimating, setFrameClock } from "./runtime/frames.js";
 import { createInput } from "./runtime/input.js";
 import { loadNative, nativeTextMeasurer } from "./runtime/native.js";
@@ -83,7 +83,7 @@ export function mount(view: () => Child, size = { width: 800, height: 600 }) {
   const root = new UINode("root");
   root.isRoot = true;
   const dispose = createRoot((d) => {
-    insert(root, view);
+    insert(root, untrack(view));
     return d;
   });
   layout(root, size.width, size.height);
@@ -114,17 +114,34 @@ function textOf(n: UINode): string | undefined {
   return n.label.startsWith("Text ") ? (JSON.parse(n.label.slice(5)) as string) : undefined;
 }
 
-/** Every Text node whose whole content equals `text` (or matches the RegExp), in tree order. */
-export function findAllByText(node: UINode, text: string | RegExp): UINode[] {
+export interface TextQuery {
+  /**
+   * Only text inside a widget of this kind (its debug label: "Button", "Checkbox", "Tab",
+   * "Select"...), e.g. the "Quit" button rather than the "Quit" dialog title.
+   */
+  in?: string;
+}
+
+/** Inside a node labelled `kind`, up to the root (overlay layers included, through their anchor spot). */
+function inside(n: UINode, kind: string): boolean {
+  for (let p = n.parent; p; p = p.parent) if (p.label === kind) return true;
+  return false;
+}
+
+/**
+ * Every Text node whose whole content equals `text` (or matches the RegExp), in tree order
+ * (overlay layers, like dialogs, come after the tree).
+ */
+export function findAllByText(node: UINode, text: string | RegExp, query: TextQuery = {}): UINode[] {
   return findAll(node, (n) => {
     const value = textOf(n);
-    return value !== undefined && matches(value, text);
+    return value !== undefined && matches(value, text) && (query.in === undefined || inside(n, query.in));
   });
 }
 
-/** First Text node whose whole content equals `text` (or matches the RegExp). */
-export function findByText(node: UINode, text: string | RegExp): UINode | undefined {
-  return findAllByText(node, text)[0];
+/** First Text node whose whole content equals `text` (or matches the RegExp); `{ in: "Button" }` narrows it. */
+export function findByText(node: UINode, text: string | RegExp, query: TextQuery = {}): UINode | undefined {
+  return findAllByText(node, text, query)[0];
 }
 
 /** Every node whose `ariaLabel` equals `text` (or matches the RegExp), in tree order. */
@@ -135,6 +152,29 @@ export function findAllByLabel(node: UINode, text: string | RegExp): UINode[] {
 /** First node whose `ariaLabel` equals `text` (or matches the RegExp): icon-only buttons and the like. */
 export function findByLabel(node: UINode, text: string | RegExp): UINode | undefined {
   return findAllByLabel(node, text)[0];
+}
+
+/** Every text field (TextField) whose value equals `value` (or matches the RegExp), in tree order. */
+export function findAllByValue(node: UINode, value: string | RegExp): UINode[] {
+  return findAll(node, (n) => n.field !== undefined && matches(n.field.value(), value));
+}
+
+/** First text field whose value equals `value` (or matches the RegExp): what the user typed. */
+export function findByValue(node: UINode, value: string | RegExp): UINode | undefined {
+  return findAllByValue(node, value)[0];
+}
+
+/** First text field whose placeholder equals `text` (or matches the RegExp), whatever it holds. */
+export function findByPlaceholder(node: UINode, text: string | RegExp): UINode | undefined {
+  return findAll(node, (n) => {
+    const placeholder = n.field?.placeholder();
+    return placeholder !== undefined && matches(placeholder, text);
+  })[0];
+}
+
+/** The text a node shows: a field's drawn value ("•••" for a password), a Text node's content; else undefined. */
+export function shownText(node: UINode): string | undefined {
+  return node.field ? node.field.shown() : textOf(node);
 }
 
 /** How errors name a node: its debug label (with the text, for Text nodes), plus its ariaLabel. */

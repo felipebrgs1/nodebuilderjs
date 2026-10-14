@@ -1,12 +1,12 @@
 import { insert, jsx } from "../jsx-runtime.js";
-import { type Style, UINode } from "../render/node.js";
+import { type Handlers, type Style, UINode } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, untrack } from "../reactive/signals.js";
 import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
+import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "./props.js";
 import { Text } from "./text.js";
 
 export function Checkbox(
-  props: StyleProps & { checked: Accessor<boolean>; onChange: (checked: boolean) => void; label?: MaybeAccessor<string>; disabled?: MaybeAccessor<boolean> },
+  props: StyleProps & Handlers & { checked: Accessor<boolean>; onChange: (checked: boolean) => void; label?: MaybeAccessor<string>; disabled?: MaybeAccessor<boolean> },
 ) {
   const row = new UINode("Checkbox");
   Object.assign(row.style, { direction: "row", align: "center", gap: 10, cursor: "pointer" } satisfies Style);
@@ -21,13 +21,13 @@ export function Checkbox(
 
   const state = interaction(row);
   const toggle = () => !disabled() && props.onChange(!untrack(props.checked));
-  row.handlers.onClick = toggle;
-  row.handlers.onKeyDown = (e) => {
+  ownHandler(row, "onClick", toggle);
+  ownHandler(row, "onKeyDown", (e) => {
     if (e.key === "space" || e.key === "Return") {
       toggle();
       e.stop();
     }
-  };
+  });
   createEffect(() => {
     const on = props.checked();
     box.set("background", on ? (state.hovered() ? theme.accent.hover : theme.accent.base) : theme.field.background);

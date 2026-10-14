@@ -1,14 +1,14 @@
 import { type Child, insert, jsx } from "../jsx-runtime.js";
-import { type Style, UINode } from "../render/node.js";
-import { type MaybeAccessor, createEffect } from "../reactive/signals.js";
+import { type Handlers, type Style, UINode } from "../render/node.js";
+import { type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
 import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
+import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "./props.js";
 import { Text } from "./text.js";
 
-type Variant = "default" | "primary" | "danger" | "flat";
+export type ButtonVariant = "default" | "primary" | "danger" | "flat";
 
 /** Read inside effects, so the colors follow the theme. */
-function palette(variant: Variant) {
+function palette(variant: ButtonVariant) {
   if (variant === "primary") return theme.accent;
   if (variant === "danger") return theme.danger;
   if (variant === "flat") return { base: "#00000000", hover: theme.control.hover, pressed: theme.control.pressed, text: theme.control.text };
@@ -16,43 +16,44 @@ function palette(variant: Variant) {
 }
 
 export function Button(
-  props: StyleProps & {
+  props: StyleProps & Omit<Handlers, "onClick"> & {
     label?: MaybeAccessor<string>;
     children?: Child;
-    variant?: Variant;
+    /** Static or reactive: the colors, hover and weight follow it. */
+    variant?: MaybeAccessor<ButtonVariant>;
     disabled?: MaybeAccessor<boolean>;
     onClick?: () => void;
   },
 ) {
   const node = new UINode("Button");
-  const variant = props.variant ?? "default";
+  const variant = () => read(props.variant ?? "default");
   Object.assign(node.style, {
     direction: "row", align: "center", justify: "center", gap: 6, padding: [8, 16], radius: theme.radius, cursor: "pointer",
-    bold: variant === "primary" || variant === "danger",
   } satisfies Style);
-  if (props.color === undefined) createEffect(() => node.set("color", palette(variant).text));
-  applyProps(node, props);
+  if (props.bold === undefined) createEffect(() => node.set("bold", variant() === "primary" || variant() === "danger"));
+  if (props.color === undefined) createEffect(() => node.set("color", palette(variant()).text));
+  const { onClick: _, ...rest } = props; // onClick goes through activate(), which checks `disabled`
+  applyProps(node, rest);
   const disabled = disableable(node, props);
 
   const state = interaction(node);
   const activate = () => !disabled() && props.onClick?.();
-  node.handlers.onClick = activate;
-  node.handlers.onKeyDown = (e) => {
+  ownHandler(node, "onClick", activate);
+  ownHandler(node, "onKeyDown", (e) => {
     if (e.key === "Return" || e.key === "space" || e.key === "KP_Enter") {
       activate();
       e.stop();
     }
-  };
+  });
   if (props.background === undefined) {
     createEffect(() => {
-      const colors = palette(variant);
+      const colors = palette(variant());
       node.set("background", disabled() ? colors.base : state.pressed() ? colors.pressed : state.hovered() ? colors.hover : colors.base);
     });
   }
-  createEffect(() => {
-    node.set("borderWidth", state.focused() ? 2 : 0);
-    node.set("borderColor", theme.focusRing);
-  });
+  // The focus ring, unless the app styles the border (focusStyle restyles the ring).
+  if (props.borderWidth === undefined) createEffect(() => node.set("borderWidth", state.focused() ? 2 : 0));
+  if (props.borderColor === undefined) createEffect(() => node.set("borderColor", theme.focusRing));
 
   if (props.label !== undefined) insert(node, jsx(Text, { text: props.label }));
   insert(node, props.children);

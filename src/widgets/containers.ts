@@ -27,14 +27,24 @@ export function Row(props: BoxProps) {
   return node;
 }
 
-export type GridProps = BoxProps & {
-  /** Cells per row; every cell is equally wide, the last row included. */
-  columns: MaybeAccessor<number>;
-};
+export type GridProps = BoxProps &
+  (
+    | {
+        /** Cells per row; every cell is equally wide, the last row included. With `minColumnWidth`, the most per row. */
+        columns: MaybeAccessor<number>;
+        minColumnWidth?: MaybeAccessor<number>;
+      }
+    | {
+        columns?: MaybeAccessor<number>;
+        /** As many columns as fit at least this wide (responsive), sharing the leftover width. */
+        minColumnWidth: MaybeAccessor<number>;
+      }
+  );
 
 /**
- * Children flow into rows of `columns` equal-width cells; `gap` between cells, `rowGap`
- * between rows (default: `gap`). Each row is as tall as its tallest cell.
+ * Children flow into rows of `columns` equal-width cells (or as many cells at least
+ * `minColumnWidth` wide as fit); `gap` between cells, `rowGap` between rows (default: `gap`).
+ * Each row is as tall as its tallest cell.
  */
 export function Grid(props: GridProps) {
   const node = Box(props);

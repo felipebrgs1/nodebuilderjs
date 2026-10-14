@@ -88,6 +88,17 @@ test("clip with radius clips children to the rounded inside of the border", () =
   expect(commandsOf(root, "clip")).toEqual([{ op: "clip", x: 2, y: 2, w: 96, h: 56, radius: 10 }]);
 });
 
+test("radius per corner [tl, tr, br, bl]: the rect, its shadow and its clip (inset by the border) carry all four", () => {
+  const { root } = mount(() => (
+    <Column align="start">
+      <Box clip radius={[0, 12, 12, 0]} borderWidth={2} borderColor="#000000" background="#ffffff" shadow={{ color: "#00000080", blur: 4 }} width={100} height={60} />
+    </Column>
+  ));
+  expect(commandsOf(root, "rect")[0]).toMatchObject({ radius: 0, radii: [0, 12, 12, 0] });
+  expect(commandsOf(root, "shadow")[0]).toMatchObject({ radii: [0, 12, 12, 0] });
+  expect(commandsOf(root, "clip")).toEqual([{ op: "clip", x: 2, y: 2, w: 96, h: 56, radius: 0, radii: [0, 10, 10, 0] }]);
+});
+
 test("a shadow is drawn even without a background: the node's rounded box, blurred and offset by y", () => {
   const { root } = mount(() => (
     <Column align="start" padding={20}>
@@ -364,4 +375,23 @@ describe("zIndex", () => {
     ));
     expect(colors(root)).toEqual([red, green]);
   });
+});
+
+test("focusStyle shows while the widget has the keyboard focus; hoverStyle wins over it", () => {
+  const { root } = mount(() => (
+    <Column align="start">
+      <Button label="a" borderColor="#000000" focusStyle={{ borderColor: "#ff0000", borderWidth: 3 }} hoverStyle={{ borderColor: "#00ff00" }} />
+      <Button label="b" />
+    </Column>
+  ));
+  const [a, b] = root.children[0]!.children;
+  const ui = interact(root);
+  ui.key("Tab");
+  expect([a!.style.borderColor, a!.style.borderWidth]).toEqual(["#ff0000", 3]);
+  ui.hover(a!);
+  expect(a!.style.borderColor).toBe("#00ff00");
+  ui.move(700, 500);
+  ui.key("Tab");
+  expect(ui.focused).toBe(b!);
+  expect(a!.style.borderColor).toBe("#000000");
 });

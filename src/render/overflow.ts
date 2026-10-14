@@ -1,7 +1,8 @@
 // Overflow warnings: children that need more room than their container gives them, where the
 // excess ends up hidden (clipped by an ancestor or by the window). Layout calls checkOverflow()
-// for every placed container; the common case is two comparisons. Warnings are only collected
-// here: run() prints them in development, tests read them with layoutWarnings().
+// for every placed container; the common case is two comparisons. layout() also reports here
+// onResize handlers that keep changing sizes. Warnings are only collected here: run() prints
+// them in development, tests read them with layoutWarnings().
 
 import { type UINode, scrolls } from "./node.js";
 import { type Rect, margins } from "./layout.js";
@@ -64,6 +65,18 @@ function report(container: UINode, child: UINode, axis: "x" | "y", excess: numbe
   container.overflow = Math.max(container.overflow, amount);
   const message = `layout: ${nodeName(container)} > ${nodeName(child)} overflows ${by} by ${amount}px (${numbers})`;
   pass.push({ container, child, axis, key: `${path(container)} > ${nodeName(child)} ${axis}`, message });
+}
+
+/** onResize handlers still changing the layout after layout's extra passes (a resize loop). */
+export function reportResizeLoop(nodes: UINode[]) {
+  const names = nodes.map(nodeName).join(", ");
+  pass.push({
+    container: nodes[0]!,
+    child: nodes[0]!,
+    axis: "x",
+    key: `onResize ${nodes.map(path).join(" | ")}`,
+    message: `layout: onResize keeps changing the layout (${names}): each handler call changes the size it reports`,
+  });
 }
 
 const scrollsOn = (n: UINode, axis: "x" | "y") => (axis === "x" ? n.scrollableX : n.scrollable);

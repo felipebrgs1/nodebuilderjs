@@ -103,11 +103,11 @@ void nb_fonts_stats(nb_font_stats *out);
 
 // Command buffer opcodes (producer: src/render/paint.ts; keep both in sync).
 enum {
-  NB_OP_RECT = 1,
+  NB_OP_RECT = 1 /* x y w h  r g b a  tl tr br bl (corner radii)  border  br bg bb ba */,
   NB_OP_TEXT = 2 /* x y(line top) size font(id)  r g b a  text_index  letter_spacing  spec_index (-1: none) */,
-  NB_OP_CLIP = 3 /* x y w h radius */,
+  NB_OP_CLIP = 3 /* x y w h  tl tr br bl (corner radii) */,
   NB_OP_UNCLIP = 4,
-  NB_OP_SHADOW = 5,
+  NB_OP_SHADOW = 5 /* x y w h  r g b a  tl tr br bl (corner radii)  blur */,
   NB_OP_IMAGE = 6 /* x y w h  u0 v0 u1 v1  r g b a (tint, a = opacity)  radius id */,
   NB_OP_LINE = 7 /* x0 y0 x1 y1  width  r g b a  capStart capEnd (0 butt, 1 round) */,
   NB_OP_TRIANGLES = 8 /* count  r g b a  then count x (x y coverage) */,

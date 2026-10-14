@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Box, Button, Column, For, Overlay, Row, Scroll, Text, TextField, Tooltip, Window, createSignal } from "@nodebuilderjs/core";
+import { Box, Button, Column, Dialog, For, Overlay, Row, Scroll, Text, TextField, Tooltip, Window, createSignal } from "@nodebuilderjs/core";
 import type { PointerEvent } from "@nodebuilderjs/core";
 import {
-  canUseRealTextMetrics, click, findAllByLabel, findAllByText, findByLabel, findByText, interact, mount, useFakeTextMetrics, useRealTextMetrics,
+  canUseRealTextMetrics, click, findAllByLabel, findAllByText, findAllByValue, findByLabel, findByPlaceholder, findByText, findByValue, interact, mount,
+  shownText, useFakeTextMetrics, useRealTextMetrics,
 } from "@nodebuilderjs/core/testing";
 
 test("interact: hover, press and release go through the real event delivery", () => {
@@ -304,4 +305,60 @@ describe("text metrics", () => {
     const { root } = mount(() => <Column align="start"><Text>iiii</Text></Column>);
     expect(findByText(root, "iiii")!.width).toBe(32); // fake again
   });
+});
+
+test("mount: the view callback is untracked, like a component body", () => {
+  const [count, setCount] = createSignal(0);
+  let runs = 0;
+  const { root } = mount(() => {
+    runs++;
+    setCount(count() + 1);
+    return <Text>{() => `count ${count()}`}</Text>;
+  });
+  expect(runs).toBe(1);
+  setCount(7);
+  expect(runs).toBe(1);
+  expect(findByText(root, "count 7")).toBeDefined();
+});
+
+test("findByValue finds a TextField by what was typed; shownText gives what it draws (masked for passwords)", () => {
+  const [name, setName] = createSignal("");
+  const [secret, setSecret] = createSignal("");
+  const { root } = mount(() => (
+    <Column>
+      <TextField value={name} onInput={setName} placeholder="Name" />
+      <TextField password value={secret} onInput={setSecret} placeholder="Password" />
+    </Column>
+  ));
+  const ui = interact(root);
+  ui.press(findByPlaceholder(root, "Name")!);
+  ui.type("hello");
+  ui.press(findByPlaceholder(root, "Password")!);
+  ui.type("hunter");
+  const field = findByValue(root, "hello")!;
+  expect(field).toBe(root.children[0]!.children[0]!);
+  expect(shownText(field)).toBe("hello");
+  const password = findByValue(root, "hunter")!;
+  expect(shownText(password)).toBe("••••••");
+  expect(findAllByValue(root, /^h/)).toEqual([field, password]);
+});
+
+test("findByText with { in: widget }: the same text in a menu, a dialog title and a dialog button", () => {
+  const [open, setOpen] = createSignal(true);
+  const { root, relayout } = mount(() => (
+    <Column>
+      <Text>Sair</Text>
+      <Dialog open={open} onClose={() => setOpen(false)} title="Sair">
+        <Button label="Sair" onClick={() => setOpen(false)} />
+      </Dialog>
+    </Column>
+  ));
+  relayout();
+  expect(findAllByText(root, "Sair")).toHaveLength(3);
+  const label = findByText(root, "Sair", { in: "Button" })!;
+  expect(label.parent!.label).toBe("Button");
+  click(label);
+  expect(open()).toBe(false);
+  expect(findAllByText(root, "Sair", { in: "Button" })).toHaveLength(1);
+  expect(findByText(root, "Sair", { in: "Checkbox" })).toBeUndefined();
 });

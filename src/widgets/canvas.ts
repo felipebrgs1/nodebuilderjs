@@ -7,7 +7,7 @@
 
 import { edges } from "../render/layout.js";
 import { type CanvasGradient, type GradientStop, isGradient, offsetGradient } from "../render/gradient.js";
-import { type Color, type FontStyle, type Handlers, type LineCap, type Paint, type Painter, UINode, fontStyle, invalidate, measureText } from "../render/node.js";
+import { type Color, type FontStyle, type Handlers, type LineCap, type Paint, type Painter, type Radius, UINode, fontStyle, invalidate, measureText } from "../render/node.js";
 import { type PolylineOptions, fillPolygon, polyline } from "../render/shapes.js";
 import { truncate } from "../render/text-wrap.js";
 import { createEffect, createSignal } from "../reactive/signals.js";
@@ -22,7 +22,8 @@ import { type StyleProps, applyProps, inherited } from "./props.js";
 export interface DrawContext {
   readonly width: number;
   readonly height: number;
-  rect(x: number, y: number, w: number, h: number, color: Paint, radius?: number): void;
+  /** `radius`: one for all corners or `[topLeft, topRight, bottomRight, bottomLeft]` (a bar rounded on top: `[4, 4, 0, 0]`). */
+  rect(x: number, y: number, w: number, h: number, color: Paint, radius?: Radius): void;
   /** `dash`: dash and gap lengths, like SVG's stroke-dasharray. */
   line(x0: number, y0: number, x1: number, y1: number, color: Paint, width?: number, cap?: "round" | "butt" | "square", dash?: readonly number[]): void;
   polyline(points: ArrayLike<number>, color: Paint, width?: number, options?: PolylineOptions): void;

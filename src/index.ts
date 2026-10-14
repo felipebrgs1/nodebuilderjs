@@ -1,7 +1,7 @@
 /// <reference path="./assets.d.ts" preserve="true" />
 export {
   type Accessor, type MaybeAccessor, type Setter,
-  batch, createEffect, createMemo, createRoot, createSignal, onCleanup, read, untrack,
+  batch, createEffect, createMemo, createRoot, createSignal, onCleanup, onMount, read, untrack,
 } from "./reactive/signals.js";
 export { Show, Switch, Match, type ConditionalChildren } from "./reactive/control.js";
 export { For, Index } from "./reactive/list.js";
@@ -17,6 +17,6 @@ export { animate, createTween, createPresence, easing, mixColor, type AnimateOpt
 export { decodeImage } from "./image/decode.js";
 export { type Bitmap, type ImageInput } from "./image/source.js";
 export { parseSvg, renderSvg, type IconNode, type Svg } from "./svg/index.js";
-export { UINode, debugTree, setTextMeasurer, type Background, type Paint, type FontStyle, type FontInput, type TextMeasurer, type Style, type ElementRef, type Placement, type Painter, type KeyEvent, type PointerEvent } from "./render/node.js";
+export { UINode, debugTree, setTextMeasurer, type Background, type Paint, type Radius, type FontStyle, type FontInput, type TextMeasurer, type Style, type ElementRef, type Placement, type Painter, type KeyEvent, type PointerEvent } from "./render/node.js";
 export { layout } from "./render/layout.js";
 export { type CanvasGradient, type GradientStop, type LinearGradient } from "./render/gradient.js";

@@ -2,10 +2,10 @@
 
 import { createTween, mixColor } from "../animation/index.js";
 import { insert, jsx } from "../jsx-runtime.js";
-import { type Style, UINode, invalidate } from "../render/node.js";
+import { type Handlers, type Style, UINode, invalidate } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, untrack } from "../reactive/signals.js";
 import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
+import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "./props.js";
 import { Text } from "./text.js";
 
 const TRACK_W = 36;
@@ -13,7 +13,7 @@ const TRACK_H = 20;
 const THUMB = 16;
 
 export function Toggle(
-  props: StyleProps & {
+  props: StyleProps & Handlers & {
     checked: Accessor<boolean>;
     onChange: (checked: boolean) => void;
     label?: MaybeAccessor<string>;
@@ -49,13 +49,13 @@ export function Toggle(
   });
 
   const toggle = () => !disabled() && props.onChange(!untrack(props.checked));
-  row.handlers.onClick = toggle;
-  row.handlers.onKeyDown = (e) => {
+  ownHandler(row, "onClick", toggle);
+  ownHandler(row, "onKeyDown", (e) => {
     if (e.key === "space" || e.key === "Return" || e.key === "KP_Enter") {
       toggle();
       e.stop();
     }
-  };
+  });
   if (props.label !== undefined) insert(row, jsx(Text, { text: props.label }));
   return row;
 }

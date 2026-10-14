@@ -2,7 +2,7 @@
 // option); the arrow keys move the choice, skipping disabled options, like native radios.
 
 import { insert, jsx } from "../jsx-runtime.js";
-import { type Style, UINode } from "../render/node.js";
+import { type Handlers, type Style, UINode } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, read, untrack } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
@@ -16,7 +16,7 @@ export interface Choice<T> {
 }
 
 export function RadioGroup<T>(
-  props: StyleProps & {
+  props: StyleProps & Handlers & {
     value: Accessor<T>;
     onChange: (value: T) => void;
     options: readonly Choice<T>[];

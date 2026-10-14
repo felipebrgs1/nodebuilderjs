@@ -1,6 +1,6 @@
 import { type Child, insert } from "../jsx-runtime.js";
 import { windowControls, windowOptionsKey, windowState } from "../runtime/app.js";
-import { type Style, UINode, measureText } from "../render/node.js";
+import { type Handlers, type Style, UINode, measureText } from "../render/node.js";
 import { createEffect } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 import { Column, Divider, Row, Spacer } from "./containers.js";
@@ -34,7 +34,7 @@ function WindowButton(props: { kind: "minimize" | "maximize" | "close"; onClick:
 }
 
 /** Minimize, maximize/restore and close buttons, for a custom title bar (`<Window decorations={false}>`). */
-export function WindowControls(props: StyleProps = {}) {
+export function WindowControls(props: StyleProps & Handlers = {}) {
   const node = Row({ align: "center", gap: 10, ...props });
   node.label = "WindowControls";
   node.setSlot(node.addSlot(), [
@@ -46,7 +46,7 @@ export function WindowControls(props: StyleProps = {}) {
 }
 
 export function Window(
-  props: StyleProps & {
+  props: StyleProps & Handlers & {
     title: string;
     width?: number;
     height?: number;

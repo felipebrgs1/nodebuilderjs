@@ -1,6 +1,6 @@
 import { type ImageInput, type ImageSource, acquireImage, releaseImage } from "../image/source.js";
 import { edges } from "../render/layout.js";
-import { type Handlers, UINode, invalidate } from "../render/node.js";
+import { type Handlers, UINode, insetRadius, invalidate } from "../render/node.js";
 import { type MaybeAccessor, createEffect, onCleanup, read } from "../reactive/signals.js";
 import { type StyleProps, applyProps } from "./props.js";
 
@@ -65,8 +65,12 @@ export function Image(props: StyleProps & Handlers & { src: MaybeAccessor<ImageI
       uv = [(1 - fu) / 2, (1 - fv) / 2, (1 + fu) / 2, (1 + fv) / 2];
     }
     // Like CSS, the content's corners follow the box's radius minus the padding.
-    const radius = Math.max(0, (n.style.radius ?? 0) - Math.min(pt, pr, pb, pl));
-    p.image(x, y, w, h, source, uv, radius);
+    const radius = insetRadius(n.style.radius, Math.min(pt, pr, pb, pl));
+    if (typeof radius === "number") return p.image(x, y, w, h, source, uv, radius);
+    // Different corners: IMAGE rounds all four alike, so a rounded clip cuts them.
+    p.clip(n.x + pl, n.y + pt, Math.max(0, n.width - pl - pr), Math.max(0, n.height - pt - pb), radius);
+    p.image(x, y, w, h, source, uv);
+    p.unclip();
   };
   return node;
 }

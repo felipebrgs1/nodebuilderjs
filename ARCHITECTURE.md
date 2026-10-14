@@ -49,7 +49,7 @@ The model is SolidJS's, implemented from scratch in `src/reactive/signals.ts`:
   (`flushPending`). While that queue is running, new writes only join it: the effect that
   wrote finishes before the ones it triggered (it never runs reentrantly, in the middle of
   itself), and an update cycle is detected by the 100 000-run limit instead of blowing the
-  stack. An error that no scope handles does not stall the queue: the remaining pending
+  stack (it throws "reactive update loop detected"). An error that no scope handles does not stall the queue: the remaining pending
   effects run and the first error is rethrown at the end, to whoever wrote the signal.
 - **Ownership:** everything created inside an effect or `createRoot` is disposed of along
   with it (`onCleanup`). That is how switching tabs, for example, releases everything from the old tab.
@@ -76,6 +76,20 @@ create **descriptions** (`ElementDesc`). The component runs when the description
 into the tree. This lets `<Show>`, `<Switch>` and `<For>` decide when (and whether) to
 instantiate their children; `<Switch>` reads the props of each `<Match>` straight from the
 description, without running anything.
+
+`run(app)` and `mount(view)` call the callback with `untrack` before inserting what it
+returns, so it behaves like a component body: reading a signal there and then setting it does
+not make the whole app a reactive slot that reruns (and loops) on every write.
+
+**`onMount`** queues a callback with the current owner. The queue is held while an `insert`
+is in progress (`holdMounts`, counted, so nested inserts wait for the outermost one) and while
+an update queue is running; it is drained when both end, which is after the nodes created by
+that insert (or by the update: a `<Show>` turning on) have been placed in their slots, before
+the next layout. Each callback runs untracked under its owner (effects created there belong to
+the component); a cleanup on the owner cancels a callback whose component was disposed or
+rerun before that. `UINode.focus()` uses the same queue for a `ref` that focuses during
+creation: it lands when the node is attached (or, on a root without input yet, as
+`root.pendingFocus`, which `createInput` takes), not a microtask later.
 
 Since there is no compiler, the rule is explicit: **only functions are reactive**. A prop
 `text={() => ...}` or a child `{count}` becomes an effect that updates the node directly; a
@@ -156,7 +170,19 @@ counts `render` calls while sending `configure`, `frame` and pointer events.
 
 `src/render/layout.ts` is a simplified flexbox: `direction`, `gap`, `padding`, `grow`, `align`
 (default `stretch`, overridden per child by `alignSelf`), `justify`, `min/max`, and
-`position: "absolute"` with `left/top/right/bottom`. Absolute children are placed after the
+`position: "absolute"` with `left/top/right/bottom`.
+
+**Percentages** (`width="50%"`, also `height` and the `min`/`max` sizes) are kept on the node
+(`UINode.percents`, set by `applyProps`); `Style` stays numeric. `place()` resolves a node's
+children against its content box before it lays them out (`resolvePercents`), writing the px
+value into the child's style and dropping that child's cached measurements. Before that (the
+parent's own natural size, measured earlier in the same pass), a percentage child counts with
+its last value, or its content the first time, as CSS does for percentages in intrinsic sizes.
+
+**Auto-fill grids** (`minColumnWidth`): `columnsOf(node, inner)` fits as many columns of at
+least that width as the inner width allows (capped by `columns`); without a width (the natural
+size) every cell goes in one row, so the grid "wraps" (height depends on width) and can shrink
+down to one column. Absolute children are placed after the
 in-flow ones, from the content box and minus the scroll offset (they scroll with the content);
 both edges of an axis without a size stretch them (`absoluteSpan`), and a wrapping child gets
 its height at that width (`heightAt`).
@@ -384,7 +410,10 @@ anchored layer disappears if the anchor left the tree or is in a `culled` subtre
 would be stale). Painting draws the layers after the tree, clipped by the root's first child
 if it clips (the `Window`'s corners). The hit test starts with the layers, top to bottom; a
 layer that covers the window is only a target if it is `modal`. Registration happens before
-the children run, so an overlay opened from inside another one sits on top of it.
+the children run, so an overlay opened from inside another one sits on top of it. A layer
+without an anchor may take an `inset` from the window's edges: what it leaves uncovered (a
+title bar) is hit-tested in the tree below even under a modal, and a press there does not
+dismiss it.
 
 `translateX`/`translateY` are added to the node's position in `place()`, after flex: the
 children are positioned from it, and hit testing, culling and `ref` see the offset position
@@ -400,11 +429,11 @@ Painting does not call the C node by node: `render/paint.ts` writes everything i
 
 | Op | Code | Following floats |
 |---|---|---|
-| RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
+| RECT | 1 | x y w h · r g b a · tl tr br bl (corner radii) · borderWidth · br bg bb ba |
 | TEXT | 2 | x y(line top) size font id (weight * 2 + italic) · r g b a · index into `texts[]` · letterSpacing · spec index into `texts[]` (-1: none) |
-| CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
+| CLIP | 3 | x y w h · tl tr br bl (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
-| SHADOW | 5 | x y w h · r g b a · radius blur |
+| SHADOW | 5 | x y w h · r g b a · tl tr br bl · blur |
 | IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tint; a = opacity) · radius · image id |
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · start cap, end cap (0 butt, 1 round) |
 | TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
@@ -418,7 +447,13 @@ The format exists in three places that must stay in sync: `native/include/nb.h`,
 
 `render_gles2.c` uses a single shader and a single vertex format. Rectangles with borders and
 rounded corners, shadows and glyphs all become triangles in a single batch. Corners and
-shadows are computed in the fragment shader with distance functions.
+shadows are computed in the fragment shader with distance functions. A rect or shadow carries
+one radius per corner: the top left one in the radius slot, the other three in the `uv`
+attribute (unused by those modes; a vec3, so the vertex is 20 floats), and the shader picks the
+radius of the quadrant the fragment is in. The rounded clip mask is a `vec4` uniform the same
+way. One more float per vertex cost nothing measurable (`bun run bench` MODE=all N=2000,
+2026-10-14: native 0.43–0.48 → 0.44–0.45 ms/frame; commands 21 → 23 KB). An `Image` keeps one
+radius; with different corners the widget draws it inside a rounded clip.
 
 Colors are composited in **premultiplied alpha** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`), and the
 border is drawn over the background, as in CSS. Blending in "straight" alpha produces dark
@@ -428,7 +463,7 @@ varies across a shape (gradients, antialiasing coverage) is interpolated in prem
 **Gradients.** A `GRADIENT` op is a prefix: it fills the op right after it (RECT, LINE,
 TRIANGLES, ARC; paint.ts sends that op in white, which multiplies the gradient). While it is
 active, `push_vertex` collects each triangle and cuts it along the stop lines
-(Sutherland-Hodgman on `t`, the position projected on the gradient line, interpolating all 19
+(Sutherland-Hodgman on `t`, the position projected on the gradient line, interpolating all 20
 vertex floats); each piece's vertices are colored from the two stops around it. Between two
 stops a linear gradient is affine in position, so per-vertex colors are exact, at any angle and
 with any number of stops, and the shape keeps its own distance function: rounded corners,
@@ -600,10 +635,18 @@ the event miss silently.
 
 `createInput` registers focus on the root (`root.focusHost`); that is how a `ref`'s
 `focus()` and `blur()` reach the input. A `focus()` made while the widget is being created
-(still outside the tree) is repeated in a microtask, once the tree is mounted. `onResize` is
-collected during `layout()` and delivered in a batch after the whole tree has been
-positioned, so that the handler can change state (and the tree) without disrupting the layout
-in progress; the change lands in the next frame.
+(still outside the tree) lands when the insert that creates it ends (the `onMount` queue, see
+Reactivity). Keys bubble from the focused node; with nothing focused they start at the
+topmost modal layer, or else at the root's top nodes (the `Window`), so a window-level
+`onKeyDown` sees everything nothing below took. A control's own key handler is chained after
+the app's (`ownHandler`), and the app's `stop()` skips it.
+
+`onResize` is collected during `layout()` and delivered in a batch after the whole tree has
+been positioned, so that the handler can change state (and the tree) without disrupting the
+layout in progress. If the handlers invalidated anything, `layout()` places the tree again
+(at most two extra passes), so nodes they create have boxes before the frame is painted (and
+in a test, right after `relayout()`); a handler still changing sizes after that is reported
+among the layout warnings as an `onResize` loop.
 
 ## Wayland and X11
 

@@ -4,13 +4,14 @@ import type { UINode } from "../src/render/node.js";
 import { CommandBuffer, paintTree } from "../src/render/paint.js";
 
 type Rgba = [number, number, number, number];
+type Radii = [number, number, number, number];
 
 export type DrawCommand =
-  | { op: "rect"; x: number; y: number; w: number; h: number; color: Rgba; radius: number; borderWidth: number; borderColor: Rgba }
+  | { op: "rect"; x: number; y: number; w: number; h: number; color: Rgba; radius: number; radii?: Radii; borderWidth: number; borderColor: Rgba }
   | { op: "text"; x: number; y: number; size: number; weight: number; italic: boolean; bold: boolean; letterSpacing: number; family: string; features: string; variations: string; color: Rgba; text: string }
-  | { op: "clip"; x: number; y: number; w: number; h: number; radius: number }
+  | { op: "clip"; x: number; y: number; w: number; h: number; radius: number; radii?: Radii }
   | { op: "unclip" }
-  | { op: "shadow"; x: number; y: number; w: number; h: number; color: Rgba; radius: number; blur: number }
+  | { op: "shadow"; x: number; y: number; w: number; h: number; color: Rgba; radius: number; radii?: Radii; blur: number }
   | { op: "image"; x: number; y: number; w: number; h: number; uv: [number, number, number, number]; tint: Rgba; radius: number; id: number }
   | { op: "line"; x0: number; y0: number; x1: number; y1: number; width: number; color: Rgba; capStart: "butt" | "round"; capEnd: "butt" | "round" }
   | { op: "triangles"; color: Rgba; points: number[]; coverage: number[] }
@@ -24,12 +25,17 @@ export function decode(buffer: CommandBuffer): DrawCommand[] {
   const d = Array.from(buffer.commands, round);
   const out: DrawCommand[] = [];
   const rgba = (i: number): Rgba => [d[i]!, d[i + 1]!, d[i + 2]!, d[i + 3]!];
+  // Four corner radii at i: `radius` is the top left one; `radii` only when the corners differ.
+  const corners = (i: number): { radius: number; radii?: Radii } => {
+    const r: Radii = [d[i]!, d[i + 1]!, d[i + 2]!, d[i + 3]!];
+    return r.every((v) => v === r[0]) ? { radius: r[0] } : { radius: r[0], radii: r };
+  };
   for (let i = 0; i < d.length; ) {
     const op = d[i++]!;
     switch (op) {
       case 1:
-        out.push({ op: "rect", x: d[i]!, y: d[i + 1]!, w: d[i + 2]!, h: d[i + 3]!, color: rgba(i + 4), radius: d[i + 8]!, borderWidth: d[i + 9]!, borderColor: rgba(i + 10) });
-        i += 14;
+        out.push({ op: "rect", x: d[i]!, y: d[i + 1]!, w: d[i + 2]!, h: d[i + 3]!, color: rgba(i + 4), ...corners(i + 8), borderWidth: d[i + 12]!, borderColor: rgba(i + 13) });
+        i += 17;
         break;
       case 2: {
         const weight = Math.floor(d[i + 3]! / 2); // font id = weight * 2 + italic
@@ -40,15 +46,15 @@ export function decode(buffer: CommandBuffer): DrawCommand[] {
         break;
       }
       case 3:
-        out.push({ op: "clip", x: d[i]!, y: d[i + 1]!, w: d[i + 2]!, h: d[i + 3]!, radius: d[i + 4]! });
-        i += 5;
+        out.push({ op: "clip", x: d[i]!, y: d[i + 1]!, w: d[i + 2]!, h: d[i + 3]!, ...corners(i + 4) });
+        i += 8;
         break;
       case 4:
         out.push({ op: "unclip" });
         break;
       case 5:
-        out.push({ op: "shadow", x: d[i]!, y: d[i + 1]!, w: d[i + 2]!, h: d[i + 3]!, color: rgba(i + 4), radius: d[i + 8]!, blur: d[i + 9]! });
-        i += 10;
+        out.push({ op: "shadow", x: d[i]!, y: d[i + 1]!, w: d[i + 2]!, h: d[i + 3]!, color: rgba(i + 4), ...corners(i + 8), blur: d[i + 12]! });
+        i += 13;
         break;
       case 6:
         out.push({ op: "image", x: d[i]!, y: d[i + 1]!, w: d[i + 2]!, h: d[i + 3]!, uv: [d[i + 4]!, d[i + 5]!, d[i + 6]!, d[i + 7]!], tint: rgba(i + 8), radius: d[i + 12]!, id: d[i + 13]! });

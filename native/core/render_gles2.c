@@ -16,16 +16,18 @@
 enum { MODE_RECT = 0, MODE_GLYPH = 1, MODE_SHADOW = 2, MODE_IMAGE = 3, MODE_LINE = 4, MODE_SOLID = 5, MODE_ARC = 6,
        MODE_COLOR_GLYPH = 7 };
 
-// pos(2) local(2) half(2) color(4) border_color(4) params(3: radius, border|blur, mode) uv(2)
-#define VERTEX_FLOATS 19
+// pos(2) local(2) half(2) color(4) border_color(4) params(3: radius, border|blur, mode) uv(3)
+// Rects and shadows: params.x is the top left radius and uv the top right, bottom right and
+// bottom left ones; images and glyphs: uv.xy are texture coordinates.
+#define VERTEX_FLOATS 20
 #define MAX_CLIP_DEPTH 64
 
 static const char *vertex_src =
     "attribute vec2 a_pos; attribute vec2 a_local; attribute vec2 a_half;\n"
-    "attribute vec4 a_color; attribute vec4 a_bcolor; attribute vec3 a_params; attribute vec2 a_uv;\n"
+    "attribute vec4 a_color; attribute vec4 a_bcolor; attribute vec3 a_params; attribute vec3 a_uv;\n"
     "uniform vec2 u_viewport;\n"
     "varying vec2 v_local; varying vec2 v_half; varying vec4 v_color; varying vec4 v_bcolor;\n"
-    "varying vec3 v_params; varying vec2 v_uv;\n"
+    "varying vec3 v_params; varying vec3 v_uv;\n"
     "void main() {\n"
     "  vec2 ndc = a_pos / u_viewport * 2.0 - 1.0;\n"
     "  gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);\n"
@@ -36,18 +38,22 @@ static const char *vertex_src =
 static const char *fragment_src =
     "#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n"
     "varying vec2 v_local; varying vec2 v_half; varying vec4 v_color; varying vec4 v_bcolor;\n"
-    "varying vec3 v_params; varying vec2 v_uv;\n"
+    "varying vec3 v_params; varying vec3 v_uv;\n"
     "uniform sampler2D u_atlas; uniform sampler2D u_image; uniform sampler2D u_color_atlas;\n"
-    "uniform vec4 u_clip; uniform float u_clip_radius; uniform float u_fb_height;\n"
+    "uniform vec4 u_clip; uniform vec4 u_clip_radii; uniform float u_fb_height;\n"
     "float sd_round_box(vec2 p, vec2 b, float r) {\n"
     "  vec2 q = abs(p) - b + vec2(r);\n"
     "  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;\n"
+    "}\n"
+    // The radius of the corner p is nearest to (y down): r = top left, top right, bottom right, bottom left.
+    "float corner(vec2 p, vec4 r) {\n"
+    "  return p.x > 0.0 ? (p.y > 0.0 ? r.z : r.y) : (p.y > 0.0 ? r.w : r.x);\n"
     "}\n"
     "void main() {\n"
     "  vec4 c;\n"
     "  vec4 pm = v_color;\n"
     "  if (v_params.z > 6.5) {\n"  // color glyph (premultiplied texels): only the alpha applies
-    "    c = texture2D(u_color_atlas, v_uv) * v_color.a;\n"
+    "    c = texture2D(u_color_atlas, v_uv.xy) * v_color.a;\n"
     "  } else if (v_params.z > 5.5) {\n"  // ring sector, centered on +y: half aperture (sin, cos) in v_half
     "    vec2 q = vec2(abs(v_local.x), v_local.y);\n"
     "    float d = length(q) - v_params.x;\n"
@@ -67,14 +73,14 @@ static const char *fragment_src =
     "    c = pm * clamp(0.5 - d, 0.0, 1.0);\n"
     "  } else if (v_params.z > 2.5) {\n"  // image (premultiplied texels), rounded like a rect
     "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
-    "    c = texture2D(u_image, v_uv) * pm * clamp(0.5 - d, 0.0, 1.0);\n"
+    "    c = texture2D(u_image, v_uv.xy) * pm * clamp(0.5 - d, 0.0, 1.0);\n"
     "  } else if (v_params.z > 1.5) {\n"  // shadow
-    "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
+    "    float d = sd_round_box(v_local, v_half, corner(v_local, vec4(v_params.x, v_uv)));\n"
     "    c = pm * (1.0 - smoothstep(-v_params.y, v_params.y, d));\n"
     "  } else if (v_params.z > 0.5) {\n"  // glyph
-    "    c = pm * texture2D(u_atlas, v_uv).a;\n"
+    "    c = pm * texture2D(u_atlas, v_uv.xy).a;\n"
     "  } else {\n"  // rounded rect; the border is composited over the fill (premultiplied)
-    "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
+    "    float d = sd_round_box(v_local, v_half, corner(v_local, vec4(v_params.x, v_uv)));\n"
     "    c = pm;\n"
     "    if (v_params.y > 0.0) {\n"
     "      float ring = 1.0 - clamp(0.5 - (d + v_params.y), 0.0, 1.0);\n"
@@ -83,17 +89,17 @@ static const char *fragment_src =
     "    }\n"
     "    c *= clamp(0.5 - d, 0.0, 1.0);\n"
     "  }\n"
-    "  if (u_clip_radius > 0.0) {\n"
-    "    vec2 p = vec2(gl_FragCoord.x, u_fb_height - gl_FragCoord.y);\n"
+    "  if (dot(u_clip_radii, vec4(1.0)) > 0.0) {\n"
     "    vec2 half_size = (u_clip.zw - u_clip.xy) * 0.5;\n"
-    "    c *= clamp(0.5 - sd_round_box(p - u_clip.xy - half_size, half_size, u_clip_radius), 0.0, 1.0);\n"
+    "    vec2 p = vec2(gl_FragCoord.x, u_fb_height - gl_FragCoord.y) - u_clip.xy - half_size;\n"
+    "    c *= clamp(0.5 - sd_round_box(p, half_size, corner(p, u_clip_radii)), 0.0, 1.0);\n"
     "  }\n"
     "  gl_FragColor = c;\n"
     "}\n";
 
 static GLuint program, vbo, atlas_tex, color_atlas_tex;
 static int atlas_tex_size, color_tex_size;  // 0: not allocated in this context yet
-static GLint u_viewport, u_atlas, u_image, u_color_atlas, u_clip, u_clip_radius, u_fb_height;
+static GLint u_viewport, u_atlas, u_image, u_color_atlas, u_clip, u_clip_radii, u_fb_height;
 static float *verts;
 static size_t vert_count, vert_cap;
 static int fb_w, fb_h;
@@ -113,7 +119,7 @@ static GLuint compile(GLenum type, const char *src) {
 }
 
 static const char *attr_names[] = {"a_pos", "a_local", "a_half", "a_color", "a_bcolor", "a_params", "a_uv"};
-static const int attr_sizes[] = {2, 2, 2, 4, 4, 3, 2};
+static const int attr_sizes[] = {2, 2, 2, 4, 4, 3, 3};
 
 bool nb_render_init(void) {
   if (program) return true;
@@ -131,7 +137,7 @@ bool nb_render_init(void) {
   u_image = glGetUniformLocation(program, "u_image");
   u_color_atlas = glGetUniformLocation(program, "u_color_atlas");
   u_clip = glGetUniformLocation(program, "u_clip");
-  u_clip_radius = glGetUniformLocation(program, "u_clip_radius");
+  u_clip_radii = glGetUniformLocation(program, "u_clip_radii");
   u_fb_height = glGetUniformLocation(program, "u_fb_height");
 
   glGenBuffers(1, &vbo);
@@ -266,23 +272,28 @@ static size_t read_gradient(const float *a, size_t left, float scale) {
 }
 
 static void push_vertex(float x, float y, float lx, float ly, float hw, float hh, const float *color,
-                        const float *bcolor, float radius, float extra, float mode, float u, float v) {
+                        const float *bcolor, float radius, float extra, float mode, float u, float v, float w) {
   float *p = grad.active ? tri[tri_n] : alloc_vertex();
   p[0] = x; p[1] = y; p[2] = lx; p[3] = ly; p[4] = hw; p[5] = hh;
   p[6] = color[0]; p[7] = color[1]; p[8] = color[2]; p[9] = color[3];
   p[10] = bcolor[0]; p[11] = bcolor[1]; p[12] = bcolor[2]; p[13] = bcolor[3];
-  p[14] = radius; p[15] = extra; p[16] = mode; p[17] = u; p[18] = v;
+  p[14] = radius; p[15] = extra; p[16] = mode; p[17] = u; p[18] = v; p[19] = w;
   if (grad.active && ++tri_n == 3) {
     tri_n = 0;
     emit_gradient_triangle();
   }
 }
 
+// Four corner radii from the command (logical px), scaled and capped at `max` (half the short side).
+static void corner_radii(const float *a, float scale, float max, float *out) {
+  for (int k = 0; k < 4; k++) out[k] = fmaxf(0, fminf(a[k] * scale, max));
+}
+
 // Quad covering [x0,x1]x[y0,y1]; local coords are relative to (cx,cy).
 static void push_quad(float x0, float y0, float x1, float y1, float cx, float cy, float hw, float hh,
                       const float *color, const float *bcolor, float radius, float extra, float mode,
-                      float u0, float v0, float u1, float v1) {
-#define V(X, Y, U, VV) push_vertex(X, Y, X - cx, Y - cy, hw, hh, color, bcolor, radius, extra, mode, U, VV)
+                      float u0, float v0, float u1, float v1, float w) {
+#define V(X, Y, U, VV) push_vertex(X, Y, X - cx, Y - cy, hw, hh, color, bcolor, radius, extra, mode, U, VV, w)
   V(x0, y0, u0, v0); V(x1, y0, u1, v0); V(x1, y1, u1, v1);
   V(x0, y0, u0, v0); V(x1, y1, u1, v1); V(x0, y1, u0, v1);
 #undef V
@@ -340,7 +351,7 @@ static void flush(void) {
 typedef struct { int x0, y0, x1, y1; } irect;
 typedef struct {
   irect scissor;               // intersection of every clip on the stack
-  float mask[4], mask_radius;  // innermost rounded clip (radius 0 = none)
+  float mask[4], mask_radii[4];  // innermost rounded clip: top left, top right, bottom right, bottom left (all 0 = none)
 } clip_state;
 static clip_state clips[MAX_CLIP_DEPTH];
 static int clip_depth;
@@ -348,7 +359,7 @@ static int clip_depth;
 static void apply_clip(void) {
   if (clip_depth == 0) {
     glDisable(GL_SCISSOR_TEST);
-    glUniform1f(u_clip_radius, 0);
+    glUniform4f(u_clip_radii, 0, 0, 0, 0);
     return;
   }
   const clip_state *c = &clips[clip_depth - 1];
@@ -356,7 +367,7 @@ static void apply_clip(void) {
   glEnable(GL_SCISSOR_TEST);
   glScissor(r.x0, fb_h - r.y1, r.x1 - r.x0 > 0 ? r.x1 - r.x0 : 0, r.y1 - r.y0 > 0 ? r.y1 - r.y0 : 0);
   glUniform4f(u_clip, c->mask[0], c->mask[1], c->mask[2], c->mask[3]);
-  glUniform1f(u_clip_radius, c->mask_radius);
+  glUniform4f(u_clip_radii, c->mask_radii[0], c->mask_radii[1], c->mask_radii[2], c->mask_radii[3]);
 }
 
 // ---- images ------------------------------------------------------------------
@@ -452,7 +463,7 @@ static void push_local_quad(float ox, float oy, float uxx, float uxy, float uyx,
                             float u1, float v1, float hx, float hy, const float *color, float p0, float p1,
                             float mode) {
   static const float none[4] = {0, 0, 0, 0};
-#define LV(U, V) push_vertex(ox + uxx * (U) + uyx * (V), oy + uxy * (U) + uyy * (V), U, V, hx, hy, color, none, p0, p1, mode, 0, 0)
+#define LV(U, V) push_vertex(ox + uxx * (U) + uyx * (V), oy + uxy * (U) + uyy * (V), U, V, hx, hy, color, none, p0, p1, mode, 0, 0, 0)
   LV(u0, v0); LV(u1, v0); LV(u1, v1);
   LV(u0, v0); LV(u1, v1); LV(u0, v1);
 #undef LV
@@ -464,7 +475,7 @@ static void emit_glyph(void *ud, float x0, float y0, float x1, float y1, float u
                        bool color) {
   static const float none[4] = {0, 0, 0, 0};
   glyph_ctx *ctx = ud;
-  push_quad(x0, y0, x1, y1, 0, 0, 0, 0, ctx->color, none, 0, 0, color ? MODE_COLOR_GLYPH : MODE_GLYPH, u0, v0, u1, v1);
+  push_quad(x0, y0, x1, y1, 0, 0, 0, 0, ctx->color, none, 0, 0, color ? MODE_COLOR_GLYPH : MODE_GLYPH, u0, v0, u1, v1, 0);
 }
 
 void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count, const char **texts,
@@ -489,7 +500,7 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
   glUniform1i(u_image, 1);
   glUniform1i(u_color_atlas, 2);
   glUniform1f(u_fb_height, (float)bh);
-  glUniform1f(u_clip_radius, 0);
+  glUniform4f(u_clip_radii, 0, 0, 0, 0);
   glActiveTexture(GL_TEXTURE2);
   glBindTexture(GL_TEXTURE_2D, color_atlas_tex);
   glActiveTexture(GL_TEXTURE0);
@@ -509,22 +520,24 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
         i += used;
         continue;
       }
-      case NB_OP_RECT: {  // x y w h  r g b a  radius border  br bg bb ba
+      case NB_OP_RECT: {  // x y w h  r g b a  tl tr br bl (radii)  border  br bg bb ba
         const float *a = cmd + i;
-        i += 14;
+        i += 17;
         float x = a[0] * scale, y = a[1] * scale, w = a[2] * scale, h = a[3] * scale;
-        float hw = w / 2, hh = h / 2, r = fminf(a[8] * scale, fminf(hw, hh));
-        push_quad(x - 1, y - 1, x + w + 1, y + h + 1, x + hw, y + hh, hw, hh, a + 4, a + 10, r, a[9] * scale,
-                  MODE_RECT, 0, 0, 0, 0);
+        float hw = w / 2, hh = h / 2, r[4];
+        corner_radii(a + 8, scale, fminf(hw, hh), r);
+        push_quad(x - 1, y - 1, x + w + 1, y + h + 1, x + hw, y + hh, hw, hh, a + 4, a + 13, r[0], a[12] * scale,
+                  MODE_RECT, r[1], r[2], r[1], r[2], r[3]);
         break;
       }
-      case NB_OP_SHADOW: {  // x y w h  r g b a  radius blur
+      case NB_OP_SHADOW: {  // x y w h  r g b a  tl tr br bl (radii)  blur
         const float *a = cmd + i;
-        i += 10;
+        i += 13;
         float x = a[0] * scale, y = a[1] * scale, w = a[2] * scale, h = a[3] * scale;
-        float hw = w / 2, hh = h / 2, r = fminf(a[8] * scale, fminf(hw, hh)), blur = fmaxf(a[9] * scale, 0.5f);
-        push_quad(x - blur, y - blur, x + w + blur, y + h + blur, x + hw, y + hh, hw, hh, a + 4, none, r, blur,
-                  MODE_SHADOW, 0, 0, 0, 0);
+        float hw = w / 2, hh = h / 2, blur = fmaxf(a[12] * scale, 0.5f), r[4];
+        corner_radii(a + 8, scale, fminf(hw, hh), r);
+        push_quad(x - blur, y - blur, x + w + blur, y + h + blur, x + hw, y + hh, hw, hh, a + 4, none, r[0], blur,
+                  MODE_SHADOW, r[1], r[2], r[1], r[2], r[3]);
         break;
       }
       case NB_OP_TEXT: {  // x y size font(id)  r g b a  text_index  letter_spacing  spec_index
@@ -546,7 +559,7 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
         float x = a[0] * scale, y = a[1] * scale, w = a[2] * scale, h = a[3] * scale;
         float hw = w / 2, hh = h / 2, r = fminf(a[12] * scale, fminf(hw, hh));
         push_quad(x, y, x + w, y + h, x + hw, y + hh, hw, hh, a + 8, none, r, 0, MODE_IMAGE, a[4], a[5], a[6],
-                  a[7]);
+                  a[7], 0);
         break;
       }
       case NB_OP_LINE: {  // x0 y0 x1 y1  width  r g b a  capStart capEnd
@@ -571,7 +584,7 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
         i += 5 + n * 3;
         for (size_t k = 0; k < n; k++) {
           const float color[4] = {rgba[0], rgba[1], rgba[2], rgba[3] * v[k * 3 + 2]};
-          push_vertex(v[k * 3] * scale, v[k * 3 + 1] * scale, 0, 0, 0, 0, color, none, 0, 0, MODE_SOLID, 0, 0);
+          push_vertex(v[k * 3] * scale, v[k * 3 + 1] * scale, 0, 0, 0, 0, color, none, 0, 0, MODE_SOLID, 0, 0, 0);
         }
         break;
       }
@@ -587,9 +600,9 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
                         outer, inner, MODE_ARC);
         break;
       }
-      case NB_OP_CLIP: {  // x y w h radius
+      case NB_OP_CLIP: {  // x y w h  tl tr br bl (radii)
         const float *a = cmd + i;
-        i += 5;
+        i += 8;
         float x0 = a[0] * scale, y0 = a[1] * scale, x1 = (a[0] + a[2]) * scale, y1 = (a[1] + a[3]) * scale;
         clip_state c = {.scissor = {(int)floorf(x0), (int)floorf(y0), (int)ceilf(x1), (int)ceilf(y1)}};
         if (clip_depth > 0) {
@@ -599,11 +612,11 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
           if (c.scissor.x1 > p->scissor.x1) c.scissor.x1 = p->scissor.x1;
           if (c.scissor.y1 > p->scissor.y1) c.scissor.y1 = p->scissor.y1;
           memcpy(c.mask, p->mask, sizeof c.mask);
-          c.mask_radius = p->mask_radius;
+          memcpy(c.mask_radii, p->mask_radii, sizeof c.mask_radii);
         }
-        if (a[4] > 0) {
+        if (a[4] > 0 || a[5] > 0 || a[6] > 0 || a[7] > 0) {
           c.mask[0] = x0; c.mask[1] = y0; c.mask[2] = x1; c.mask[3] = y1;
-          c.mask_radius = fminf(a[4] * scale, fminf(x1 - x0, y1 - y0) / 2);
+          corner_radii(a + 4, scale, fminf(x1 - x0, y1 - y0) / 2, c.mask_radii);
         }
         flush();
         if (clip_depth < MAX_CLIP_DEPTH) clips[clip_depth++] = c;

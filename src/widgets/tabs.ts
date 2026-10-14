@@ -1,7 +1,7 @@
 // <Tabs>: the bar of tabs; the app shows the content of the selected one (e.g. with <Switch>).
 // One Tab stop; Left/Right move the selection, skipping disabled tabs.
 
-import { type Style, UINode } from "../render/node.js";
+import { type Handlers, type Style, UINode } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
@@ -12,7 +12,7 @@ import { Text } from "./text.js";
 const UNDERLINE = 2;
 
 export function Tabs<T>(
-  props: StyleProps & {
+  props: StyleProps & Handlers & {
     value: Accessor<T>;
     onChange: (value: T) => void;
     tabs: readonly Choice<T>[];

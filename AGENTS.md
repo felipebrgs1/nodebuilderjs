@@ -55,7 +55,8 @@ bun run bench               # stress test with NB_STATS=1 (env: N=1000 MODE=one|
 bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settings ROWS=500
                             #   LIVE=0 CYCLE=<frames per tab switch>)
 bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]
-bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --wait-frames N]
+bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --wait-frames N
+                            --props <json> --export <name>]
                             # PNG of the app without a window or display server (EGL offscreen)
 bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
                             # icon imports for an app (validated in its node_modules); `icons list [filter]`
@@ -124,7 +125,9 @@ What cannot be tested automatically is documented when closing the task:
   (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets following the switch),
   `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
   (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
-  `input` (events), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
+  `input` (events, keys with nothing focused, `focusable`), `text-field` (password, borders, focus
+  ring), `handlers` (event props on every widget, chained with the widget's own), `percent`
+  (percentage sizes), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
   `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
   `clipboard`, `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
   pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
@@ -244,7 +247,8 @@ test/            one file per module (bun:test; bunfig.toml limits bun test to t
   charts/        tests for src/charts (scales and each chart type)
   fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
 examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
-cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts,
+cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
+                 (+ screenshot-entry.ts: renders an exported component for `--props`/`--export`),
                  icons.ts (`icons add/list`: writes an app's icon imports)
   package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
 packages/        workspaces published together with core (see "Publishing to npm")
@@ -328,15 +332,27 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   stops at the innermost node that has one.
 - Handlers are **chained, never replaced**: `applyProps` adds the app's handlers (and the
   ones from spread `createInteraction().props`, carried under a unique symbol key so a later
-  `onPointerEnter={...}` cannot drop them) after the node's; a widget that sets a handler
-  after `applyProps`/`interaction(node)` calls the previous one first (`Slider`, `TextField`).
+  `onPointerEnter={...}` cannot drop them) after the node's; a widget sets its own handlers
+  after `applyProps`/`interaction(node)` with `ownHandler(node, key, fn)` (`widgets/props.ts`),
+  which runs the previous ones first and, for `onKeyDown`, skips the widget's when the app
+  called `stop()`. Every widget's props type includes `Handlers` (a `Button` omits `onClick`,
+  which it wires itself through `disabled`).
   `interaction(node)` is one tracker per node (widgets and `hoverStyle` share it).
-- `hoverStyle`/`pressStyle` use `UINode.override(key, value)`: while it is active, `set()`
+- `hoverStyle`/`pressStyle`/`focusStyle` use `UINode.override(key, value)`: while it is active, `set()`
   only updates the base underneath, so theme effects and reactive props do not fight it and
   the latest base comes back on leave. `hoverStyle` alone attaches only enter/leave (an
   `onPointerDown` would make the node claim the press and break window drag regions).
 - Focus by click only (e.g. `<Text selectable>`, which needs focus for Ctrl+C):
-  `focusable = true` and `tabStop = false`, so it stays out of the Tab order.
+  `focusable = true` and `tabStop = false`, so it stays out of the Tab order. Containers get
+  the same through the `focusable` prop (`tabStop` opts into Tab). With nothing focused, keys
+  start at the topmost modal layer or the root's top nodes (`keyTargets()` in `input.ts`).
+- A widget that paints `color`/`background` itself (a bar's fill and track) takes them out of
+  `applyProps` with `ownColors()` (`ProgressBar`, `Slider`), so the box does not paint them too.
+- Sizes (`width`, `height`, `min*`, `max*`) may be `` `${number}%` `` in props only
+  (`SizeValues`): `applyProps` keeps them in `UINode.percents` and layout writes the px value
+  into `style` (`Style` stays numeric, so `hoverStyle` sizes are px).
+- Code in a component that needs its refs or its nodes in the tree goes in `onMount`
+  (`reactive/signals.ts`; drained when the outermost `insert` or update queue ends).
 - Color/size defaults come from `theme.ts`, not hard-coded in widgets. Theme colors go
   in an effect (or in painting), never copied into the style at creation, otherwise they do
   not follow `setTheme`; respect the color the app passed (`if (props.background === undefined) ...`).
@@ -425,11 +441,11 @@ Keep **`native/include/nb.h`, `src/render/paint.ts` and `native/core/render_gles
 
 | Op | Code | Following floats |
 |---|---|---|
-| RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
+| RECT | 1 | x y w h · r g b a · tl tr br bl (corner radii) · borderWidth · br bg bb ba |
 | TEXT | 2 | x y(line top) size font id (weight * 2 + italic, `fontId()`) · r g b a · index into `texts[]` · letterSpacing · font spec index into `texts[]` (`fontSpec()`; -1: none) |
-| CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
+| CLIP | 3 | x y w h · tl tr br bl (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
-| SHADOW | 5 | x y w h · r g b a · radius blur |
+| SHADOW | 5 | x y w h · r g b a · tl tr br bl · blur |
 | IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tint; a = opacity) · radius · id (from `createImage`) |
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · capStart capEnd (0 butt, 1 round) |
 | TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
@@ -465,7 +481,8 @@ the stop lines and colors their vertices: exact for linear gradients, any shape.
   or the content if taller; measured nodes take the ratio as is). A fixed `height` gives the
   width (`ratioWidth`); a child stretched in a row of known inner height gets
   `height * ratio` as its flex basis (`rowBasis`).
-- **Grid** (`direction: "grid"` + `columns`, `rowGap`; the `Grid` widget): equal cells
+- **Grid** (`direction: "grid"` + `columns` or `minColumnWidth`, `rowGap`; the `Grid` widget;
+  `columnsOf(node, inner)` gives the column count, auto-fill with `minColumnWidth`): equal cells
   (`cellWidth`), rows as tall as their tallest cell (`gridRows`, shared by `intrinsic`,
   `heightAt` and `minHeightAt`), placed by `placeGrid`; cells stretch to the row unless
   `align`/`alignSelf` says otherwise or they have an `aspectRatio`. Children stay in one
@@ -513,6 +530,10 @@ the stop lines and colors their vertices: exact for linear gradients, any shape.
   the ordinary path at two comparisons per container; anything costlier runs only when
   something overflows.
 
+- **Percentages:** `place()` calls `resolvePercents(node, innerW, innerH)` before laying out the
+  children, writing their px sizes and dropping their cached measurements.
+- **onResize:** handlers run after the tree is placed; if they invalidated anything, `layout()`
+  places again (`RESIZE_PASSES` = 2 extra), then reports an `onResize` loop as a layout warning.
 - `translateX/Y` add to the position in `place()` (after flex); everything else sees the
   shifted position. Overlays: `root.layers` is recomputed on every `layout()`; a test that
   opens or closes an overlay needs `relayout()` before looking at `root.layers` or the commands.
@@ -609,7 +630,7 @@ packages, all with the version from the root `package.json`:
 
 ## Current limitations
 
-- TextField: no selection, copy, undo (paste exists); Text: a word longer than the line
+- TextField: no selection, copy, undo (paste exists; `password` masks the drawing only); Text: a word longer than the line
   overflows (selection only with `selectable`, no Shift+click or keyboard); a family without a
   weight or slant gets the closest face, emboldened or slanted (synthetic); app fonts are
   registered synchronously (no `unicode-range`, no async loading); `underline` is painted in
@@ -625,6 +646,9 @@ packages, all with the version from the root `package.json`:
   (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms, WebP 105–180 ms); no mipmaps (downscaling
   an image a lot makes it jagged) and no @2x variant.
 - `opacity` multiplies the alpha of each command (it is not group opacity); no `scale`/`rotate`.
+- Percentage sizes resolve against the parent's content box when the parent is placed; the
+  parent's own natural size counts a percentage child at its last value (its content the first
+  time). An `Image` with different corner radii is drawn inside a rounded clip.
 - Gradients: linear only (backgrounds and Canvas fills); no radial/conic; borders, text and
   shadows are solid.
 - `<ErrorBoundary>` does not cover the event handler's own code (only the effects its

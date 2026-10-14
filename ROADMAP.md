@@ -37,6 +37,13 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   overflow warnings, frame tracing (`NB_TRACE=frames`) and testing helpers (`findByLabel`,
   `layoutWarnings`, `useRealTextMetrics`, `screenshot`)
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
+- Fixes from a user report (a Discord clone, 2026-10-14): the `run()`/`mount()` callback runs
+  untracked, `onMount`, keys reach the `Window` with nothing focused, `focusable` containers,
+  `<TextField password>` and border props that stick, `focusStyle`, event props on every
+  widget (chained), reactive `Button variant`, nodes built in `onResize` placed in the same
+  layout, focus in a `ref` with no microtask, `findByText(..., { in })`, `findByValue`,
+  per-corner `radius`, `<Grid minColumnWidth>`, percentage sizes, `Overlay`/`Dialog` `inset`,
+  `nodebuilder screenshot --props/--export`
 
 ## Onde estamos (benchmarks de 2026-10-11)
 

@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
-  Box, Button, Column, Row, Scroll, Text, TextField, UINode, Window, WindowControls, createRoot, createSignal, debugTree, layout, setTextMeasurer,
+  Box, Button, Column, Overlay, Row, Scroll, Text, TextField, UINode, Window, WindowControls, createRoot, createSignal, debugTree, layout, setTextMeasurer,
 } from "@nodebuilderjs/core";
 import type { PointerEvent } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
-import { interact, mount } from "@nodebuilderjs/core/testing";
+import { findByText, interact, mount } from "@nodebuilderjs/core/testing";
 import { createInput } from "../src/runtime/input.js";
 
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
@@ -443,6 +443,80 @@ describe("keyboard", () => {
     input.keyDown(key("BackSpace", { text: "\b" }));
     input.keyDown(key("c", { text: "c", ctrl: true }));
     expect(seen).toEqual(['"a"', '""', '""']);
+  });
+});
+
+describe("keys with nothing focused", () => {
+  test("they reach the Window's onKeyDown", () => {
+    const { root } = mount(() => (
+      <Window title="App" onKeyDown={(e) => log.push(`window ${e.key}`)}>
+        <Text>content</Text>
+      </Window>
+    ));
+    interact(root).key("Escape");
+    expect(log).toEqual(["window Escape"]);
+  });
+
+  test("a click on empty space blurs the field, and the next key still reaches the top node", () => {
+    const { root } = mount(() => (
+      <Column onKeyDown={(e) => log.push(`top ${e.key}`)}>
+        <TextField value={() => ""} onInput={() => {}} />
+        <Box height={100} />
+      </Column>
+    ));
+    const ui = interact(root);
+    const [field, empty] = root.children[0]!.children;
+    ui.press(field!);
+    ui.release(field!);
+    ui.press(empty!);
+    expect(ui.focused).toBeNull();
+    ui.key("Escape");
+    expect(log).toEqual(["top Escape"]);
+  });
+
+  test("a focused child that calls stop() keeps the key from the Window", () => {
+    const { root } = mount(() => (
+      <Window title="App" onKeyDown={(e) => log.push(`window ${e.key}`)}>
+        <Button label="ok" onClick={() => log.push("ok")} />
+      </Window>
+    ));
+    const ui = interact(root);
+    ui.key("Tab");
+    ui.key("Return"); // the Button stops it
+    ui.key("Escape"); // bubbles up from the Button
+    expect(log).toEqual(["window Tab", "ok", "window Escape"]);
+  });
+
+  test("a <Column focusable> is focused by a click, out of the Tab order unless tabStop", () => {
+    const { root } = mount(() => (
+      <Column>
+        <Column focusable height={50} onKeyDown={(e) => log.push(`page ${e.key}`)}>
+          <Text>page</Text>
+        </Column>
+        <Column focusable tabStop height={50} onFocus={() => log.push("second focused")} />
+      </Column>
+    ));
+    const ui = interact(root);
+    const [page, second] = root.children[0]!.children;
+    ui.press(findByText(root, "page")!);
+    expect(ui.focused).toBe(page!);
+    ui.key("Escape");
+    expect(log).toEqual(["page Escape"]);
+    ui.key("Tab"); // the page is not a tab stop: Tab goes to the second column
+    expect(ui.focused).toBe(second!);
+  });
+
+  test("with a modal open and nothing focused, keys start at the modal (and still reach the Window)", () => {
+    const { root, relayout } = mount(() => (
+      <Window title="App" onKeyDown={(e) => log.push(`window ${e.key}`)}>
+        <Overlay modal onKeyDown={(e) => log.push(`modal ${e.key}`)}>
+          <Text>dialog</Text>
+        </Overlay>
+      </Window>
+    ));
+    relayout();
+    interact(root).key("a");
+    expect(log).toEqual(["modal a", "window a"]);
   });
 });
 

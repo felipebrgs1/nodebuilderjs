@@ -65,7 +65,8 @@ with tabs, a table and a chart.
 
 A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch by default;
 `alignSelf` overrides it for one child), `justify`, `min/max` sizes, `wrap`, `margin`, plus
-`Grid` and `aspectRatio`. There are no percentages:
+`Grid` and `aspectRatio`. Sizes (`width`, `height`, `min*`, `max*`) also take a percentage of the
+parent's content box, as in CSS (`width="50%"`):
 
 - **`margin`** (`8`, `[v, h]` or `[top, right, bottom, left]`, like `padding`): space outside the
   border that the parent keeps free. It adds to the child's size in everything around it
@@ -98,6 +99,9 @@ A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch
   equal. Each row is as tall as its tallest cell and cells stretch to it (`align`/`alignSelf`
   change that). `rowGap` defaults to `gap`. Works with `<For>` (items stay keyed; adding one
   reflows the cells).
+- **`<Grid minColumnWidth={180}>`:** as many columns as fit at least 180 px wide, sharing the
+  leftover (CSS `repeat(auto-fill, minmax(180px, 1fr))`): the grid reflows as the window
+  resizes. `columns` next to it is the most per row.
 - **`aspectRatio`** (width / height) on any widget: the free side follows the other, like CSS
   `aspect-ratio`. In a column (or a `Grid` cell) the height follows the width; with a fixed
   `height`, or stretched in a `Row` of known height, the width follows the height. `min/max`
@@ -127,8 +131,13 @@ A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch
   (so without it, a later child covers an earlier one). It only orders siblings, with no global
   stacking context: a raised node stays inside its parent's place in the order. Overlays stay
   above everything.
+- `radius` is one number or one per corner, `[topLeft, topRight, bottomRight, bottomLeft]`
+  (`radius={[0, 12, 12, 0]}`); borders, `clip` and `shadow` follow it.
 - `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
-  drawn even without a `background` (the blurred box shows through).
+  drawn even without a `background` (the blurred box shows through). Like CSS `overflow:
+  hidden`, a clipping node may shrink below its content (what it cuts is neither seen nor
+  clicked); give it a `minHeight` where that must not happen. `run()` warns about it in
+  development.
 - **Gradients:** `background={{ linear: ["#1db954", "#121212"], angle: 180 }}` is a CSS
   `linear-gradient`: `angle` in degrees (0 = to top, 90 = to right, default 180 = to bottom),
   stops as colors or `[color, offset]` (offset 0 to 1; missing offsets are spread evenly).
@@ -160,6 +169,8 @@ the widget or pressing it:
 
 - `pressStyle` wins over `hoverStyle`; leaving brings back the base values, which stay
   reactive underneath (a signal that changed meanwhile shows its latest value).
+- `focusStyle` applies while the widget has the keyboard focus (a custom focus ring); hover
+  and press win over it.
 - They win over a widget's own hover colors (a `Button`'s theme background); a `disabled`
   widget ignores them.
 - `hoverStyle` alone leaves presses alone; `pressStyle` (and `createInteraction().props`)
@@ -191,7 +202,8 @@ before or after the spread; nothing is replaced, and several interactions can sh
 ### Events
 
 Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onScroll`,
-`onKeyDown`, `onFocus` and `onBlur`. Pointer events carry `x`/`y` (window), `localX`/`localY`
+`onKeyDown`, `onFocus` and `onBlur` (controls too: they are added to the control's own
+handlers, never replace them). Pointer events carry `x`/`y` (window), `localX`/`localY`
 (node), `button` (0 left, 1 middle, 2 right) and `clicks` (2 = double click).
 
 - `onClick` is the left button only and runs on the innermost node that has one (pressed and
@@ -201,6 +213,12 @@ Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onScro
   a list's `onPointerDown` with `e.button === 2` (context menu) sees a right press on any of
   its clickable rows. On keys and the wheel, `stop()` also keeps the surrounding `Scroll` still.
 - While a button is held, `onPointerMove` keeps reaching the node where the press started.
+- Keys start at the focused element; with nothing focused they go to the `Window` (and, with
+  a modal open, to the modal first): `<Window onKeyDown={...}>` sees every key nothing below
+  took, which makes window-wide shortcuts. On a control, the app's `onKeyDown` runs first and
+  `e.stop()` takes the key from the control.
+- `focusable` on a container (`<Column focusable onKeyDown={...}>`) lets a page or a menu hold
+  the keyboard: a click focuses it, without a focus ring; `tabStop` adds it to the Tab order.
 
 ### Images
 
@@ -392,7 +410,7 @@ const [scores] = createSignal([7, 9, 10]);
 ### Context, `ref` and size
 
 ```tsx
-import { Box, Column, TextField, Text, createContext, createSignal, useContext } from "@nodebuilderjs/core";
+import { Box, Column, Scroll, TextField, Text, createContext, createSignal, onMount, useContext, type ElementRef } from "@nodebuilderjs/core";
 
 // Context: a value any descendant can read, without passing props through every level.
 const Language = createContext("en");
@@ -405,7 +423,15 @@ function Greeting() {
 const [name, setName] = createSignal("");
 <TextField ref={(el) => el.focus()} value={name} onInput={setName} />;
 
+// onMount: runs once the component's nodes are in the tree and its refs are set.
+function Chat() {
+  let list: ElementRef | undefined;
+  onMount(() => list!.scrollTo(1e9));
+  return <Scroll ref={(el) => (list = el)} height={200}><Text>...</Text></Scroll>;
+}
+
 // onResize: the node's size after layout (the first time and whenever it changes).
+// What it changes is laid out in the same frame.
 const [width, setWidth] = createSignal(0);
 <Box grow={1} onResize={(s) => setWidth(s.width)}>
   <Column>{() => (width() > 600 ? "wide" : "narrow")}</Column>
@@ -418,7 +444,8 @@ const [width, setWidth] = createSignal(0);
   coordinates), `focus()`, `blur()`, `scrollIntoView()` and, on a `Scroll`, `scrollTo(y)` or
   `scrollTo({ x, y })`, `scrollX` and `scrollY`. `ref` is called when the widget is created,
   before layout; a `focus()` or `scrollIntoView()` at that point takes effect as soon as the
-  widget enters the tree.
+  widget enters the tree. Code that uses the element once it exists goes in `onMount` (an
+  effect in the component body runs before the JSX below it, so the ref is still unset).
 - `ariaLabel` (any widget, fixed or a function) names an element that has no text, such as an
   icon-only button: `<Button ariaLabel="Play">`. Tests find it with `findByLabel` (see
   [Testing](#testing)). The window's title-bar buttons are labelled `"Minimize"`,
@@ -486,7 +513,12 @@ const [volume, setVolume] = createSignal(40);
   keys (one `step`), PageUp/PageDown (one tenth), Home/End.
 - `Toggle` is the on/off switch: the name `Switch` is already taken by the control flow
   component.
-- `Spinner` spins while it is on screen (`size`, `color`).
+- `Spinner` spins while it is on screen (`size`, `color`). `ProgressBar` and `Slider` take
+  `color` (the filled part) and `background` (the track).
+- `Button`'s `variant` may be a function: the colors, hover and weight follow it.
+- `<TextField password>` draws `•` for each character (the value stays real; a function
+  toggles it for a "show password" button). A `TextField` keeps the app's `borderColor` and
+  `borderWidth` when focused; `focusBorderColor`/`focusBorderWidth` restyle its focus ring.
 
 ```tsx
 import { Button, Dialog, Match, Select, Switch, Tabs, Text, Tooltip, createSignal } from "@nodebuilderjs/core";
@@ -518,7 +550,8 @@ const [confirming, setConfirming] = createSignal(false);
   (`"top"`); it hides on leave or click.
 - `Dialog` is a ready-made `<Overlay modal>`: it focuses the first control when it opens and
   gives focus back when it closes; Esc and the backdrop call `onClose` (`dismissible={false}`
-  turns that off).
+  turns that off). `inset={[theme.window.titlebarHeight + 1, 0, 0, 0]}` leaves the title bar
+  usable while it is open (the same prop works on `<Overlay>`).
 
 ### Dark theme and animations
 
@@ -757,9 +790,18 @@ test("play and pause", () => {
 });
 ```
 
-- `findByText`/`findAllByText` match `Text` content (a string or a RegExp);
-  `findByLabel`/`findAllByLabel` match `ariaLabel`; `findAll(root, predicate)` is free-form.
-  All of them also search open overlays.
+- `findByText`/`findAllByText` match `Text` content (a string or a RegExp), in tree order with
+  open overlays last; `{ in: "Button" }` keeps only text inside that kind of widget (the
+  "Quit" button, not the dialog title that says the same). `findByLabel`/`findAllByLabel`
+  match `ariaLabel`; `findByValue`/`findAllByValue` match what a `TextField` holds and
+  `findByPlaceholder` an empty one; `shownText(node)` is what a node draws (`"•••"` for a
+  password); `findAll(root, predicate)` is free-form. All of them also search open overlays.
+- The `mount` (and `run`) callback runs once, untracked, like a component body: reading and
+  setting a signal there does not loop. An effect that keeps writing a signal it reads throws
+  "reactive update loop detected" instead of hanging.
+- A `ref` that calls `focus()` while the tree is created focuses as soon as it is inserted:
+  `interact(root).key(...)` right after `mount` reaches it. Nodes built by an `onResize`
+  handler are placed by the same `relayout()`.
 - `click(node)` calls the nearest `onClick` directly; `interact(root)` delivers pointer and
   keyboard input like a window does (`hover`, `press`, `release`, `drag`, `scroll`, `key`,
   `type`, plus `down`/`up`/`move` at window positions). `frames()` controls time for
@@ -811,7 +853,15 @@ nodebuilder screenshot src/main.tsx shot@2x.png --scale 2 --theme dark --width 1
 
 The command runs the app with `NB_SCREENSHOT=<out.png>` set, so `run()` lays out, lets
 animations finish on a simulated clock (`--wait-frames <n>` to stop earlier), renders one
-frame offscreen, writes the PNG and exits. In tests:
+frame offscreen, writes the PNG and exits. To shoot a given page, let the top component take
+its initial state as props and render the component a file exports, with those props (the
+file must not call `run()` itself; `--export` picks a named export instead of the default):
+
+```sh
+nodebuilder screenshot src/App.tsx settings.png --export App --props '{"page":"settings"}'
+```
+
+In tests:
 
 ```tsx
 import { expect, test } from "bun:test";

@@ -238,3 +238,24 @@ test("an anchored overlay with wrapping text is as tall as its lines at the widt
   const layer = root.layers[0]!;
   expect([layer.width, layer.height]).toEqual([60, 40]);
 });
+
+test("a modal overlay with inset leaves that strip usable (a title bar): presses there reach it and do not dismiss", () => {
+  const log: string[] = [];
+  const { root, relayout } = mount(() => (
+    <Column>
+      <Box height={40} onClick={() => log.push("titlebar")} />
+      <Overlay modal inset={[40, 0, 0, 0]} background="#00000080" onDismiss={() => log.push("dismiss")}>
+        <Text>dialog</Text>
+      </Overlay>
+    </Column>
+  ), { width: 300, height: 200 });
+  relayout();
+  const layer = root.layers[0]!;
+  expect([layer.x, layer.y, layer.width, layer.height]).toEqual([0, 40, 300, 160]);
+  const ui = interact(root);
+  ui.down(150, 20);
+  ui.up(150, 20);
+  expect(log).toEqual(["titlebar"]);
+  ui.down(150, 150); // the backdrop
+  expect(log).toEqual(["titlebar", "dismiss"]);
+});

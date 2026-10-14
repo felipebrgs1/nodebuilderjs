@@ -109,6 +109,21 @@ describe("frame loop", () => {
     expect(app.calls.render).toBe(2);
   });
 
+  test("the run() callback is untracked: reading and then writing a signal there runs it once", async () => {
+    const [count, setCount] = createSignal(0);
+    let runs = 0;
+    const app = await start(() => {
+      runs++;
+      setCount(count() + 1); // would loop forever if the callback were a reactive slot
+      return <Text>{() => `count ${count()}`}</Text>;
+    });
+    expect(runs).toBe(1);
+    expect(app.calls.render).toBe(1);
+    setCount(5);
+    await app.frames(1);
+    expect(runs).toBe(1);
+  });
+
   test("changes before the compositor is ready wait for its frame callback", async () => {
     const [count, setCount] = createSignal(0);
     const app = await start(() => <Text>{() => `count ${count()}`}</Text>);
