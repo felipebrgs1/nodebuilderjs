@@ -69,11 +69,29 @@ test.skipIf(!canScreenshot())("screenshot --props: renders the entry's exported 
   expect(missing.err).toContain("Nope");
 });
 
+test("screenshot: a file that only exports a component (no run()) renders its default export", () => {
+  writeFileSync(
+    join(dir, "shot-only.ts"),
+    `import { jsx } from ${JSON.stringify(join(repo, "src/jsx-runtime.ts"))};
+     import { Box } from ${JSON.stringify(join(repo, "src/index.ts"))};
+     export default function Shot() {
+       return jsx(Box, { grow: 1, background: "#0000ff" });
+     }`,
+  );
+  const r = nodebuilder("screenshot", "shot-only.ts", "shot-only.png", "--width", "10", "--height", "10");
+  expect(r.err).toBe("");
+  expect(r.code).toBe(0);
+  const png = decodeImage(new Uint8Array(readFileSync(join(dir, "shot-only.png"))));
+  expect(Array.from(png.data.subarray(0, 4))).toEqual([0, 0, 255, 255]);
+});
+
 test("screenshot: an app that never calls run() is an error, and so are missing arguments", () => {
   writeFileSync(join(dir, "norun.ts"), "export {};\n");
   const r = nodebuilder("screenshot", "norun.ts", "never.png");
   expect(r.code).toBe(1);
   expect(r.err).toContain("run()");
+  // Neither run() nor a default export: the message says how to pick a component.
+  expect(r.err).toContain("--export");
   expect(existsSync(join(dir, "never.png"))).toBe(false);
   const usage = nodebuilder("screenshot");
   expect(usage.code).toBe(1);

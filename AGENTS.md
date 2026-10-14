@@ -456,7 +456,7 @@ Keep **`native/include/nb.h`, `src/render/paint.ts` and `native/core/render_gles
 | TEXT | 2 | x y(line top) size font id (weight * 2 + italic, `fontId()`) · r g b a · index into `texts[]` · letterSpacing · font spec index into `texts[]` (`fontSpec()`; -1: none) |
 | CLIP | 3 | x y w h · tl tr br bl (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
-| SHADOW | 5 | x y w h · r g b a · tl tr br bl · blur |
+| SHADOW | 5 | x y w h · r g b a · tl tr br bl · blur · dy (the casting box is at y - dy: cut out, as in CSS) |
 | IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tint; a = opacity) · radius · id (from `createImage`) |
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · capStart capEnd (0 butt, 1 round) |
 | TRIANGLES | 8 | n · r g b a · n × (x y coverage) |

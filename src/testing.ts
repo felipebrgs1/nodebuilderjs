@@ -11,6 +11,7 @@ import { type TextMeasurer, UINode, setTextMeasurer } from "./render/node.js";
 import { createRoot, untrack } from "./reactive/signals.js";
 import { runFrameCallbacks, setAnimating, setFrameClock } from "./runtime/frames.js";
 import { createInput } from "./runtime/input.js";
+import { windowOf } from "./runtime/app.js";
 import { loadNative, nativeTextMeasurer } from "./runtime/native.js";
 import { type Screenshot, type ScreenshotOptions, captureTree } from "./runtime/screenshot.js";
 
@@ -75,8 +76,11 @@ export function useRealTextMetrics(): () => void {
   };
 }
 
-/** Renders `view` into a detached root and lays it out at `width`x`height`. */
-export function mount(view: () => Child, size = { width: 800, height: 600 }) {
+/**
+ * Renders `view` into a detached root and lays it out at `width`x`height`: by default a
+ * `<Window>`'s own size (which it fills, as in run()), else 800x600.
+ */
+export function mount(view: () => Child, size?: { width: number; height: number }) {
   setTextMeasurer(metrics);
   setAnimating(false); // animations finish at once unless the test calls frames()
   setFrameClock(null);
@@ -86,8 +90,12 @@ export function mount(view: () => Child, size = { width: 800, height: 600 }) {
     insert(root, untrack(view));
     return d;
   });
-  layout(root, size.width, size.height);
-  return { root, dispose, relayout: () => layout(root, size.width, size.height), layoutWarnings: () => layoutWarnings(root) };
+  // A <Window> fills the root as in run(); other content keeps its own size.
+  const { node, options } = windowOf(root);
+  if (node && options) node.style.grow = 1;
+  const { width, height } = size ?? { width: options?.width ?? 800, height: options?.height ?? 600 };
+  layout(root, width, height);
+  return { root, dispose, relayout: () => layout(root, width, height), layoutWarnings: () => layoutWarnings(root) };
 }
 
 /**
@@ -250,17 +258,8 @@ export function click(node: UINode) {
  * that move nodes.
  */
 export function interact(root: UINode) {
-  let cursor = "default";
-  const input = createInput(root, {
-    size: () => ({ width: root.width, height: root.height }),
-    resizable: () => false,
-    setCursor: (name) => (cursor = name),
-    move() {},
-    toggleMaximize() {},
-    resize() {},
-    invalidate() {},
-    now: () => Date.now(),
-  });
+  const host = hosts.get(root) ?? newHost(root);
+  const { input } = host;
   /** The node's center, once it is known to be reachable there. */
   const at = (n: UINode): [number, number] => {
     const point = center(n);
@@ -299,9 +298,31 @@ export function interact(root: UINode) {
     },
     /** Pointer shape the window would show ("default", "pointer", "text"...). */
     get cursor() {
-      return cursor;
+      return host.cursor;
     },
   };
+}
+
+/**
+ * One input per root, shared by every interact() on it: a press from one call and the release
+ * from another make a click, and focus stays where it was, as with the one real pointer.
+ */
+const hosts = new WeakMap<UINode, { input: ReturnType<typeof createInput>; cursor: string }>();
+
+function newHost(root: UINode) {
+  const host = { input: null as unknown as ReturnType<typeof createInput>, cursor: "default" };
+  host.input = createInput(root, {
+    size: () => ({ width: root.width, height: root.height }),
+    resizable: () => false,
+    setCursor: (name) => (host.cursor = name),
+    move() {},
+    toggleMaximize() {},
+    resize() {},
+    invalidate() {},
+    now: () => Date.now(),
+  });
+  hosts.set(root, host);
+  return host;
 }
 
 /**
@@ -351,8 +372,8 @@ export function screenshot(target: UINode | (() => Child), options: ScreenshotOp
   const nat = loadNative();
   const scale = options.scale ?? 1;
   if (typeof target === "function") {
-    const width = options.width ?? 800, height = options.height ?? 600;
-    const { root, dispose } = mount(target, { width, height });
+    const { root, dispose } = mount(target);
+    const width = options.width ?? root.width, height = options.height ?? root.height;
     try {
       return captureTree(nat, root, width, height, scale, options.background);
     } finally {

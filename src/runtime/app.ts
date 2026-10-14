@@ -33,6 +33,15 @@ export interface RunOptions {
 /** Nodes created by <Window> carry their options here. */
 export const windowOptionsKey = Symbol("window");
 
+/**
+ * The root's first node, which run() makes fill the window, and its <Window> options (undefined
+ * when it is not a <Window>). run(), screenshots and mount() in testing share it.
+ */
+export function windowOf(root: UINode): { node: UINode | undefined; options: WindowOptions | undefined } {
+  const node = root.children[0];
+  return { node, options: (node as any)?.[windowOptionsKey] };
+}
+
 const [width, setWidth] = createSignal(0);
 const [height, setHeight] = createSignal(0);
 const [maximized, setMaximized] = createSignal(false);
@@ -160,8 +169,7 @@ export async function screenshotApp(nat: Native, app: () => Child, env: Record<s
       dispose = d;
       insert(root, untrack(app));
     });
-    const windowNode = root.children[0];
-    const options: WindowOptions = (windowNode as any)?.[windowOptionsKey] ?? { title: "nodebuilder" };
+    const { node: windowNode, options = { title: "nodebuilder" } } = windowOf(root);
     if (windowNode) windowNode.style.grow = 1;
     const w = forcedWidth ?? options.width ?? 800, h = forcedHeight ?? options.height ?? 600;
     setWidth(w);
@@ -203,8 +211,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
     dispose = d;
     insert(root, untrack(app));
   });
-  const windowNode = root.children[0];
-  const options: WindowOptions = (windowNode as any)?.[windowOptionsKey] ?? { title: "nodebuilder" };
+  const { node: windowNode, options = { title: "nodebuilder" } } = windowOf(root);
   if (windowNode) windowNode.style.grow = 1;
 
   // ---- frame scheduling ----------------------------------------------------

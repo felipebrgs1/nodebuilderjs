@@ -66,7 +66,7 @@ color). On a control, an `onKeyDown` runs first and `e.stop()` keeps the key fro
   `wrap` (on a `Row`/`Column`: lines; on a `Text`: word wrapping), `rowGap`,
   `position: "absolute"` + `left`/`top`/`right`/`bottom`, `zIndex`, `clip`.
 - Visual: `background`, `radius` (one number, or per corner `[topLeft, topRight, bottomRight,
-  bottomLeft]`: `radius={[0, 12, 12, 0]}`; `clip` and `shadow` follow it), `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}`,
+  bottomLeft]`: `radius={[0, 12, 12, 0]}`; `clip` and `shadow` follow it), `borderWidth`, `borderColor`, `shadow={{ color, blur, y }}` (around the box, never under it, as in CSS),
   `opacity` (0 to 1, applies to children), `translateX`/`translateY` (shifts after
   layout, without pushing siblings; for animation).
 - **Gradient background** (CSS `linear-gradient`): `background={{ linear: ["#1db954", "#121212"], angle: 180 }}`.

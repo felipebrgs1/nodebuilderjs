@@ -21,6 +21,23 @@ test("interact: hover, press and release go through the real event delivery", ()
   expect(log).toEqual(["click"]);
 });
 
+test("interact: every call on the same root shares one pointer and one focus, like the real window", () => {
+  const log: string[] = [];
+  const { root } = mount(() => (
+    <Column align="start">
+      <Button label="Salvar" onClick={() => log.push("click")} />
+      <TextField value={() => ""} onInput={() => {}} placeholder="Nome" />
+    </Column>
+  ));
+  const label = findByText(root, "Salvar")!;
+  interact(root).press(label);
+  interact(root).release(label);
+  expect(log).toEqual(["click"]);
+  const field = findByPlaceholder(root, "Nome")!;
+  interact(root).press(field);
+  expect(interact(root).focused).toBe(field);
+});
+
 test("interact: type into the focused text field, with keys like BackSpace", () => {
   const [name, setName] = createSignal("");
   const { root } = mount(() => <Column><TextField value={name} onInput={setName} placeholder="Nome" /></Column>);

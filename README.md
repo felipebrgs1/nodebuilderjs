@@ -159,7 +159,8 @@ parent's content box, as in CSS (`width="50%"`):
 - `radius` is one number or one per corner, `[topLeft, topRight, bottomRight, bottomLeft]`
   (`radius={[0, 12, 12, 0]}`); borders, `clip` and `shadow` follow it.
 - `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
-  drawn even without a `background` (the blurred box shows through). Like CSS `overflow:
+  drawn around the box, never under it (as in CSS): without a `background`, or with a
+  translucent one, the inside stays clear. Like CSS `overflow:
   hidden`, a clipping node may shrink below its content (what it cuts is neither seen nor
   clicked); give it a `minHeight` where that must not happen. `run()` warns about it in
   development.
@@ -902,7 +903,8 @@ test.skipIf(!canScreenshot())("the banner is red", () => {
 ```
 
 `screenshot(root | view, { width, height, scale, background })` returns `{ width, height,
-scale, rgba, pixel(x, y), toPNG() }`; `rgba` has straight (not premultiplied) alpha, rows top
+scale, rgba, pixel(x, y), toPNG() }` (a view that is a `<Window>` is shot at its `width` and
+`height`, filled by it, as in the app; so is `mount()` without a size); `rgba` has straight (not premultiplied) alpha, rows top
 to bottom, and what nothing covers stays transparent (the window's rounded corners too). The
 tree is laid out with real fonts for the shot and gets its own metrics (fake, by default) back afterwards.
 Pixels depend on the installed fonts and GPU driver: compare colors at points, not whole images.

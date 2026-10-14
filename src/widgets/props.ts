@@ -173,29 +173,40 @@ export function inherited<K extends "color" | "fontSize" | "bold" | "underline" 
   return undefined;
 }
 
-/** The nearest `fontWeight` or `bold` (700/400) up the tree; on the same node `fontWeight` wins. */
-function inheritedWeight(node: UINode): number {
+/**
+ * The font of the node's text (size, weight, italic, letter spacing, family...), inherited, in
+ * one walk up the tree: it runs for every text measurement, many per node and frame. The
+ * nearest `fontWeight` or `bold` (700/400) gives the weight; on the same node `fontWeight` wins.
+ * `last` is returned while nothing changed.
+ */
+export function inheritedText(node: UINode, last?: FontStyle): { size: number | undefined; face: FontStyle } {
+  let size: number | undefined, weight: number | undefined, italic: boolean | undefined, letterSpacing: number | undefined;
+  let family: string | undefined, features: string | undefined, variations: string | undefined;
   for (let n: UINode | null = node; n; n = n.parent) {
-    if (n.style.fontWeight !== undefined) return n.style.fontWeight;
-    if (n.style.bold !== undefined) return n.style.bold ? 700 : 400;
+    const s = n.style;
+    size ??= s.fontSize;
+    weight ??= s.fontWeight ?? (s.bold === undefined ? undefined : s.bold ? 700 : 400);
+    italic ??= s.italic;
+    letterSpacing ??= s.letterSpacing;
+    family ??= s.fontFamily;
+    features ??= s.fontFeatures;
+    variations ??= s.fontVariations;
   }
-  return 400;
+  return { size, face: fontOf(weight ?? 400, italic ?? false, letterSpacing ?? 0, family ?? "", features ?? "", variations ?? "", last) };
 }
 
-/** The font of the node's text (weight, italic, letter spacing, family...), inherited; `last` is returned while nothing changed. */
-export function inheritedFont(node: UINode, last?: FontStyle): FontStyle {
-  const weight = inheritedWeight(node);
-  const italic = inherited(node, "italic") ?? false;
-  const letterSpacing = inherited(node, "letterSpacing") ?? 0;
-  const family = inherited(node, "fontFamily") ?? "";
-  const features = inherited(node, "fontFeatures") ?? "";
-  const variations = inherited(node, "fontVariations") ?? "";
+function fontOf(weight: number, italic: boolean, letterSpacing: number, family: string, features: string, variations: string, last?: FontStyle): FontStyle {
   if (
     last && last.weight === weight && last.italic === italic && last.letterSpacing === letterSpacing &&
     last.family === family && last.features === features && last.variations === variations
   ) return last;
   if (weight === 400 && !italic && !letterSpacing && !family && !features && !variations) return REGULAR;
   return { weight, italic, letterSpacing, family, features, variations };
+}
+
+/** The font of the node's text, inherited (`inheritedText` without the size). */
+export function inheritedFont(node: UINode, last?: FontStyle): FontStyle {
+  return inheritedText(node, last).face;
 }
 
 /** Hover, press and focus state, and the handlers that keep it. */

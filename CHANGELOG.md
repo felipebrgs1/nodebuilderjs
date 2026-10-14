@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.1 (unreleased)
+
+From a second report of the Discord clone (with 0.4.0).
+
+### Fixed
+- Layout got slower with each release (a 500-row table: 1.1 ms in 0.2.5, 1.8 ms in 0.4.0): every
+  text measurement walked up the tree once per inherited font prop, and 0.4 added three more.
+  One walk now, done again only after an `invalidate()`: 1.2 ms.
+- A `shadow` was drawn under its box too: without a `background` (or with a translucent one)
+  the box filled with the shadow's color. Like CSS, it is now cut out of the box. Command
+  buffer: SHADOW has one more float, the offset of the box casting it.
+- `screenshot(() => <Window width height>)` and `mount()` of a `<Window>` used 800x600 and the
+  window only as tall as its content; they now use the window's size, filled by it, as the app
+  and `nodebuilder screenshot` do.
+- `interact(root)` called twice kept two pointers: a `press` from one and a `release` from the
+  other did not click, silently. Every `interact()` on a root now shares one pointer and focus.
+- `nodebuilder screenshot` of a file that does not call `run()` failed; it now renders the
+  file's default export (as with `--props '{}'`), and says how to pick one when there is none.
+
+### Docs
+- Testing skill: a click inside a `Scroll` focuses it (keys bubble from there), and testing a
+  reactive prop on the same node, since a screen switch can recreate it.
+
 ## 0.4.0 (2026-10-14)
 
 ### New

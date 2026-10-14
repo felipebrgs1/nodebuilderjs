@@ -341,6 +341,26 @@ test("letterSpacing (inherited, may be negative) widens the text, its wrapping a
   expect(commandsOf(column!, "text").map((t) => t.text)).toEqual(["aaa bbb", "ccc"]);
 });
 
+test("a change of an ancestor's font props re-measures the text in the next layout", () => {
+  const [spacing, setSpacing] = createSignal(0);
+  const [size, setSize] = createSignal(14);
+  const { root, relayout } = mount(() => (
+    <Column align="start" letterSpacing={spacing} fontSize={size}>
+      <Row>
+        <Text>abc</Text>
+      </Row>
+    </Column>
+  ));
+  const text = root.children[0]!.children[0]!.children[0]!;
+  expect(text.width).toBe(24);
+  setSpacing(2);
+  relayout();
+  expect(text.width).toBe(30);
+  setSize(30);
+  relayout();
+  expect(commandsOf(text, "text")[0]).toMatchObject({ size: 30, letterSpacing: 2 });
+});
+
 test("the addon measurer caches by text, size and font, and passes a font id and a font spec", () => {
   const calls: unknown[][] = [];
   const nat = { measureText: (...args: unknown[]) => (calls.push(args), [10, 15, 5]) } as unknown as Native;

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Box, Button, Column, Row, Show, Slider, Text, TextField, Toggle, createInteraction, createSignal, theme } from "@nodebuilderjs/core";
 import type { UINode } from "@nodebuilderjs/core";
-import { findByText, interact, mount } from "@nodebuilderjs/core/testing";
+import { canScreenshot, findByText, interact, mount, screenshot } from "@nodebuilderjs/core/testing";
 import { commandsOf, drawCommands } from "./helpers.js";
 
 test("opacity multiplies the alpha of everything the subtree draws, nesting included", () => {
@@ -107,7 +107,29 @@ test("a shadow is drawn even without a background: the node's rounded box, blurr
   ));
   const ops = drawCommands(root);
   expect(ops.map((c) => c.op)).toEqual(["shadow"]);
-  expect(ops[0]).toMatchObject({ x: 20, y: 24, w: 100, h: 40, radius: 8, blur: 12 });
+  // dy: where the box casting it is (y - dy), cut out of the shadow as in CSS.
+  expect(ops[0]).toMatchObject({ x: 20, y: 24, w: 100, h: 40, radius: 8, blur: 12, dy: 4 });
+});
+
+test.skipIf(!canScreenshot())("pixels: like CSS, a shadow is not drawn under its box, even a transparent or translucent one", () => {
+  const shot = screenshot(() => (
+    <Row background="#ffffff" padding={20} gap={20} align="start">
+      <Box width={40} height={40} shadow={{ color: "#00ff00", blur: 4, y: 10 }} />
+      <Box width={40} height={40} background="#ff000080" shadow={{ color: "#00ff00", blur: 4, y: 10 }} />
+    </Row>
+  ), { width: 140, height: 90 });
+  // Inside the boxes: the page (white), and the translucent red over white, with no green.
+  expect(shot.pixel(40, 30)).toEqual([255, 255, 255, 255]);
+  const pink = shot.pixel(100, 30);
+  expect(pink[0]).toBeGreaterThan(250);
+  expect(Math.abs(pink[1]! - pink[2]!)).toBeLessThanOrEqual(2);
+  // Below them, where the shadow sticks out: green.
+  for (const x of [40, 100]) {
+    const [r, g, b] = shot.pixel(x, 66);
+    expect(g).toBeGreaterThan(200);
+    expect(r).toBeLessThan(80);
+    expect(b).toBeLessThan(80);
+  }
 });
 
 // hoverStyle / pressStyle / createInteraction. The pointer parks at (790, 590), outside every box.

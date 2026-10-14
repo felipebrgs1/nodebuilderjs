@@ -1,11 +1,11 @@
 import { type Child, setTextFactory } from "../jsx-runtime.js";
 import { edges } from "../render/layout.js";
-import { type FontStyle, type Handlers, REGULAR, UINode, displayScale, invalidate, measureText, metricsGeneration } from "../render/node.js";
+import { type FontStyle, type Handlers, REGULAR, UINode, displayScale, invalidate, invalidationCount, measureText, metricsGeneration } from "../render/node.js";
 import { type TextLine, minContentWidth, wrapText } from "../render/text-wrap.js";
 import { type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
 import { clipboard } from "../runtime/clipboard.js";
 import { theme } from "../theme.js";
-import { type StyleProps, applyProps, inherited, inheritedFont } from "./props.js";
+import { type StyleProps, applyProps, inherited, inheritedText } from "./props.js";
 import { boundaryAt, charAt, charEdges, wordAt } from "./text-selection.js";
 
 function textOf(child: Child): string {
@@ -44,7 +44,19 @@ export function Text(
   let selection = { anchor: 0, focus: 0 }; // in characters; empty when equal
   let options = { wrap: true, maxLines: undefined as number | undefined, align: "start" as TextAlign, lineHeight: 1 };
   let lastFont: FontStyle | undefined;
-  const font = () => ({ size: inherited(node, "fontSize") ?? theme.font.size, face: (lastFont = inheritedFont(node, lastFont)) });
+  // Asked for by every measurement (several per frame): walked up the tree again only after
+  // an invalidate(), which every style, tree or theme change makes.
+  let fontAt = -1;
+  let current = { size: 0, face: REGULAR };
+  const font = () => {
+    if (fontAt !== invalidationCount()) {
+      const { size, face } = inheritedText(node, lastFont);
+      lastFont = face;
+      current = { size: size ?? theme.font.size, face };
+      fontAt = invalidationCount();
+    }
+    return current;
+  };
   const narrowest = () => {
     const { size, face } = font();
     const widthOf = (s: string) => measureText(s, size, face).width;

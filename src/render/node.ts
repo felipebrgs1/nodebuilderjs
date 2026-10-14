@@ -191,7 +191,7 @@ export interface Painter {
   /** 0..1, multiplies the alpha of everything drawn (set by paintTree from `opacity`). */
   opacity: number;
   rect(x: number, y: number, w: number, h: number, color: Paint, radius?: Radius, borderWidth?: number, borderColor?: Color): void;
-  shadow(x: number, y: number, w: number, h: number, color: Color, radius: Radius, blur: number): void;
+  shadow(x: number, y: number, w: number, h: number, color: Color, radius: Radius, blur: number, dy?: number): void;
   /** `font`: true for bold (the old flag), or the weight, italic and letter spacing. */
   text(x: number, y: number, text: string, size: number, color: Color, font?: FontInput): void;
   /** Draws `uv` (a sub-rectangle of the image, 0..1) stretched over the box, multiplied by `tint` (default white). */
