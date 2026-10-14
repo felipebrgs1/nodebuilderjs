@@ -151,6 +151,11 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
   fonts (bugs, core, API, CLI, tests, order of work) is mapped in [FONTS.md](FONTS.md).
 - ~~Rich text (several styles in one paragraph)~~ **done** (2026-10-14: `RichText`). Missing:
   selecting it.
+- **0.5: styled editing** (asked for by the Dia report, a markdown editor): `TextArea
+  decorations={(text, selection) => [{ from, to, style }]}` with per-range font, size, color,
+  background, underline, `hidden` (markers concealed while the caret is elsewhere) and `onClick`,
+  plus whole-line decorations (code block backgrounds); the RichText layout (mixed fonts, a
+  shared baseline, per-line heights) with the TextArea caret mapping and EditSession.
 - ~~Selection, copy/cut and undo/redo in `TextField`; a multi-line field~~ **done**
   (2026-10-14: `TextArea`, `selection`/`onSelectionChange`). Missing: primary selection
   (middle-click paste), Shift+click and arrows to extend `<Text selectable>`'s selection
