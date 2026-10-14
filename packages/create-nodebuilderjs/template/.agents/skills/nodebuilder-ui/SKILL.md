@@ -39,7 +39,7 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 | `Divider` / `Spacer` | 1 px line / flexible space (optional fixed `size`) | |
 | `<For each={list}>{(item, i) => ...}</For>` | list keyed by reference; `i` is an accessor | `fallback` |
 | `<Index each={list}>{(item, i) => ...}</Index>` | list by position (primitives); `item` is an accessor, `i` a number | `fallback` |
-| `<Show when={() => ...} fallback={...}>` | conditional; a `{(v) => ...}` child gets the value as an accessor | |
+| `<Show when={() => ...} fallback={...}>` | conditional; a `{(v) => ...}` child gets the value as an accessor. **No compiler:** `{f(x)}` inside runs even when `when` is false; write `{() => f(x)}` or use the `{(v) => ...}` child (components inside do wait) | |
 | `<Switch fallback={...}><Match when={...}>...</Match></Switch>` | several cases: the first true `Match`; the content is recreated only when a different `Match` wins, not when the value of `when` changes (read it with `{(v) => ...}`) | `Match` accepts `{(v) => ...}` |
 | `<ErrorBoundary fallback={(error, reset) => ...}>` | replaces children that threw with the `fallback` | `reset()` tries again |
 
@@ -489,7 +489,8 @@ let button: ElementRef | undefined;
   into the next one (`clip` cuts it), and the row's own natural width is just its gaps: give it
   room (stretched in a column, or `grow`).
 - **`position="absolute"`** takes the child out of the flow: `left`/`top`/`right`/`bottom`
-  count from the parent's content box (inside its `padding`; negative values work), as in CSS.
+  count from the parent's padding box, as in CSS: inside its border, **ignoring its `padding`**
+  (`left={0}` is the parent's left edge; negative values work). Percentages too.
   It keeps its natural size, unless both `left` and `right` (or `top` and `bottom`) are set and
   no `width` (`height`): then it stretches between them, within `min`/`max`. `right` (or
   `bottom`) alone places it from that edge. It does not take space or change the parent's size.
@@ -535,13 +536,13 @@ const [albums] = createSignal([{ title: "Blue", cover: "blue.jpg" }]);
 // A count badge sticking out of a card's corner (no `clip`, so it is drawn and clicked
 // outside too); `zIndex` keeps it above the content even though it is declared first.
 <Box width={160} padding={12} radius={10} background="#e8eaf2">
-  <Text position="absolute" right={-22} top={-22} zIndex={1} padding={[2, 8]} radius={10} background="#e5484d" color="#ffffff">3</Text>
+  <Text position="absolute" right={-10} top={-10} zIndex={1} padding={[2, 8]} radius={10} background="#e5484d" color="#ffffff">3</Text>
   <Box padding={8} radius={6} background="#3e63dd"><Text color="#ffffff">Inbox</Text></Box>
 </Box>;
 ```
 
-Keep the `padding` on an inner child (as above) when an absolute layer must cover the padding
-too: the edges count from inside the parent's `padding`.
+An absolute layer covers the parent's padding too (`left={0}` is the parent's edge): a colored
+stripe at `left={0} top={0} bottom={0}` sits on the edge of a padded card.
 
 ## Theme and window
 

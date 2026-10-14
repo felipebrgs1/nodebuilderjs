@@ -49,6 +49,10 @@ export function RadioGroup<T>(
       circle.set("borderColor", state.focused() ? theme.field.focus : theme.field.border);
       dot.set("background", on ? "#ffffff" : "#00000000");
       if (on && state.focused()) circle.set("borderWidth", 2);
+      // Absolute children start inside the border: keep the dot centred whatever its width.
+      const inset = 5 - (circle.style.borderWidth ?? 0);
+      dot.set("left", inset);
+      dot.set("top", inset);
     });
     const pick = () => !disabled() && props.onChange(option.value);
     row.handlers.onClick = pick;

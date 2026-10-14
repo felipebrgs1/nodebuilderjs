@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   Button, Column, ErrorBoundary, For, Index, Overlay, Show, Text, UINode, batch, createContext, createEffect, createMemo,
   createRoot, createSignal, onCleanup, useContext,
@@ -347,4 +350,32 @@ test("an update loop is reported (not a stack overflow) and leaves nothing pendi
   expect(() => setN(100)).toThrow("reactive update loop");
   setOther(1);
   expect(seen).toEqual([0, 1]);
+});
+
+test("an unhandled error is reported from the app's code, not from where the framework passes it on", () => {
+  // `bun test` prints the frames of the last `throw`: rethrowing an error in the framework hides
+  // the app's frame. A fixture test file, run by `bun test`, shows what a user would see.
+  const dir = mkdtempSync(join(tmpdir(), "nb-stack-"));
+  const src = join(import.meta.dir, "../src/index.ts");
+  writeFileSync(join(dir, "stack.test.ts"), `
+import { test } from "bun:test";
+import { createEffect, createRoot, createSignal } from ${JSON.stringify(src)};
+function appCode(d: any) { return d.getDate(); }
+test("mount", () => { createRoot(() => createEffect(() => appCode(undefined))); });
+test("queue", () => {
+  const [s, set] = createSignal(0);
+  createRoot(() => createEffect(() => { if (s()) appCode(undefined); }));
+  createRoot(() => createEffect(() => { s(); }));
+  set(1);
+});
+`);
+  try {
+    const run = Bun.spawnSync([process.execPath, "test", "./stack.test.ts"], { cwd: dir, env: { ...process.env, NO_COLOR: "1" } });
+    const out = run.stderr.toString();
+    // The first frame printed under each failure is the app's function.
+    const firstFrames = [...out.matchAll(/^TypeError: [^\n]*\n\s+at ([^\s(]+)/gm)].map((m) => m[1]);
+    expect(firstFrames).toEqual(["appCode", "appCode"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

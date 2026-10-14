@@ -8,7 +8,7 @@ export { For, Index } from "./reactive/list.js";
 export { ErrorBoundary } from "./reactive/error-boundary.js";
 export { createContext, useContext, type Context } from "./reactive/context.js";
 export { type Child, type Component, Fragment } from "./jsx-runtime.js";
-export { run, requestAnimationFrame, windowControls, windowState } from "./runtime/app.js";
+export { isScreenshot, run, requestAnimationFrame, windowControls, windowState } from "./runtime/app.js";
 export { clipboard } from "./runtime/clipboard.js";
 export { registerFont, fontFamilies, type FontOptions, type RegisteredFont } from "./runtime/fonts.js";
 export * from "./widgets/index.js";

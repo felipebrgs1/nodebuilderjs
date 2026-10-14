@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import {
   Button, Checkbox, Column, ProgressBar, RadioGroup, Row, Slider, Spinner, TextField, Toggle, createSignal, theme,
 } from "@nodebuilderjs/core";
-import { findByText, interact, mount } from "@nodebuilderjs/core/testing";
+import { findByText, findAll, interact, mount } from "@nodebuilderjs/core/testing";
 import { commandsOf, drawCommands } from "./helpers.js";
 
 // ---- disabled ----------------------------------------------------------------
@@ -251,4 +251,20 @@ test("ProgressBar and Slider take color (the filled part) and background (the tr
   expect(colors(bar)).toEqual(["0,0,1,1", "1,0,0,1"]); // the track (rounded), then the fill
   expect(commandsOf(bar!, "rect")[0]!.radius).toBe(3);
   expect(colors(slider).slice(0, 2)).toEqual(["0,0,0,1", "0,1,0,1"]);
+});
+
+test("RadioGroup: the dot stays centred in its circle, with or without the focus border", () => {
+  const [value, setValue] = createSignal("a");
+  const { root, relayout } = mount(() => <RadioGroup value={value} onChange={setValue} options={[{ value: "a", label: "A" }, { value: "b", label: "B" }]} />);
+  const ui = interact(root);
+  const dotOffset = () => {
+    relayout();
+    const circle = findAll(root, (n) => n.label === "RadioCircle")[0]!;
+    const dot = circle.children[0]!;
+    return [dot.x - circle.x, dot.y - circle.y];
+  };
+  expect(dotOffset()).toEqual([5, 5]);
+  ui.key("Tab"); // focused: a 2 px border
+  expect(findAll(root, (n) => n.label === "RadioCircle")[0]!.style.borderWidth).toBe(2);
+  expect(dotOffset()).toEqual([5, 5]);
 });

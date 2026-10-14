@@ -146,6 +146,14 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
 
 const modifiers = (ev: NativeModifiers): Modifiers => ({ ctrl: !!ev.ctrl, shift: !!ev.shift, alt: !!ev.alt, meta: !!ev.super });
 
+/**
+ * True while `nodebuilder screenshot` runs the app (no window: one frame rendered to a PNG). An
+ * app can show sample data then instead of reading the user's files or the network.
+ */
+export function isScreenshot(): boolean {
+  return !!process.env.NB_SCREENSHOT;
+}
+
 /** Frames simulated (16 ms each) waiting for animations to finish, unless NB_SCREENSHOT_FRAMES says how many. */
 const SETTLE_FRAMES = 120;
 

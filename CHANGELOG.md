@@ -37,6 +37,15 @@ From a second report of the Discord clone (with 0.4.0).
 - The cursor follows what an `onPointerMove` handler sets at once (it waited for the next move).
 - `<Canvas measure={(width) => height}>` (a canvas that sizes itself, e.g. a wrapped document
   in a `Scroll`) and `g.visibleRect` (the part on screen; reading it redraws on scroll).
+- **Breaking:** `position="absolute"` children are placed from the parent's padding box, as in
+  CSS (inside the border, ignoring the padding), and their percentages are of it too. They were
+  placed inside the padding: an app that compensated with negative offsets (`left={-9}` in a
+  card with `padding={[3, 6, 3, 9]}`) can use `left={0}` now.
+- `nodebuilder screenshot app.tsx out.png -- args...` passes the arguments to the app, and
+  `isScreenshot()` tells the app it is being shot (to use sample data).
+- Errors that no `ErrorBoundary` catches reach the caller from where they were thrown: `bun test`
+  and the runtime show the app's frame on top (the framework caught and rethrew them, which
+  hid it).
 - Key names are normalized: Shift+Tab is `"Tab"` with `shift`, `Prior`/`Next` are
   `"Page_Up"`/`"Page_Down"`, keypad keys have the plain names, and with Ctrl or Alt a letter
   is lowercase. **Breaking** for apps that compared `"ISO_Left_Tab"`, `"Prior"`, `"Next"` or

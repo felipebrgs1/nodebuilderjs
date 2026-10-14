@@ -1,4 +1,4 @@
-// Percentages: width/height/min/max as `"50%"` of the parent's content box (inside its padding), as in CSS.
+// Percentages: width/height/min/max as `"50%"` of the parent's content box (inside its padding), as in CSS; an absolute child's, of the padding box.
 import { expect, test } from "bun:test";
 import { Box, Column, Row, createSignal } from "@nodebuilderjs/core";
 import { mount } from "@nodebuilderjs/core/testing";
@@ -43,4 +43,16 @@ test("maxWidth as a percentage caps a growing child", () => {
     </Row>
   ));
   expect(root.children[0]!.children[0]!.width).toBe(120);
+});
+
+test("percentages of an absolute child are of the parent's padding box, as in CSS", () => {
+  const { root } = mount(() => (
+    <Column align="start">
+      <Box width={200} height={100} padding={20} borderWidth={5}>
+        <Box position="absolute" left={0} top={0} width="50%" height="100%" />
+      </Box>
+    </Column>
+  ));
+  const child = root.children[0]!.children[0]!.children[0]!;
+  expect([child.x, child.y, child.width, child.height]).toEqual([5, 5, 95, 90]);
 });

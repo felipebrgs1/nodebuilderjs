@@ -66,6 +66,17 @@ function execute(c: Computation) {
   const prevListener = currentListener;
   currentOwner = c;
   currentListener = c;
+  if (!handled(c.owner)) {
+    // Nothing would catch it: not catching keeps the app's frame on top of what `bun test`
+    // and the runtime print (they show where an error was last thrown).
+    try {
+      c.run();
+    } finally {
+      currentOwner = prevOwner;
+      currentListener = prevListener;
+    }
+    return;
+  }
   try {
     c.run();
   } catch (error) {
@@ -76,6 +87,12 @@ function execute(c: Computation) {
     currentOwner = prevOwner;
     currentListener = prevListener;
   }
+}
+
+/** Whether a scope from `owner` up handles errors (catchError, ErrorBoundary). */
+function handled(owner: Owner | null): boolean {
+  for (let o = owner; o; o = o.owner) if (o.onError) return true;
+  return false;
 }
 
 /** Hands `error` to the nearest scope with a handler, from `owner` up; without one, rethrows. */
@@ -104,32 +121,33 @@ function flushPending() {
   // ones it triggers run (no re-entrant runs), and an update loop is caught by the guard.
   batchDepth++;
   let guard = 0;
-  let failed = false;
-  let firstError: unknown;
+  const runNext = () => {
+    const c = pending.values().next().value!;
+    pending.delete(c);
+    if (!c.disposed) execute(c);
+    if (++guard > 100_000) {
+      pending.clear();
+      throw new Error("nodebuilder: reactive update loop detected (an effect or memo keeps changing a signal it reads)");
+    }
+  };
+  let done = false;
   try {
-    while (pending.size) {
-      try {
-        do {
-          const c = pending.values().next().value!;
-          pending.delete(c);
-          if (!c.disposed) execute(c);
-          if (++guard > 100_000) {
-            pending.clear();
-            throw new Error("nodebuilder: reactive update loop detected (an effect or memo keeps changing a signal it reads)");
-          }
-        } while (pending.size);
-      } catch (error) {
-        // An error no scope handled: the rest of the queue still runs, then it is rethrown.
-        if (!failed) {
-          failed = true;
-          firstError = error;
+    while (pending.size) runNext();
+    done = true;
+  } finally {
+    // An error no scope handled goes on to the caller as it was thrown (not caught and thrown
+    // again, which would hide where it came from); the rest of the queue still runs first.
+    if (!done) {
+      while (pending.size) {
+        try {
+          runNext();
+        } catch {
+          // only the first error reaches the caller
         }
       }
     }
-  } finally {
     batchDepth--;
   }
-  if (failed) throw firstError;
   if (batchDepth === 0 && mountHold === 0) runMounts();
 }
 

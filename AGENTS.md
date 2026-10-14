@@ -312,10 +312,12 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   `<Index>`, one per position.
 - **Effect queue:** writes made during the queue (`flushPending`) are only enqueued; the
   effect finishes before the ones it triggered. An unhandled error does not stall the queue
-  (the others run; the first error is rethrown at the end).
+  (the others run in a `finally`; the first error goes on to the writer).
 - **Errors propagate up through owners:** `execute` catches the error of an effect/memo and
   hands it to the `onError` of the nearest scope (`catchError`, used by `<ErrorBoundary>`);
-  without a handler, it rethrows. Event handlers do not go through this.
+  without a handler it does not catch at all, so the error keeps the app's frame on top (Bun
+  prints where an error was last thrown: never catch and rethrow an unhandled error).
+  Event handlers do not go through this.
 
 ## Code conventions
 
@@ -492,7 +494,8 @@ the stop lines and colors their vertices: exact for linear gradients, any shape.
 ### Layout (render/layout.ts)
 - Flex: `direction` (column by default in `Column`/`Box`), `gap`, `padding`, `grow`,
   `align` (**stretch** by default; `alignSelf` overrides it per child, read through `alignOf()`),
-  `justify`, `min/max`, `position: "absolute"` (`left/top/right/bottom` from the content box;
+  `justify`, `min/max`, `position: "absolute"` (`left/top/right/bottom` and percentages from the padding box: inside the
+  border, ignoring the padding, as in CSS;
   both edges without a size stretch, as in CSS; it scrolls with a `Scroll`'s content).
 - **Stacking:** `zIndex` orders siblings only (no global stacking contexts): `stacked(node)`
   (`render/node.ts`) gives the children by zIndex, then child order (stable sort, and the

@@ -158,8 +158,8 @@ parent's content box, as in CSS (`width="50%"`):
 - **Equal or proportional columns in a row:** `width={0} grow={1}` on each child (CSS
   `flex: 1 1 0`); the widths follow the `grow` values (1:1:2), not the content. In a column
   with a height, `height={0} grow={1}` does the same for rows.
-- **`position="absolute"`** with `left`/`top`/`right`/`bottom` (from the parent's content box,
-  inside its `padding`): out of the flow and at its natural size, unless both `left` and `right`
+- **`position="absolute"`** with `left`/`top`/`right`/`bottom` (from the parent's padding box,
+  as in CSS: inside its border, ignoring its `padding`): out of the flow and at its natural size, unless both `left` and `right`
   (or `top` and `bottom`) are set without a `width` (`height`): then it stretches between them,
   so `left={0} right={0} top={0} bottom={0}` fills the parent. `right` alone places it from the
   right edge. Inside a `Scroll` it scrolls with the content, like CSS. What sticks out of a parent
@@ -487,6 +487,12 @@ const [scores] = createSignal([7, 9, 10]);
 </ErrorBoundary>;
 ```
 
+- **Unlike Solid, there is no compiler:** an expression written in JSX runs when that JSX is
+  evaluated, even inside a `<Show>` whose condition is false. `<Show when={() => t.due}><Text>
+  {shortDate(t.due!)}</Text></Show>` calls `shortDate(undefined)` at once. Put what depends on
+  the condition in a function: `{() => shortDate(t.due!)}`, or take the value from a function
+  child: `{(due) => <Text>{shortDate(due())}</Text>}`. Components (`<Row/>`, `<MyCard/>`) do wait:
+  their bodies run only when shown.
 - `when` accepts a value or an accessor. The function child must declare its parameter
   (`{(u) => ...}`); a function without parameters (`{() => ...}`) is still a plain reactive
   child. The accessor keeps the last truthy value, so an effect in the row that runs before
@@ -1069,6 +1075,10 @@ file must not call `run()` itself; `--export` picks a named export instead of th
 ```sh
 nodebuilder screenshot src/App.tsx settings.png --export App --props '{"page":"settings"}'
 ```
+
+Arguments after `--` reach the app (`process.argv.slice(2)`):
+`nodebuilder screenshot src/main.tsx out.png -- --vault ./sample`. `isScreenshot()` tells the app
+it is being shot, to use sample data instead of the user's files or the network.
 
 In tests:
 

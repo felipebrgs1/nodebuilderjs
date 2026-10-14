@@ -646,13 +646,18 @@ function mainMargins(kids: UINode[], row: boolean): number {
  * their content the first time, like CSS percentages in intrinsic sizes.
  */
 function resolvePercents(node: UINode, innerW: number, innerH: number) {
+  // Absolute children take percentages of the padding box (inside the border), as in CSS.
+  const b = node.style.borderWidth ?? 0;
+  const boxW = Math.max(0, node.width - 2 * b);
+  const boxH = Math.max(0, node.height - 2 * b);
   for (const c of node.children) {
     const p = c.percents;
     if (!p) continue;
+    const flow = inFlow(c);
     let changed = false;
     for (const key in p) {
       const k = key as keyof typeof p;
-      const v = (p[k]! * (k.endsWith("idth") ? innerW : innerH)) / 100;
+      const v = (p[k]! * (k.endsWith("idth") ? (flow ? innerW : boxW) : flow ? innerH : boxH)) / 100;
       if (c.style[k] !== v) {
         c.style[k] = v;
         changed = true;
@@ -695,12 +700,12 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   const kids = node.children.filter(inFlow);
   if (s.direction === "grid") {
     const offsetY = placeGrid(node, kids, innerX, innerY, innerW, view);
-    placeAbsolute(node, innerX, innerY - offsetY, innerW, innerH, view);
+    placeAbsolute(node, 0, offsetY, view);
     return;
   }
   if (s.wrap && kids.length > 1) {
     const [offsetX, offsetY] = placeWrapped(node, kids, innerX, innerY, innerW, innerH, view);
-    placeAbsolute(node, innerX - offsetX, innerY - offsetY, innerW, innerH, view);
+    placeAbsolute(node, offsetX, offsetY, view);
     return;
   }
 
@@ -759,7 +764,7 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   });
   if (kids.length) checkOverflow(node, kids, row, content, innerMain, widest, innerCross, view);
 
-  placeAbsolute(node, innerX - offsetX, innerY - offsetY, innerW, innerH, view);
+  placeAbsolute(node, offsetX, offsetY, view);
 }
 
 /** A Row with `wrap`: its height depends on its width (a wrapping Column breaks at its height instead). */
@@ -871,8 +876,16 @@ function placeWrapped(node: UINode, kids: UINode[], innerX: number, innerY: numb
   return [offsetX, offsetY];
 }
 
-/** Absolute children are measured from the content box (at x, y once scrolled) and scroll with the content. */
-function placeAbsolute(node: UINode, x: number, y: number, innerW: number, innerH: number, view: Rect) {
+/**
+ * Absolute children are measured from the padding box, as in CSS: inside the border, ignoring
+ * the padding. They scroll with the content (`offsetX`/`offsetY`: the scroll position).
+ */
+function placeAbsolute(node: UINode, offsetX: number, offsetY: number, view: Rect) {
+  const b = node.style.borderWidth ?? 0;
+  const x = node.x + b - offsetX;
+  const y = node.y + b - offsetY;
+  const innerW = Math.max(0, node.width - 2 * b);
+  const innerH = Math.max(0, node.height - 2 * b);
   for (const c of node.children) {
     if (inFlow(c)) continue;
     const cs = c.style;
@@ -920,7 +933,7 @@ function placeGrid(node: UINode, kids: UINode[], innerX: number, innerY: number,
 }
 
 /**
- * Offset and size of an absolute child along one axis of a `room`-long content box, as in CSS:
+ * Offset and size of an absolute child along one axis of a `room`-long padding box, as in CSS:
  * both edges and no fixed size stretch it (within min/max); otherwise it keeps `natural` and
  * sits at `start`, or `end` away from the far edge when only that is set. Its margins
  * (`mStart`, `mEnd`) add to the edges' distances.

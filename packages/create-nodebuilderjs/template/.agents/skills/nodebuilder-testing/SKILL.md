@@ -178,6 +178,11 @@ the file exports with `--props` (the file must not call `run()` itself, so point
 nodebuilder screenshot src/App.tsx settings.png --props '{"page":"settings"}' --export App
 ```
 
+**An app that reads arguments or the user's files:** arguments after `--` reach it
+(`nodebuilder screenshot src/main.tsx out.png -- --vault ./sample`), and `isScreenshot()` from
+`@nodebuilderjs/core` is true during a shot: use sample data then, so the shot never reads or
+creates the user's real files.
+
 Or keep small shot files in the repo (they double as visual fixtures):
 `src/shots/settings.tsx` = `run(() => <App page="settings" />)`, then
 `nodebuilder screenshot src/shots/settings.tsx settings.png`. A file that does not call

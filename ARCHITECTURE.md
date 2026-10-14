@@ -50,7 +50,7 @@ The model is SolidJS's, implemented from scratch in `src/reactive/signals.ts`:
   wrote finishes before the ones it triggered (it never runs reentrantly, in the middle of
   itself), and an update cycle is detected by the 100 000-run limit instead of blowing the
   stack (it throws "reactive update loop detected"). An error that no scope handles does not stall the queue: the remaining pending
-  effects run and the first error is rethrown at the end, to whoever wrote the signal.
+  effects run (in a `finally`) and the first error goes on to whoever wrote the signal.
 - **Ownership:** everything created inside an effect or `createRoot` is disposed of along
   with it (`onCleanup`). That is how switching tabs, for example, releases everything from the old tab.
 - **Context** (`reactive/context.ts`) also lives in the owner tree: the `Provider` creates a
@@ -61,7 +61,9 @@ The model is SolidJS's, implemented from scratch in `src/reactive/signals.ts`:
 - **Errors** also travel up the owner tree. `catchError(fn, onError)` creates a scope with
   a handler (`Owner.onError`); `execute`, which runs every effect and memo, catches whatever the
   run throws and hands it to the nearest handler up the owners (passing through the roots of
-  `<For>`/`<Index>`, like context). With no handler, it rethrows as before. The handler runs
+  `<For>`/`<Index>`, like context). With no handler up the owners, `execute` does not catch at
+  all (`try`/`finally`): `bun test` and Bun's error printer show the frames of the last `throw`,
+  so catching and rethrowing would put the framework's frame on top instead of the app's. The handler runs
   with writes deferred until the end of the current update, so that the failing scope is not
   disposed of in the middle of a computation that is still running.
   `<ErrorBoundary>` (`reactive/error-boundary.ts`) creates the children inside a `catchError`:
@@ -183,7 +185,8 @@ its last value, or its content the first time, as CSS does for percentages in in
 least that width as the inner width allows (capped by `columns`); without a width (the natural
 size) every cell goes in one row, so the grid "wraps" (height depends on width) and can shrink
 down to one column. Absolute children are placed after the
-in-flow ones, from the content box and minus the scroll offset (they scroll with the content);
+in-flow ones, from the padding box (inside the border, ignoring the padding, as in CSS; their
+percentages too) and minus the scroll offset (they scroll with the content);
 both edges of an axis without a size stretch them (`absoluteSpan`), and a wrapping child gets
 its height at that width (`heightAt`).
 

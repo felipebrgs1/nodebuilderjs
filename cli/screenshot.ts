@@ -6,7 +6,7 @@ import { existsSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-export const SCREENSHOT_USAGE = `usage: nodebuilder screenshot <app.tsx> <out.png> [options]
+export const SCREENSHOT_USAGE = `usage: nodebuilder screenshot <app.tsx> <out.png> [options] [-- app arguments]
 
   --width <px>        logical width (default: the <Window>'s width, or 800)
   --height <px>       logical height (default: the <Window>'s height, or 600)
@@ -17,11 +17,17 @@ export const SCREENSHOT_USAGE = `usage: nodebuilder screenshot <app.tsx> <out.pn
   --props <json>      render the component the file exports (default export) with these
                       props, e.g. '{"page":"settings"}'; the file must not call run() itself.
                       A file that does not call run() gets its default export rendered anyway
-  --export <name>     render this named export instead of the default one`;
+  --export <name>     render this named export instead of the default one
+
+Arguments after -- go to the app (process.argv.slice(2)), e.g. -- --vault ./notes.
+Inside, isScreenshot() from @nodebuilderjs/core is true (the app can skip real files or
+the network and show sample data).`;
 
 export function screenshotCommand(argv: string[]) {
+  const dashes = argv.indexOf("--");
+  const appArgs = dashes < 0 ? [] : argv.slice(dashes + 1);
   const { values: opts, positionals } = parseArgs({
-    args: argv,
+    args: dashes < 0 ? argv : argv.slice(0, dashes),
     allowPositionals: true,
     options: {
       width: { type: "string" },
@@ -61,7 +67,7 @@ export function screenshotCommand(argv: string[]) {
   const component = opts.props !== undefined || opts.export !== undefined;
   const runner = { NB_SCREENSHOT_ENTRY: resolve(app), NB_SCREENSHOT_PROPS: opts.props ?? "{}", NB_SCREENSHOT_EXPORT: opts.export ?? "" };
   const spawn = (script: string, extra: Record<string, string> = {}) => {
-    const child = spawnSync(process.execPath, [script], { env: { ...env, ...extra }, stdio: "inherit", timeout: 60_000 });
+    const child = spawnSync(process.execPath, [script, ...appArgs], { env: { ...env, ...extra }, stdio: "inherit", timeout: 60_000 });
     if (child.error) {
       console.error(`nodebuilder screenshot: ${child.error.message}`);
       process.exit(1);
