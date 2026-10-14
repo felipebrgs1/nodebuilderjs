@@ -69,7 +69,7 @@ const tarballOf = (dir: string) => {
 const tarballs = packages.map(tarballOf);
 
 if (opts["skip-build"]) {
-  for (const t of tarballs) if (!existsSync(t)) throw new Error(`${t} não existe; rode sem --skip-build`);
+  for (const t of tarballs) if (!existsSync(t)) throw new Error(`${t} does not exist; run without --skip-build`);
 } else {
   // ---- versions ------------------------------------------------------------------
   for (const dir of readdirSync(join(ROOT, "packages"))) {
@@ -79,13 +79,13 @@ if (opts["skip-build"]) {
   }
   // bun pm pack resolves workspace:* from bun.lock, so refresh it after a version change.
   await $`bun install --silent`.cwd(ROOT);
-  console.log(`• versão ${version} em todos os pacotes`);
+  console.log(`• version ${version} in every package`);
 
   // ---- agent docs: the hashes of every released version, for `nodebuilder agents update` ----
   await $`bun ${join(ROOT, "scripts/agents-history.ts")}`.cwd(ROOT);
 
   // ---- lib/: JS + declarations for Node (Bun uses src/ through the "bun" export condition) ----
-  console.log(`• lib/: ${await buildLib(join(ROOT, "src"), join(ROOT, "lib"))} módulos (JS + .d.ts)`);
+  console.log(`• lib/: ${await buildLib(join(ROOT, "src"), join(ROOT, "lib"))} modules (JS + .d.ts)`);
 
   // ---- prebuilt addon --------------------------------------------------------------
   const addon = await buildNative(ROOT, opts.native as "docker" | "local");
@@ -94,16 +94,16 @@ if (opts["skip-build"]) {
   const glibc = elfGlibc(new Uint8Array(readFileSync(addon)));
   const [major = 0, minor = 0] = (glibc ?? "0.0").split(".").map(Number);
   if (major > 2 || (major === 2 && minor > 34)) {
-    throw new Error(`o addon exige glibc ${glibc}, acima da 2.34 prometida (see the symbols with: objdump -T ${addon} | grep GLIBC_2.3)`);
+    throw new Error(`the addon needs glibc ${glibc}, above the promised 2.34 (see the symbols with: objdump -T ${addon} | grep GLIBC_2.3)`);
   }
-  console.log(`• addon ${target} (${opts.native}), glibc mínima ${glibc}`);
+  console.log(`• addon ${target} (${opts.native}), minimum glibc ${glibc}`);
 
   // ---- pack --------------------------------------------------------------------------
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   for (const dir of packages) await $`bun pm pack --destination ${out} --quiet`.cwd(dir).quiet();
 }
-console.log("• pacotes:");
+console.log("• packages:");
 for (const t of tarballs) console.log(`  ${t}`);
 
 if (opts.publish) {
@@ -119,7 +119,7 @@ if (opts.publish) {
     if (opts.npm) await $`npm publish ${t} --access public --tag ${opts.tag}`.cwd(ROOT);
     else await $`bun publish ${t} --access public --tag ${opts.tag} ${otp}`.cwd(ROOT);
   }
-  console.log(`\nPublicado ${version} (tag ${opts.tag}).`);
+  console.log(`\nPublished ${version} (tag ${opts.tag}).`);
 } else {
-  console.log(`\nNada publicado. Para publicar: bun run npm:publish`);
+  console.log(`\nNothing published. To publish: bun run npm:publish`);
 }
