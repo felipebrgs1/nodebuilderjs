@@ -1,0 +1,44 @@
+# Rules every pull request must follow (see CONTRIBUTING.md). The branch rulesets require
+# "pr-title" on developer and main, and "source-branch" on main.
+name: PR rules
+
+on:
+  pull_request:
+    branches: [developer, main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-24.04
+    steps:
+      # A PR into developer is squashed: its title becomes the commit message.
+      - name: Title is a commit subject
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          fail() { echo "::error title=PR title::$1 (got: \"$TITLE\")"; exit 1; }
+          [ ${#TITLE} -le 72 ] || fail "at most 72 characters"
+          printf '%s' "$TITLE" | grep -Eq '^[A-Z]' || fail "starts with a capital letter, imperative mood (\"Add X\", \"Fix Y\")"
+          printf '%s' "$TITLE" | grep -Eq '\.$' && fail "no trailing period"
+          printf '%s' "$TITLE" | grep -Eiq '^(wip|draft)\b' && fail "not a work in progress (mark the PR as draft instead)"
+          printf '%s' "$TITLE" | grep -Eq '^[a-z]+(\([^)]*\))?!?:' && fail "no conventional-commit prefix (\"feat:\", \"fix:\")"
+          echo "ok"
+
+  source-branch:
+    runs-on: ubuntu-24.04
+    steps:
+      # main only receives releases: everything goes through developer first.
+      - name: PRs into main come from developer
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if [ "$BASE" = "main" ] && { [ "$HEAD" != "developer" ] || [ "$SAME_REPO" != "true" ]; }; then
+            echo "::error title=Source branch::PRs into main must come from developer of this repository (got: $HEAD). Open the PR against developer."
+            exit 1
+          fi
+          echo "ok ($HEAD -> $BASE)"

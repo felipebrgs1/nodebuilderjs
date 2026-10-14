@@ -6,6 +6,8 @@
 //   bun run npm:build                 # build + pack, nothing leaves the machine
 //   bun run npm:publish [--tag next]  # also `bun publish` each tarball (needs `bunx npm login`)
 //   bun run npm:publish --skip-build --otp 123456   # publish dist/npm as is (2FA codes last ~30 s)
+//   bun run npm:publish --npm         # with `npm publish` (CI: trusted publishing, see .github/workflows/publish.yml)
+// Versions already on the registry are skipped, so a rerun only publishes what is missing.
 import { $ } from "bun";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -19,6 +21,7 @@ const { values: opts } = parseArgs({
     tag: { type: "string", default: "latest" },
     native: { type: "string", default: "docker" },
     otp: { type: "string" },
+    npm: { type: "boolean" },
     "skip-build": { type: "boolean" },
   },
 });
@@ -105,7 +108,17 @@ for (const t of tarballs) console.log(`  ${t}`);
 
 if (opts.publish) {
   const otp = opts.otp ? ["--otp", opts.otp] : [];
-  for (const t of tarballs) await $`bun publish ${t} --access public --tag ${opts.tag} ${otp}`.cwd(ROOT);
+  for (const [i, t] of tarballs.entries()) {
+    const name = readJson(join(packages[i]!, "package.json")).name as string;
+    // A rerun after a partial publish must not fail on the packages that already went out.
+    if ((await fetch(`https://registry.npmjs.org/${name.replace("/", "%2F")}/${version}`)).ok) {
+      console.log(`• ${name}@${version} is already on npm, skipping`);
+      continue;
+    }
+    // In GitHub Actions, npm publishes through trusted publishing (OIDC, no token) with provenance.
+    if (opts.npm) await $`npm publish ${t} --access public --tag ${opts.tag}`.cwd(ROOT);
+    else await $`bun publish ${t} --access public --tag ${opts.tag} ${otp}`.cwd(ROOT);
+  }
   console.log(`\nPublicado ${version} (tag ${opts.tag}).`);
 } else {
   console.log(`\nNada publicado. Para publicar: bun run npm:publish`);
