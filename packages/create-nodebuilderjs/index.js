@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const { version } = JSON.parse(readFileSync(join(here, "package.json"), "utf8"));
 
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
@@ -79,7 +78,9 @@ const pkg = {
     "icons:add": "nodebuilder icons add --out src/icons.ts",
     package: `nodebuilder package src/main.tsx --title "${title}" --app-id ${appId}`,
   },
-  dependencies: { "@nodebuilderjs/core": `^${version}` },
+  // Whatever is newest on npm when the app is created (not this package's own version, which may
+  // lag behind); `bun add ...@latest` below then pins that one as ^x.y.z.
+  dependencies: { "@nodebuilderjs/core": "latest" },
   devDependencies: { "@types/bun": "^1.4.2", typescript: "7.0.2" },
 };
 writeFileSync(join(target, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
@@ -89,7 +90,7 @@ const hasBun = spawnSync("bun", ["--version"], { stdio: "ignore" }).status === 0
 
 if (!opts["no-install"]) {
   if (!hasBun) console.warn("Bun not found: install it from https://bun.sh and run `bun install`.");
-  else if (!run("bun", ["install"])) console.warn("`bun install` failed; run it again inside the folder.");
+  else if (!run("bun", ["add", "@nodebuilderjs/core@latest"])) console.warn("`bun install` failed; run it again inside the folder.");
 }
 if (!opts["no-git"] && spawnSync("git", ["--version"], { stdio: "ignore" }).status === 0) {
   run("git", ["init", "-q"]);

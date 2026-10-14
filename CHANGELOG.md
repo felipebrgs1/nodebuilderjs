@@ -48,6 +48,10 @@ clone: text editing, rich text, input), plus window icons and the system tray.
   CSS (inside the border, ignoring the padding), and their percentages are of it too. They were
   placed inside the padding: an app that compensated with negative offsets (`left={-9}` in a
   card with `padding={[3, 6, 3, 9]}`) can use `left={0}` now.
+- `bun create nodebuilderjs` installs the newest `@nodebuilderjs/core` on npm (`bun add
+  @nodebuilderjs/core@latest`, pinned as `^x.y.z`), not the version of `create-nodebuilderjs`
+  itself, which could lag behind or be ahead of what is published; with `--no-install` the
+  dependency stays `latest`.
 - `nodebuilder screenshot app.tsx out.png -- args...` passes the arguments to the app, and
   `isScreenshot()` tells the app it is being shot (to use sample data).
 - Errors that no `ErrorBoundary` catches reach the caller from where they were thrown: `bun test`
