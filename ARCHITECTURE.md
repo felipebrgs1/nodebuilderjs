@@ -662,6 +662,15 @@ the pointer took the press (clickable, focusable or with `onPointerDown`). Custo
 window manager's decoration is turned off and move/maximize use EWMH messages; without a
 compositor, the window loses transparency and rounded corners.
 
+**Window icon.** `src/image/icon.ts` turns `<Window icon>` (or the default, the same SVG
+`nodebuilder package` installs) into square straight-alpha images at 16–256 px: an SVG is
+rasterized at each size, a raster image is centered and area-averaged in premultiplied alpha,
+never scaled up. `run()` sends them once after `open()` (`nb_platform_set_icon`). Wayland uses
+`xdg-toplevel-icon-v1` (vendored in `protocols/`): one memfd `wl_shm` pool, premultiplied
+ARGB8888 buffers kept alive until the icon is replaced or the window closes, then a surface
+commit (`set_icon` is double-buffered). Without the protocol nothing is sent and the compositor
+falls back to the `.desktop` that matches the app id. X11 writes `_NET_WM_ICON`.
+
 ### Clipboard
 
 Text only, through the `nb_platform_clipboard_write/read` contract. Reading is asynchronous on

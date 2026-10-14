@@ -137,7 +137,8 @@ What cannot be tested automatically is documented when closing the task:
   `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
   `doctor` (each check on fake probes, the ELF and `ldd` readers, `diagnostics()` and one spawn),
   `agents` (`agents update` on temp apps: stale, edited, renamed docs, AGENTS.md markers),
-  `clipboard`, `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
+  `clipboard`, `window-icon` (`iconImages`: sizes, fitting, the default; `run()` covers the
+  prop in `app`), `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
   pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
 - Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
@@ -217,6 +218,7 @@ src/                   one module per folder; relative imports with `.js`
     jpeg.ts            baseline/progressive JPEG, CMYK/YCCK, EXIF; identical to libjpeg-turbo
     webp.ts            WebP VP8 (lossy), VP8L, alpha, first animation frame; identical to libwebp
     png-encode.ts      PNG encoder (RGBA, Sub/Up filters, node:zlib) for screenshots
+    icon.ts            app icons: SVG/raster -> square sizes (window icon; DEFAULT_ICON_SVG)
   svg/                 SVG for icons (<Icon>)
     parse.ts           XML, presentation attributes, style="", transform
     render.ts          shapes -> geometry -> bitmap
@@ -248,7 +250,7 @@ native/
     codecs.c            AVIF/HEIC via libheif (dlopen; own declarations, no header)
     offscreen.c         EGL context with no display server (surfaceless/device) + FBO, for screenshots
     build.sh            backend build (called by scripts/build-native.sh)
-    protocols/          xdg-shell.xml (vendored; wayland-protocols is not installed)
+    protocols/          xdg-shell.xml, xdg-toplevel-icon-v1.xml (vendored; wayland-protocols is not installed)
   build/<platform>-<arch>/  output (names from process.platform/arch: linux-x64, ...)
 test/            one file per module (bun:test; bunfig.toml limits bun test to test/)
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> named commands
@@ -682,6 +684,8 @@ packages, all with the version from the root `package.json`:
   open a window afterwards (and vice versa).
 - No accessibility (AT-SPI), multi-window, IME
   (text-input-v3), DnD, real fractional scaling (KDE 125% renders at 2x and downscales).
+- Window icon on Wayland only with `xdg-toplevel-icon-v1` (KDE 6.1+; GNOME uses the `.desktop`
+  matching the app id). No system tray yet (StatusNotifierItem over D-Bus).
 - Window always uses its own decoration (CSD): title bar, move, maximize,
   resize from the edges (6 px); `decorations={false}` swaps the bar for the app's own
   (`dragRegion` + `<WindowControls />`). `xdg-decoration` (SSD on KDE) not yet.

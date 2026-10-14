@@ -3,6 +3,7 @@
 
 import { writeFileSync } from "node:fs";
 import { type Child, insert } from "../jsx-runtime.js";
+import { type IconImage, type IconInput, iconImages } from "../image/icon.js";
 import { setImageBackend } from "../image/source.js";
 import { layout } from "../render/layout.js";
 import { overflowWarnings } from "../render/overflow.js";
@@ -19,6 +20,8 @@ import { type Screenshot, captureTree } from "./screenshot.js";
 export interface WindowOptions {
   title: string;
   appId?: string;
+  /** Taskbar and switcher icon: SVG markup, or an .svg/PNG/JPEG/WebP file (`import icon from "./icon.svg" with { type: "file" }`). Default: the framework's. */
+  icon?: IconInput;
   width?: number;
   height?: number;
   /** Return false to keep the window open. */
@@ -452,4 +455,14 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
     (events) => batch(() => events.forEach(handle)),
   );
   setClipboardBackend(clip);
+  nat.setIcon(windowIcon(options.icon, warn));
+}
+
+function windowIcon(icon: IconInput | undefined, warn: (message: string) => void): IconImage[] {
+  try {
+    return iconImages(icon);
+  } catch (err) {
+    warn(`nodebuilder: could not load the window icon, using the default (${(err as Error).message})`);
+    return iconImages();
+  }
 }

@@ -799,6 +799,20 @@ const [query, setQuery] = createSignal("");
   `windowState.maximized()`, `.activated()` (the window has focus), `.width()` and
   `.height()` are reactive.
 
+**Icon.** `<Window icon={icon}>` sets the icon the taskbar and the window switcher show:
+SVG markup or an `.svg`, PNG, JPEG or WebP file, imported with `with { type: "file" }` so it
+gets into the package. Without one, the window gets the nodebuilder icon instead of the
+compositor's generic one. On Wayland it needs the `xdg-toplevel-icon` protocol (KDE Plasma 6.1+);
+without it (GNOME), the compositor shows the icon of the installed `.desktop` file whose name
+matches `appId`, which `nodebuilder package` installs.
+
+```tsx
+import { Window } from "@nodebuilderjs/core";
+import icon from "./icon.svg" with { type: "file" };
+
+<Window title="Notes" appId="com.example.notes" icon={icon}>{/* content */}</Window>;
+```
+
 ### Testing
 
 `@nodebuilderjs/core/testing` runs the app in `bun test` without a window, with fake text

@@ -12,7 +12,7 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 
 | Widget | What for | Main props |
 |---|---|---|
-| `Window` | root, one per app, with its own title bar | `title`, `width`, `height` (initial size), `appId`, `onClose` (return `false` to keep it open), `decorations={false}` (your own title bar, see "Theme and window") |
+| `Window` | root, one per app, with its own title bar | `title`, `width`, `height` (initial size), `appId`, `icon` (SVG markup or an imported `.svg`/PNG file; default: the nodebuilder icon), `onClose` (return `false` to keep it open), `decorations={false}` (your own title bar, see "Theme and window") |
 | `WindowControls` | minimize, maximize/restore and close buttons, for a custom title bar | style (`gap`...) |
 | `Column` / `Row` / `Box` | flex container (column, row; `Box` is a column) | style + events |
 | `Grid` | children in rows of equal-width cells (cards, covers, galleries) | `columns`, `gap`, `rowGap` (default `gap`); see "Layout rules" |

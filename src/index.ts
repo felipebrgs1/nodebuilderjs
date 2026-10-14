@@ -16,6 +16,7 @@ export { theme, lightTheme, darkTheme, setTheme, colorScheme, type Theme } from 
 export { animate, createTween, createPresence, easing, mixColor, type AnimateOptions, type Easing, type PresenceOptions } from "./animation/index.js";
 export { decodeImage } from "./image/decode.js";
 export { type Bitmap, type ImageInput } from "./image/source.js";
+export { type IconInput } from "./image/icon.js";
 export { parseSvg, renderSvg, type IconNode, type Svg } from "./svg/index.js";
 export { UINode, debugTree, setTextMeasurer, type Background, type Paint, type Radius, type FontStyle, type FontInput, type TextMeasurer, type Style, type ElementRef, type Placement, type Painter, type KeyEvent, type PointerEvent } from "./render/node.js";
 export { layout } from "./render/layout.js";

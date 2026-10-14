@@ -562,6 +562,38 @@ static napi_value js_set_title(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
+#define MAX_ICON_IMAGES 16
+
+// setIcon([{ size, rgba: Uint8Array }]): one icon at several square sizes, straight alpha.
+static napi_value js_set_icon(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  uint32_t count = 0;
+  CHECK(napi_get_array_length(env, argv[0], &count));
+  if (count > MAX_ICON_IMAGES) count = MAX_ICON_IMAGES;
+  nb_icon_image images[MAX_ICON_IMAGES];
+  for (uint32_t i = 0; i < count; i++) {
+    napi_value item, v;
+    CHECK(napi_get_element(env, argv[0], i, &item));
+    CHECK(napi_get_named_property(env, item, "size", &v));
+    int32_t size;
+    CHECK(napi_get_value_int32(env, v, &size));
+    CHECK(napi_get_named_property(env, item, "rgba", &v));
+    napi_typedarray_type type;
+    size_t length;
+    void *data;
+    CHECK(napi_get_typedarray_info(env, v, &type, &length, &data, NULL, NULL));
+    if (type != napi_uint8_array || size <= 0 || size > 1024 || length < (size_t)size * size * 4) {
+      napi_throw_type_error(env, NULL, "setIcon expects [{ size, rgba }] with size*size*4 bytes of RGBA");
+      return NULL;
+    }
+    images[i] = (nb_icon_image){.size = size, .rgba = data};
+  }
+  if (g_open) nb_platform_set_icon(images, (int)count);
+  return NULL;
+}
+
 static napi_value js_move(napi_env env, napi_callback_info info) {
   if (g_open) nb_platform_move();
   return NULL;
@@ -694,6 +726,7 @@ static napi_value js_diagnostics(napi_env env, napi_callback_info info) {
 NAPI_MODULE_INIT() {
   napi_property_descriptor props[] = {
       {"open", NULL, js_open, NULL, NULL, NULL, napi_default, NULL},
+      {"setIcon", NULL, js_set_icon, NULL, NULL, NULL, napi_default, NULL},
       {"close", NULL, js_close, NULL, NULL, NULL, napi_default, NULL},
       {"render", NULL, js_render, NULL, NULL, NULL, napi_default, NULL},
       {"renderOffscreen", NULL, js_render_offscreen, NULL, NULL, NULL, napi_default, NULL},

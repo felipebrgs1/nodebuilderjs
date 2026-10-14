@@ -98,6 +98,7 @@ void nb_platform_request_frame(void) { FORWARD(active->request_frame()); }
 int nb_platform_scale(void) { return active ? active->scale() : 1; }
 void nb_platform_set_cursor(const char *name) { FORWARD(active->set_cursor(name)); }
 void nb_platform_set_title(const char *title) { FORWARD(active->set_title(title)); }
+void nb_platform_set_icon(const nb_icon_image *images, int count) { FORWARD(active->set_icon(images, count)); }
 void nb_platform_move(void) { FORWARD(active->move()); }
 void nb_platform_resize(uint32_t edges) { FORWARD(active->resize(edges)); }
 void nb_platform_set_maximized(bool maximized) { FORWARD(active->set_maximized(maximized)); }

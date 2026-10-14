@@ -37,7 +37,7 @@ static struct {
   char cursor_name[64];
 
   Atom wm_protocols, wm_delete, net_wm_name, utf8_string, net_wm_state, net_wm_state_max_v,
-      net_wm_state_max_h, net_wm_moveresize, motif_hints, clipboard, targets, incr_atom, text_atom, paste_prop;
+      net_wm_state_max_h, net_wm_moveresize, net_wm_icon, motif_hints, clipboard, targets, incr_atom, text_atom, paste_prop;
 
   EGLDisplay egl_display;
   EGLContext egl_context;
@@ -476,6 +476,7 @@ static bool x_open(const nb_window_options *o) {
   X.net_wm_state_max_v = XInternAtom(X.dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
   X.net_wm_state_max_h = XInternAtom(X.dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
   X.net_wm_moveresize = XInternAtom(X.dpy, "_NET_WM_MOVERESIZE", False);
+  X.net_wm_icon = XInternAtom(X.dpy, "_NET_WM_ICON", False);
   X.motif_hints = XInternAtom(X.dpy, "_MOTIF_WM_HINTS", False);
   X.clipboard = XInternAtom(X.dpy, "CLIPBOARD", False);
   X.targets = XInternAtom(X.dpy, "TARGETS", False);
@@ -605,6 +606,27 @@ static void x_set_title(const char *title) {
   XFlush(X.dpy);
 }
 
+// _NET_WM_ICON: width, height, then ARGB pixels (straight alpha), one entry per size. Format
+// 32 properties are arrays of `long` in Xlib, whatever its width.
+static void x_set_icon(const nb_icon_image *images, int count) {
+  if (!X.dpy) return;
+  size_t n = 0;
+  for (int i = 0; i < count; i++) n += 2 + (size_t)images[i].size * images[i].size;
+  unsigned long *data = malloc(n * sizeof *data);
+  if (!data) return;
+  unsigned long *p = data;
+  for (int i = 0; i < count; i++) {
+    int size = images[i].size;
+    *p++ = size;
+    *p++ = size;
+    for (const uint8_t *px = images[i].rgba, *end = px + (size_t)size * size * 4; px < end; px += 4)
+      *p++ = (unsigned long)px[3] << 24 | px[0] << 16 | px[1] << 8 | px[2];
+  }
+  XChangeProperty(X.dpy, X.win, X.net_wm_icon, XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)data, (int)n);
+  free(data);
+  XFlush(X.dpy);
+}
+
 static void moveresize(int direction) {
   XUngrabPointer(X.dpy, CurrentTime);
   send_wm_message(X.net_wm_moveresize, X.root_x, X.root_y, direction, X.last_button ? X.last_button : 1, 1);
@@ -689,6 +711,7 @@ const nb_linux_backend nb_x11_backend = {
     .scale = x_scale,
     .set_cursor = x_set_cursor,
     .set_title = x_set_title,
+    .set_icon = x_set_icon,
     .move = x_move,
     .resize = x_resize,
     .set_maximized = x_set_maximized,

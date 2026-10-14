@@ -39,6 +39,9 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - 0.4 (2026-10-14): font families and app fonts (`fontFamily`, `registerFont`, OpenType
   features and variable axes), paged glyph atlases, `nodebuilder doctor` and the fixes from a
   user report below
+- Window icon (2026-10-14): `<Window icon>` (SVG or raster) via `xdg-toplevel-icon-v1` on
+  Wayland and `_NET_WM_ICON` on X11; the nodebuilder icon by default instead of the
+  compositor's generic one
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 - `nodebuilder doctor` (2026-10-14): checks the machine (runtime, native core and system
   libraries, display, keyboard, GL, fonts, libheif) and prints the command that fixes each

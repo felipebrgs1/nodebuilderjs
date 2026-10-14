@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Box, Column, Row, Scroll, Text, UINode, Window, animate, createSignal, setTextMeasurer } from "@nodebuilderjs/core";
 import type { Child } from "@nodebuilderjs/core";
+import { iconImages } from "../src/image/icon.js";
 import { setImageBackend } from "../src/image/source.js";
 import { invalidate, setDisplayScale } from "../src/render/node.js";
 import { runWith, windowControls } from "../src/runtime/app.js";
@@ -14,7 +15,7 @@ const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fakeNative() {
   let emitEvents: (events: NativeEvent[]) => void = () => {};
   let images = 0;
-  const calls = { render: 0, requestFrame: 0, close: 0 };
+  const calls = { render: 0, requestFrame: 0, close: 0, icons: [] as { size: number; rgba: Uint8Array }[][] };
   const native: Native = {
     open: (_options, onEvents) => void (emitEvents = onEvents),
     close: () => void calls.close++,
@@ -30,6 +31,7 @@ function fakeNative() {
     },
     setCursor: () => {},
     setTitle: () => {},
+    setIcon: (images) => void calls.icons.push(images),
     move: () => {},
     resize: () => {},
     setMaximized: () => {},
@@ -86,6 +88,27 @@ afterEach(() => {
   setImageBackend({ create: () => ++id, destroy: () => {} });
   setDisplayScale(1);
   setFrameClock(null);
+});
+
+describe("window icon", () => {
+  test("a window without an icon gets the framework's default", async () => {
+    const app = await start(() => <Window title="x" />);
+    expect(app.calls.icons).toHaveLength(1);
+    expect(app.calls.icons[0]!.at(-1)!.rgba).toEqual(iconImages().at(-1)!.rgba);
+  });
+
+  test("<Window icon> is rasterized and sent once", async () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1" fill="#00ff00"/></svg>`;
+    const app = await start(() => <Window title="x" icon={svg} />);
+    expect(app.calls.icons).toHaveLength(1);
+    expect([...app.calls.icons[0]![0]!.rgba.subarray(0, 4)]).toEqual([0, 255, 0, 255]);
+  });
+
+  test("an icon that cannot be read warns and falls back to the default", async () => {
+    const app = await start(() => <Window title="x" icon="/nonexistent/icon.png" />);
+    expect(app.warnings.some((w) => w.includes("/nonexistent/icon.png"))).toBe(true);
+    expect(app.calls.icons[0]!.at(-1)!.rgba).toEqual(iconImages().at(-1)!.rgba);
+  });
 });
 
 describe("frame loop", () => {

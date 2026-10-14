@@ -64,6 +64,8 @@ export interface Native {
   decodeImage(bytes: Uint8Array): { width: number; height: number; data: Uint8Array };
   setCursor(name: string): void;
   setTitle(title: string): void;
+  /** Square straight-alpha RGBA images of one icon at several sizes (taskbar, switcher). */
+  setIcon(images: { size: number; rgba: Uint8Array }[]): void;
   move(): void;
   /** xdg_toplevel resize edges bitmask: top 1, bottom 2, left 4, right 8. */
   resize(edges: number): void;

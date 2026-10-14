@@ -20,6 +20,7 @@ typedef struct {
   int (*scale)(void);
   void (*set_cursor)(const char *name);
   void (*set_title)(const char *title);
+  void (*set_icon)(const nb_icon_image *images, int count);
   void (*move)(void);
   void (*resize)(uint32_t edges);
   void (*set_maximized)(bool maximized);

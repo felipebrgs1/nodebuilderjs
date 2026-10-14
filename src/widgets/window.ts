@@ -1,3 +1,4 @@
+import type { IconInput } from "../image/icon.js";
 import { type Child, insert } from "../jsx-runtime.js";
 import { windowControls, windowOptionsKey, windowState } from "../runtime/app.js";
 import { type Handlers, type Style, UINode, measureText } from "../render/node.js";
@@ -51,6 +52,8 @@ export function Window(
     width?: number;
     height?: number;
     appId?: string;
+    /** Taskbar and switcher icon: SVG markup, or an .svg/PNG/JPEG/WebP file. Default: the framework's. */
+    icon?: IconInput;
     onClose?: () => boolean | void;
     /** false: no built-in title bar; build your own with `dragRegion` and `<WindowControls />`. Border, corners and edge resizing stay. */
     decorations?: boolean;
