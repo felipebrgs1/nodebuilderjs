@@ -1,0 +1,46 @@
+# Typecheck, tests (with the native addon built) and doc snippets.
+# Required by the branch rulesets of main and developer (check name: "test").
+name: CI
+
+on:
+  pull_request:
+    branches: [developer, main]
+  push:
+    branches: [developer] # main is tested by publish.yml before publishing
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # scripts/agents-history.ts reads the history of the template docs
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - name: System libraries (build + offscreen EGL + fonts)
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            gcc libc6-dev pkg-config libwayland-dev libwayland-bin libegl-dev libgles-dev \
+            libxkbcommon-dev libfreetype-dev libharfbuzz-dev libfontconfig-dev libx11-dev \
+            libxcursor-dev libxrandr-dev libegl-mesa0 libgl1-mesa-dri fontconfig \
+            fonts-dejavu-core fonts-noto-core fonts-noto-color-emoji
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build:native
+      - run: bun run typecheck
+      - run: bun test
+      - run: bun run check:snippets

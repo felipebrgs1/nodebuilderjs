@@ -1,10 +1,12 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Column, TextField, clipboard, createSignal } from "@nodebuilderjs/core";
 import { interact, mount } from "@nodebuilderjs/core/testing";
 import { nativeClipboard, setClipboardBackend } from "../src/runtime/clipboard.js";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
+// Copying in other files (TextField, TextArea) leaves text in the shared in-memory clipboard.
+beforeEach(() => setClipboardBackend(null));
 afterEach(() => setClipboardBackend(null));
 
 test("without a window the clipboard lives in memory", async () => {
