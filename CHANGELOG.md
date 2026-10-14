@@ -1,8 +1,15 @@
 # Changelog
 
-## 0.4.1 (unreleased)
+## 0.4.1 (2026-10-14)
 
-From a second report of the Discord clone (with 0.4.0).
+From a second report of the Discord clone (with 0.4.0) and from the Dia report (an Obsidian
+clone: text editing, rich text, input), plus window icons and the system tray.
+
+- The addon gained `setIcon`, `setVisible` and modifiers on pointer events: core 0.4.1 needs
+  `@nodebuilderjs/linux-x64` 0.4.1, which it installs with it. `nodebuilder doctor` reports a
+  mismatch.
+- Two changes may need edits in apps (marked **Breaking** below): normalized key names, and
+  `position="absolute"` placed from the padding box.
 
 ### Fixed
 - Layout got slower with each release (a 500-row table: 1.1 ms in 0.2.5, 1.8 ms in 0.4.0): every

@@ -45,6 +45,10 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
 - System tray (2026-10-14): `createTray` (StatusNotifierItem + dbusmenu, reactive icon, tooltip
   and menu) on our own D-Bus client in TypeScript; `windowControls.hide()`/`show()` to close to
   the tray
+- 0.4.1 (2026-10-14): window icons, system tray, `TextArea`, selection/copy/undo in
+  `TextField`, `RichText`, modifiers and `onKeyUp`/`onContextMenu`, `<Overlay at>`, Canvas
+  `measure`/`visibleRect`, `position="absolute"` from the padding box as in CSS, error stacks
+  that show the app's frame, and the fixes from two user reports
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 - `nodebuilder doctor` (2026-10-14): checks the machine (runtime, native core and system
   libraries, display, keyboard, GL, fonts, libheif) and prints the command that fixes each
