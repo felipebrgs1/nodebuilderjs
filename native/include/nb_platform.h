@@ -116,3 +116,19 @@ void nb_platform_font_families(void (*fn)(const char *family, void *ud), void *u
  */
 bool nb_platform_decode_image(const uint8_t *data, size_t size, int *width, int *height, uint8_t **rgba,
                               char *error, size_t error_size);
+
+// ---- diagnostics (`nodebuilder doctor`) ---------------------------------------
+
+typedef struct {
+  const char *backend;  // the display server reached ("wayland", "x11"...); NULL: none
+  char error[256];      // why none was reachable, when backend is NULL
+  bool compose;         // the keyboard's compose data (dead keys, accents) loads for `locale`
+  char locale[64];
+} nb_display_probe;
+
+/**
+ * JS thread. Connects to the display server nb_platform_open would use (the same choice and
+ * order), checks what a window needs from it and disconnects, without creating a window.
+ * Works while a window is open (a second connection).
+ */
+void nb_platform_probe_display(nb_display_probe *out);

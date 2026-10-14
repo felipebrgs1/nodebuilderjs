@@ -41,6 +41,31 @@ The project comes with an example test (`bun test`, no window), TypeScript alrea
 configured (`bun run typecheck`) and an `AGENTS.md` that explains the framework to coding
 agents such as Claude Code.
 
+Window does not open, text looks wrong or something fails to load? Run the doctor:
+
+```sh
+bun run doctor     # or: bunx nodebuilder doctor
+```
+
+```
+✓ Bun 1.4.3
+✓ native core: @nodebuilderjs/linux-x64 (glibc 2.34 required, system 2.39) · FreeType 2.13.2 · HarfBuzz 8.3.0
+✓ Wayland (WAYLAND_DISPLAY=wayland-0)
+✓ compose table for pt_BR.UTF-8 (dead keys, accents)
+✓ GLES offscreen: Mesa Intel(R) Xe Graphics (OpenGL ES 3.2 Mesa 25.2)
+✓ UI font: Noto Sans
+! no color emoji font: emoji draw as boxes or in monochrome
+    → sudo apt install fonts-noto-color-emoji
+- libheif not found: AVIF/HEIC images disabled
+```
+
+It checks Bun, the native core and the system libraries it links to (naming the apt, dnf or
+pacman package of each missing one), the display server a window would use, the keyboard's
+compose table, GL, the UI font and the emoji and CJK fallbacks, and libheif. It exits 1 when
+something is broken. `--json` is for scripts and coding agents; `--window` tests GL by opening
+a small window for a moment (by default GL is tested offscreen, and on a laptop with two GPUs
+the window may use the other one). Paste its output in bug reports.
+
 ## How it works, in 30 seconds
 
 - **Components run once.** There is no re-render and no virtual DOM. State is `createSignal`,

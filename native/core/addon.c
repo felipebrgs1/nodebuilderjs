@@ -3,6 +3,7 @@
 // via a threadsafe function; events are then processed and delivered to JS on
 // the JS thread. No libuv, so the addon loads in Bun and Node alike.
 #define NAPI_VERSION 8
+#include <GLES2/gl2.h>
 #include <node_api.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -619,6 +620,77 @@ static napi_value js_read_clipboard(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
+static napi_value string_or_null(napi_env env, const char *s) {
+  napi_value v;
+  if (s) napi_create_string_utf8(env, s, NAPI_AUTO_LENGTH, &v);
+  else napi_get_null(env, &v);
+  return v;
+}
+
+static void set_string(napi_env env, napi_value obj, const char *key, const char *s) {
+  napi_set_named_property(env, obj, key, string_or_null(env, s));
+}
+
+// A fallback font for `cp`, as `nodebuilder doctor` reports it (path or null).
+static napi_value fallback_path(napi_env env, uint32_t cp, bool emoji) {
+  int index = 0;
+  char *path = nb_platform_font_fallback(cp, NULL, false, 400, false, emoji, &index);
+  napi_value v = string_or_null(env, path);
+  free(path);
+  return v;
+}
+
+// diagnostics() -> { freetype, harfbuzz, display, fonts, gl } (see src/runtime/native.ts).
+static napi_value js_diagnostics(napi_env env, napi_callback_info info) {
+  napi_value out, display, fonts, ui, gl, v;
+  CHECK(napi_create_object(env, &out));
+
+  char freetype[32];
+  const char *harfbuzz;
+  nb_fonts_versions(freetype, sizeof freetype, &harfbuzz);
+  set_string(env, out, "freetype", freetype);
+  set_string(env, out, "harfbuzz", harfbuzz);
+
+  nb_display_probe probe;
+  nb_platform_probe_display(&probe);
+  CHECK(napi_create_object(env, &display));
+  set_string(env, display, "backend", probe.backend);
+  set_string(env, display, "error", probe.error);
+  napi_get_boolean(env, probe.compose, &v);
+  napi_set_named_property(env, display, "compose", v);
+  set_string(env, display, "locale", probe.locale);
+  napi_set_named_property(env, out, "display", display);
+
+  CHECK(napi_create_object(env, &fonts));
+  nb_font_match match = {0};
+  char *path = nb_platform_font_path(NULL, false, 400, false, &match);
+  char family[256];
+  if (path && nb_fonts_file_family(path, match.index, family, sizeof family)) {
+    CHECK(napi_create_object(env, &ui));
+    set_string(env, ui, "path", path);
+    set_string(env, ui, "family", family);
+  } else {
+    napi_get_null(env, &ui);
+  }
+  free(path);
+  napi_set_named_property(env, fonts, "ui", ui);
+  napi_set_named_property(env, fonts, "emoji", fallback_path(env, 0x1F600, true));  // 😀
+  napi_set_named_property(env, fonts, "cjk", fallback_path(env, 0x4E2D, false));    // 中
+  napi_set_named_property(env, out, "fonts", fonts);
+
+  // Only with a context of ours current: glGetString without one is undefined behavior.
+  if (g_open || g_offscreen) {
+    CHECK(napi_create_object(env, &gl));
+    set_string(env, gl, "vendor", (const char *)glGetString(GL_VENDOR));
+    set_string(env, gl, "renderer", (const char *)glGetString(GL_RENDERER));
+    set_string(env, gl, "version", (const char *)glGetString(GL_VERSION));
+  } else {
+    napi_get_null(env, &gl);
+  }
+  napi_set_named_property(env, out, "gl", gl);
+  return out;
+}
+
 NAPI_MODULE_INIT() {
   napi_property_descriptor props[] = {
       {"open", NULL, js_open, NULL, NULL, NULL, napi_default, NULL},
@@ -641,6 +713,7 @@ NAPI_MODULE_INIT() {
       {"requestFrame", NULL, js_request_frame, NULL, NULL, NULL, napi_default, NULL},
       {"writeClipboard", NULL, js_write_clipboard, NULL, NULL, NULL, napi_default, NULL},
       {"readClipboard", NULL, js_read_clipboard, NULL, NULL, NULL, napi_default, NULL},
+      {"diagnostics", NULL, js_diagnostics, NULL, NULL, NULL, napi_default, NULL},
   };
   napi_define_properties(env, exports, sizeof props / sizeof props[0], props);
   return exports;

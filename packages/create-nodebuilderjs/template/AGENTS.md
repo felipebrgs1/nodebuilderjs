@@ -7,6 +7,11 @@ nodebuilder app: native Linux UI in TSX, **no DOM and no React**. Read this befo
 - `bun run icons:add play pause` adds icon imports to `src/icons.ts` (after `bun add lucide-static`).
 - `bun run screenshot` renders the app to `screenshot.png` without a window (also with no
   display server); add `-- --theme dark` or `-- --scale 2`.
+- `bun run doctor` checks the machine: native core and system libraries, display server,
+  keyboard, GL, fonts (emoji, CJK). **Run it first when a window does not open, the native core
+  fails to load, text shows boxes or a screenshot fails**, before changing code: the problem is
+  often a missing package, and each failure comes with the command that installs it.
+  `bun run doctor -- --json` for a machine-readable report.
 - Before finishing: `bun run typecheck && bun test`. **After a visual change, take a screenshot
   and look at it** (open the PNG): tests check boxes, not colors, alignment or clipping.
 - A screen other than the first: `nodebuilder screenshot src/App.tsx shot.png --export App

@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### New
+- `nodebuilder doctor` (`bun run doctor` in new apps): checks Bun, the native core (found,
+  same version as core, glibc, missing system libraries with the apt/dnf/pacman command that
+  installs them), the display server, the keyboard's compose table (dead keys), GL (offscreen,
+  or a real window with `--window`), the UI font, emoji and CJK fallbacks, and libheif.
+  `--json` for scripts and agents; exits 1 when something is broken.
 - **From a user report (a Discord clone built with 0.2.5):**
   - `onMount(fn)`: runs once the component's nodes are in the tree and its refs are set (an
     effect in the component body runs before the JSX below it exists). Effects created inside

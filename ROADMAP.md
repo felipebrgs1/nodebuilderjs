@@ -37,6 +37,9 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   overflow warnings, frame tracing (`NB_TRACE=frames`) and testing helpers (`findByLabel`,
   `layoutWarnings`, `useRealTextMetrics`, `screenshot`)
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
+- `nodebuilder doctor` (2026-10-14): checks the machine (runtime, native core and system
+  libraries, display, keyboard, GL, fonts, libheif) and prints the command that fixes each
+  problem; `--json` for agents, `--window` for a real window
 - Fixes from a user report (a Discord clone, 2026-10-14): the `run()`/`mount()` callback runs
   untracked, `onMount`, keys reach the `Window` with nothing focused, `focusable` containers,
   `<TextField password>` and border props that stick, `focusStyle`, event props on every

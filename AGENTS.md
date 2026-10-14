@@ -60,6 +60,9 @@ bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 
                             # PNG of the app without a window or display server (EGL offscreen)
 bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
                             # icon imports for an app (validated in its node_modules); `icons list [filter]`
+bun cli/nodebuilder.ts doctor [--json] [--window]
+                            # checks the machine (addon, system libs, display, keyboard, GL, fonts,
+                            #   libheif) with the command that fixes each problem; exit 1 on failure
 bun run npm:build           # npm packages in dist/npm/ (does not publish)
 scripts/compare.sh <label> <warmup-s> <sample-s> -- <command...>  # CPU/RAM of the process tree
 ```
@@ -129,6 +132,7 @@ What cannot be tested automatically is documented when closing the task:
   ring), `handlers` (event props on every widget, chained with the widget's own), `percent`
   (percentage sizes), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
   `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
+  `doctor` (each check on fake probes, the ELF and `ldd` readers, `diagnostics()` and one spawn),
   `clipboard`, `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
   pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
@@ -249,8 +253,10 @@ test/            one file per module (bun:test; bunfig.toml limits bun test to t
 examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
 cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
                  (+ screenshot-entry.ts: renders an exported component for `--props`/`--export`),
-                 icons.ts (`icons add/list`: writes an app's icon imports)
-  package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
+                 icons.ts (`icons add/list`: writes an app's icon imports), doctor.ts (checks
+                 over injected probes; `systemProbes()` is the real machine)
+  package/       common.ts (SYSTEM_LIBS: soname -> deb/pacman package, for packaging and doctor),
+                 deb.ts, rpm.ts, appimage.ts, native.ts (addon build, `elfGlibc`), Dockerfile, icon.svg
 packages/        workspaces published together with core (see "Publishing to npm")
   linux-x64/     @nodebuilderjs/linux-x64: only the prebuilt addon (generated, not in git)
   create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/ (AGENTS.md and
@@ -415,6 +421,11 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   `layout_runs`, shared by measure and draw. `text.c` keeps `measure` and `draw` on the same run itemization; color
   glyphs go to the RGBA atlas and are drawn with `MODE_COLOR_GLYPH` (texture unit 2, only the
   alpha of the text color applies).
+- **Diagnostics** (`diagnostics()` in `addon.c`, for `nodebuilder doctor`): must work when the
+  rest does not (no fonts, no display server), so it never calls `nb_text_init`;
+  `nb_platform_probe_display` connects with the same choice and order as `nb_platform_open` and
+  disconnects (each backend's `probe` in the vtable). glGetString only with a context of ours
+  current (`g_open || g_offscreen`).
 - After calls that may receive events (e.g. `eglSwapBuffers`), the core calls
   `nb_platform_flush()` and requests a delivery (`request_delivery()`).
 - Coordinates: JS works in **logical px**; C multiplies by the integer `scale`
@@ -585,8 +596,9 @@ Steps:
    `process.env.NB_APP_ID` is defined at build time and becomes the Wayland app id /
    WM_CLASS, which matches the `.desktop` (`StartupWMClass`).
 3. **Install tree:** `/usr/bin/<name>`, `.desktop` and icon (hicolor) in `/usr/share`.
-   System libraries are **declared dependencies, never bundled** (`DEB_DEPENDS`/`RPM_SONAMES`
-   in `cli/package/common.ts`; keep in sync with `PKGS` in `native/platform/linux/build.sh`).
+   System libraries are **declared dependencies, never bundled** (`SYSTEM_LIBS` in
+   `cli/package/common.ts`, which `DEB_DEPENDS`/`RPM_SONAMES` and `nodebuilder doctor` read; keep
+   in sync with `PKGS` in `native/platform/linux/build.sh`).
    libheif is only suggested (`DEB_SUGGESTS`/`RPM_SUGGESTS`).
 4. **Formats**, all without distro tools (only `tar`/`xz`):
    - `.deb`: hand-written `ar` (control.tar.xz + data.tar.xz);

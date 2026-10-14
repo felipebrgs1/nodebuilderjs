@@ -98,6 +98,10 @@ typedef struct {
 } nb_font_stats;
 /** How full the font tables are (tests: animated axes must keep them bounded). */
 void nb_fonts_stats(nb_font_stats *out);
+/** Diagnostics: the FreeType and HarfBuzz versions in use ("major.minor.patch"). Needs no font. */
+void nb_fonts_versions(char *freetype, size_t size, const char **harfbuzz);
+/** Diagnostics: the family name of face `index` of a font file; false when FreeType can't open it. */
+bool nb_fonts_file_family(const char *path, int index, char *out, size_t size);
 
 // ---- core/render_gles2.c ----------------------------------------------------
 

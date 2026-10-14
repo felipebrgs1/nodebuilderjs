@@ -39,6 +39,49 @@ bool nb_platform_open(const nb_window_options *options) {
   return false;
 }
 
+void nb_platform_probe_display(nb_display_probe *out) {
+  memset(out, 0, sizeof *out);
+  const nb_linux_backend *tried[3];
+  int n = 0;
+  const char *forced = getenv("NB_BACKEND");
+  if (forced && *forced) {
+    if (!strcmp(forced, "wayland")) tried[n++] = &nb_wayland_backend;
+    else if (!strcmp(forced, "x11")) tried[n++] = &nb_x11_backend;
+    else {
+      snprintf(out->error, sizeof out->error, "unknown NB_BACKEND '%s' (use wayland or x11)", forced);
+      return;
+    }
+  } else {
+    // The order of nb_platform_open: Wayland with WAYLAND_DISPLAY, X11 with DISPLAY, then
+    // Wayland's default socket.
+    const char *wl = getenv("WAYLAND_DISPLAY"), *x = getenv("DISPLAY");
+    if (wl && *wl) tried[n++] = &nb_wayland_backend;
+    if (x && *x) tried[n++] = &nb_x11_backend;
+    if (!(wl && *wl)) tried[n++] = &nb_wayland_backend;
+  }
+  char errors[sizeof out->error] = "";
+  for (int i = 0; i < n; i++) {
+    out->error[0] = 0;
+    if (tried[i]->probe(out)) {
+      out->backend = tried[i]->name;
+      out->error[0] = 0;
+      return;
+    }
+    size_t len = strlen(errors);
+    if (snprintf(errors + len, sizeof errors - len, "%s%s", len ? "; " : "", out->error) < 0) break;  // truncation is fine
+  }
+  snprintf(out->error, sizeof out->error, "%s", errors);
+}
+
+const char *nb_linux_locale(void) {
+  const char *names[] = {"LC_ALL", "LC_CTYPE", "LANG"};
+  for (int i = 0; i < 3; i++) {
+    const char *v = getenv(names[i]);
+    if (v && *v) return v;
+  }
+  return "C";
+}
+
 void nb_platform_close(void) {
   if (active) active->close();
   active = NULL;

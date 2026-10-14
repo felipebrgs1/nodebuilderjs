@@ -737,3 +737,32 @@ void nb_fonts_stats(nb_font_stats *out) {
   *out = (nb_font_stats){.faces = live_faces, .variations = live_vsets, .specs = spec_count, .styles = style_count,
                          .sizes = nb_text_size_count()};
 }
+
+// ---- diagnostics ----------------------------------------------------------------------
+
+// Both work before nb_fonts_init (which fails on a machine without fonts, the case the
+// doctor has to describe): they borrow a FreeType instance when there is none yet.
+static FT_Library diagnostics_library(void) {
+  if (nb_ft) return nb_ft;
+  FT_Library lib = NULL;
+  return FT_Init_FreeType(&lib) ? NULL : lib;
+}
+
+void nb_fonts_versions(char *freetype, size_t size, const char **harfbuzz) {
+  *harfbuzz = hb_version_string();
+  FT_Library lib = diagnostics_library();
+  FT_Int major = 0, minor = 0, patch = 0;
+  if (lib) FT_Library_Version(lib, &major, &minor, &patch);
+  snprintf(freetype, size, "%d.%d.%d", major, minor, patch);
+  if (lib && lib != nb_ft) FT_Done_FreeType(lib);
+}
+
+bool nb_fonts_file_family(const char *path, int index, char *out, size_t size) {
+  FT_Library lib = diagnostics_library();
+  FT_Face face = NULL;
+  bool ok = lib && !FT_New_Face(lib, path, index, &face) && face->family_name;
+  if (ok) snprintf(out, size, "%s", face->family_name);
+  if (face) FT_Done_Face(face);
+  if (lib && lib != nb_ft) FT_Done_FreeType(lib);
+  return ok;
+}

@@ -40,6 +40,9 @@ function fakeNative() {
     registerFont: () => [],
     fontFamilies: () => [],
     fontStats: () => ({ faces: 0, variations: 0, specs: 0, styles: 0, sizes: 0 }),
+    diagnostics: () => {
+      throw new Error("not used by run()");
+    },
   };
   return { native, calls, emit: (...events: NativeEvent[]) => emitEvents(events) };
 }

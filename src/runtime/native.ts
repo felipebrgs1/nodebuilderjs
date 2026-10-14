@@ -35,6 +35,20 @@ export interface Native {
   registerFont(bytes: Uint8Array, family: string | null, weightMin: number, weightMax: number, italic: number): { family: string; weightMin: number; weightMax: number; italic: boolean; variable: boolean }[];
   /** The registered font families and the installed ones, unsorted, possibly with duplicates. */
   fontFamilies(): string[];
+  /**
+   * What `nodebuilder doctor` reports: library versions; the display server a window would use
+   * (connected to and closed, without a window; `error` says why none, `compose` whether the
+   * keyboard's compose table loaded for `locale`); the UI font and the fallback files for a
+   * color emoji and a CJK character; the current GL context's strings (null without one: call
+   * after `renderOffscreen` or while a window is open).
+   */
+  diagnostics(): {
+    freetype: string;
+    harfbuzz: string;
+    display: { backend: string | null; error: string; compose: boolean; locale: string };
+    fonts: { ui: { path: string; family: string } | null; emoji: string | null; cjk: string | null };
+    gl: { vendor: string; renderer: string; version: string } | null;
+  };
   /** Live entries of the font tables (debugging and tests: they must stay bounded). */
   fontStats(): { faces: number; variations: number; specs: number; styles: number; sizes: number };
   /**

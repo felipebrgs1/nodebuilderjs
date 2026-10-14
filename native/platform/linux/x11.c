@@ -660,6 +660,25 @@ static int x_process(const struct pollfd *ready, int count) {
   return 0;
 }
 
+// The window's path, without the window: dead keys go through XIM (x_open), which needs the
+// locale's X11 data.
+static bool x_probe(nb_display_probe *out) {
+  setlocale(LC_CTYPE, "");
+  XSetLocaleModifiers("");
+  Display *dpy = XOpenDisplay(NULL);
+  if (!dpy) {
+    const char *name = getenv("DISPLAY");
+    snprintf(out->error, sizeof out->error, "cannot open the X11 display (%s)", name && *name ? name : "DISPLAY unset");
+    return false;
+  }
+  snprintf(out->locale, sizeof out->locale, "%s", nb_linux_locale());
+  XIM im = XSupportsLocale() ? XOpenIM(dpy, NULL, NULL, NULL) : NULL;
+  out->compose = im != NULL;
+  if (im) XCloseIM(im);
+  XCloseDisplay(dpy);
+  return true;
+}
+
 const nb_linux_backend nb_x11_backend = {
     .name = "x11",
     .open = x_open,
@@ -679,4 +698,5 @@ const nb_linux_backend nb_x11_backend = {
     .fds = x_fds,
     .process = x_process,
     .flush = x_flush,
+    .probe = x_probe,
 };

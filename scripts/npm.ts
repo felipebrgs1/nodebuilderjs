@@ -10,7 +10,7 @@ import { $ } from "bun";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { buildNative, minGlibc } from "../cli/package/native.js";
+import { buildNative, elfGlibc } from "../cli/package/native.js";
 
 const ROOT = resolve(import.meta.dir, "..");
 const { values: opts } = parseArgs({
@@ -85,10 +85,10 @@ if (opts["skip-build"]) {
   const addon = await buildNative(ROOT, opts.native as "docker" | "local");
   copyFileSync(addon, join(platformDir, "nodebuilder.node"));
   // The packages promise glibc 2.34+ (RHEL 9, Ubuntu 22.04): a newer symbol must not slip in.
-  const glibc = await minGlibc(addon);
+  const glibc = elfGlibc(new Uint8Array(readFileSync(addon)));
   const [major = 0, minor = 0] = (glibc ?? "0.0").split(".").map(Number);
   if (major > 2 || (major === 2 && minor > 34)) {
-    throw new Error(`o addon exige glibc ${glibc}, acima da 2.34 prometida (veja os símbolos com: objdump -T ${addon} | grep GLIBC_2.3)`);
+    throw new Error(`o addon exige glibc ${glibc}, acima da 2.34 prometida (see the symbols with: objdump -T ${addon} | grep GLIBC_2.3)`);
   }
   console.log(`• addon ${target} (${opts.native}), glibc mínima ${glibc}`);
 

@@ -684,6 +684,37 @@ server.
   large texts (chunks via `PropertyNotify`). Sending with INCR is not implemented: texts above
   the maximum request size (~16 MB with BIG-REQUESTS) are refused.
 
+## Diagnostics (`nodebuilder doctor`)
+
+`cli/doctor.ts` runs a list of checks over injected probes (`DoctorProbes`), so every check is
+tested with fakes; `systemProbes()` is the real machine. The order matters because the report
+is most useful when things are broken:
+
+1. **Without the addon** (plain TypeScript): Bun against `engines.bun`; which addon file
+   `loadNative()` would pick (the same candidates) and, for the npm package, that its version
+   matches core's; the glibc the addon needs, read from its ELF `.gnu.version_r` section
+   (`elfGlibc` in `cli/package/native.ts`, also used by packaging and `npm:build`, so `objdump`
+   is not needed), against the system's (`process.report`); the sonames `ldd` cannot find,
+   mapped to their package through `SYSTEM_LIBS` (`cli/package/common.ts`, the same table the
+   `.deb`/`.rpm` dependencies come from); libheif via the library directories or `ldconfig -p`.
+   A failure here skips the native checks instead of loading an addon that would throw.
+2. **With the addon:** `diagnostics()` (`addon.c`) returns the FreeType and HarfBuzz versions
+   (`nb_fonts_versions`; both diagnostics functions in `faces.c` borrow a FreeType instance, since
+   `nb_fonts_init` fails on a machine without fonts), `nb_platform_probe_display` (contract:
+   connect to the display server `open()` would pick, in the same order, check what a window
+   needs, load the keyboard's compose data for the locale, disconnect; Wayland checks for
+   `wl_compositor` and `xdg_wm_base` and loads the xkb compose table, X11 opens XIM, which is
+   what handles dead keys there), the UI font through `nb_platform_font_path` (its family read
+   by FreeType) and the fallbacks for U+1F600 (emoji) and U+4E2D (CJK) through
+   `nb_platform_font_fallback`, and the current GL context's strings. GL is tested by one 1x1
+   `renderOffscreen`, or with `--window` by opening a window, drawing one frame and waiting for
+   its frame callback (5 s timeout). The two can differ: on a hybrid laptop surfaceless EGL may
+   pick the discrete GPU while the compositor's window uses the integrated one.
+
+Each check has an id, a status (`ok`, `warn`, `fail`, `off` for an optional feature, `skip`), a
+title, an optional detail and a fix (a command for the detected package manager, from
+`/etc/os-release`). `--json` prints them as they are.
+
 ## Porting to other systems
 
 Everything OS-specific sits behind `native/include/nb_platform.h`: opening a window, pumping
