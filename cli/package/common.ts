@@ -44,23 +44,40 @@ export interface PackageContext {
   out: string;
 }
 
-// Keep in sync with native/platform/linux/build.sh (PKGS). Names are valid on Debian 12+ / Ubuntu 22.04+.
-export const DEB_DEPENDS = [
-  "libwayland-client0", "libwayland-egl1", "libwayland-cursor0", "libx11-6", "libxcursor1", "libxrandr2",
-  "libegl1", "libgles2", "libxkbcommon0", "libfreetype6", "libharfbuzz0b", "libfontconfig1",
-];
+/** A system library the native core links to, with the package that ships it per distro family. */
+export interface SystemLib {
+  soname: string;
+  /** Debian 12+ / Ubuntu 22.04+. */
+  deb: string;
+  /** Arch. */
+  pacman: string;
+}
 
-// RPM resolves sonames, so these work on any rpm distro (Fedora, RHEL, openSUSE).
-export const RPM_SONAMES = [
-  "libwayland-client.so.0", "libwayland-egl.so.1", "libwayland-cursor.so.0", "libX11.so.6", "libXcursor.so.1",
-  "libXrandr.so.2", "libEGL.so.1", "libGLESv2.so.2", "libxkbcommon.so.0", "libfreetype.so.6", "libharfbuzz.so.0",
-  "libfontconfig.so.1",
+// Keep in sync with native/platform/linux/build.sh (PKGS).
+export const SYSTEM_LIBS: SystemLib[] = [
+  { soname: "libwayland-client.so.0", deb: "libwayland-client0", pacman: "wayland" },
+  { soname: "libwayland-egl.so.1", deb: "libwayland-egl1", pacman: "wayland" },
+  { soname: "libwayland-cursor.so.0", deb: "libwayland-cursor0", pacman: "wayland" },
+  { soname: "libX11.so.6", deb: "libx11-6", pacman: "libx11" },
+  { soname: "libXcursor.so.1", deb: "libxcursor1", pacman: "libxcursor" },
+  { soname: "libXrandr.so.2", deb: "libxrandr2", pacman: "libxrandr" },
+  { soname: "libEGL.so.1", deb: "libegl1", pacman: "libglvnd" },
+  { soname: "libGLESv2.so.2", deb: "libgles2", pacman: "libglvnd" },
+  { soname: "libxkbcommon.so.0", deb: "libxkbcommon0", pacman: "libxkbcommon" },
+  { soname: "libfreetype.so.6", deb: "libfreetype6", pacman: "freetype2" },
+  { soname: "libharfbuzz.so.0", deb: "libharfbuzz0b", pacman: "harfbuzz" },
+  { soname: "libfontconfig.so.1", deb: "libfontconfig1", pacman: "fontconfig" },
 ];
 
 // Loaded with dlopen only to show AVIF/HEIC images (native/platform/linux/codecs.c). Suggested,
 // not recommended: apt installs recommendations by default, and libheif pulls in many codecs.
-export const DEB_SUGGESTS = ["libheif1"];
-export const RPM_SUGGESTS = ["libheif.so.1"];
+export const HEIF_LIB: SystemLib = { soname: "libheif.so.1", deb: "libheif1", pacman: "libheif" };
+
+export const DEB_DEPENDS = SYSTEM_LIBS.map((l) => l.deb);
+// RPM resolves sonames, so these work on any rpm distro (Fedora, RHEL, openSUSE).
+export const RPM_SONAMES = SYSTEM_LIBS.map((l) => l.soname);
+export const DEB_SUGGESTS = [HEIF_LIB.deb];
+export const RPM_SUGGESTS = [HEIF_LIB.soname];
 
 /** xz-compresses with the system `xz` (multithreaded). */
 export async function xz(data: Uint8Array): Promise<Uint8Array> {

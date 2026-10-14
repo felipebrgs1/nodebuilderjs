@@ -16,6 +16,7 @@ well, so as much of the framework as possible lives in TS, and the C stays small
 | `README.md` | framework users (it is also the npm package README) and the benchmarks |
 | `ARCHITECTURE.md` | how it works inside and how to measure performance |
 | `ROADMAP.md` | priorities and what has been done (still in Portuguese) |
+| `FONTS.md` | the fonts roadmap: what is done and everything left to make fonts complete |
 | `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps |
 
 ## Non-negotiable rules
@@ -54,10 +55,14 @@ bun run bench               # stress test with NB_STATS=1 (env: N=1000 MODE=one|
 bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settings ROWS=500
                             #   LIVE=0 CYCLE=<frames per tab switch>)
 bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]
-bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --wait-frames N]
+bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --wait-frames N
+                            --props <json> --export <name>]
                             # PNG of the app without a window or display server (EGL offscreen)
 bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
                             # icon imports for an app (validated in its node_modules); `icons list [filter]`
+bun cli/nodebuilder.ts doctor [--json] [--window]
+                            # checks the machine (addon, system libs, display, keyboard, GL, fonts,
+                            #   libheif) with the command that fixes each problem; exit 1 on failure
 bun run npm:build           # npm packages in dist/npm/ (does not publish)
 scripts/compare.sh <label> <warmup-s> <sample-s> -- <command...>  # CPU/RAM of the process tree
 ```
@@ -116,13 +121,18 @@ What cannot be tested automatically is documented when closing the task:
   (`ref`, programmatic focus and scrolling, `onResize`), `overlay`, `style` (`opacity`, `translate`),
   `text` (line wrapping, alignment, `maxLines`, multi-line selection), `font-fallback`
   (fallback fonts and color emoji with real fonts, `skipIf` they are missing), `font-style`
-  (weights, italics and letter spacing with real fonts and pixels), `controls`
+  (weights, italics and letter spacing with real fonts and pixels), `fonts` (`registerFont`,
+  `fontFamily` lists, CSS weight/slant matching, synthetic bold/italic, features, variations,
+  with the box fonts of `fixtures/fonts/` whose advances are known), `controls`
   (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `popups`
   (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets following the switch),
   `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
   (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
-  `input` (events), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
+  `input` (events, keys with nothing focused, `focusable`), `text-field` (password, borders, focus
+  ring), `handlers` (event props on every widget, chained with the widget's own), `percent`
+  (percentage sizes), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
   `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
+  `doctor` (each check on fake probes, the ELF and `ldd` readers, `diagnostics()` and one spawn),
   `clipboard`, `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
   pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
   (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
@@ -185,6 +195,7 @@ src/                   one module per folder; relative imports with `.js`
     native.ts          loads native/build/<platform>-<arch>/nodebuilder.node (literal requires)
     frames.ts          frame clock: requestAnimationFrame queue, frameNow, animating()
     clipboard.ts       clipboard (text): in memory without a window, native with run(); read via event
+    fonts.ts           registerFont (app font files -> addon), fontFamilies
     screenshot.ts      captureTree: real metrics + native images, layout, paint, renderOffscreen
   widgets/             one file per widget; index.ts re-exports
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps (+ hoverStyle/pressStyle), inherited, interaction, createInteraction
@@ -219,7 +230,9 @@ native/
   include/nb_platform.h CONTRACT each OS implements (window, event pump, fonts, codecs)
   core/                 portable, nothing OS-specific
     addon.c             N-API surface, event queue, threadsafe function
-    text.c              HarfBuzz + FreeType; font fallback by cluster, alpha atlas + RGBA color-emoji atlas
+    text.c              HarfBuzz + FreeType; runs by cluster, features, alpha atlas + RGBA color-emoji atlas
+    faces.c             font faces (files, variations, synthetic bold/italic), app fonts, specs
+                        (CSS family lists, features, variations), styles, CSS matching, fallback
     render_gles2.c      GLES2 renderer: one shader, one vertex format, single batch; textures
   platform/linux/       Linux backend
     linux.h             nb_linux_backend vtable (internal to Linux)
@@ -227,7 +240,7 @@ native/
     wayland.c           Wayland (xdg-shell), EGL, pointer, keyboard (xkb + compose), cursor
     x11.c               X11 (Xlib + EWMH), EGL, XIM (dead keys), Xcursor, XRandR
     pump.c              poll() thread over the active backend's fds + exit eventfd
-    fonts.c             font discovery via fontconfig: UI font + fallback (FcFontSort, per codepoint)
+    fonts.c             font discovery via fontconfig: families by name, UI font, fallback (FcFontSort), list
     codecs.c            AVIF/HEIC via libheif (dlopen; own declarations, no header)
     offscreen.c         EGL context with no display server (surfaceless/device) + FBO, for screenshots
     build.sh            backend build (called by scripts/build-native.sh)
@@ -238,9 +251,12 @@ test/            one file per module (bun:test; bunfig.toml limits bun test to t
   charts/        tests for src/charts (scales and each chart type)
   fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
 examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, bench, dashboard (.tsx) + assets/
-cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts,
-                 icons.ts (`icons add/list`: writes an app's icon imports)
-  package/       common.ts, deb.ts, rpm.ts, appimage.ts, native.ts, Dockerfile, icon.svg
+cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
+                 (+ screenshot-entry.ts: renders an exported component for `--props`/`--export`),
+                 icons.ts (`icons add/list`: writes an app's icon imports), doctor.ts (checks
+                 over injected probes; `systemProbes()` is the real machine)
+  package/       common.ts (SYSTEM_LIBS: soname -> deb/pacman package, for packaging and doctor),
+                 deb.ts, rpm.ts, appimage.ts, native.ts (addon build, `elfGlibc`), Dockerfile, icon.svg
 packages/        workspaces published together with core (see "Publishing to npm")
   linux-x64/     @nodebuilderjs/linux-x64: only the prebuilt addon (generated, not in git)
   create-nodebuilderjs/  `bun create nodebuilderjs`: index.js + template/ (AGENTS.md and
@@ -300,7 +316,7 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
 - **When adding a field to `Style`**, also add it to `STYLE_KEYS` (`widgets/props.ts`);
   new handlers go in `Handlers` (`render/node.ts`) and `HANDLER_KEYS`.
 - Inherited through the tree: `color`, `fontSize`, `bold`, `fontWeight`, `italic`,
-  `letterSpacing`, `underline` (the `inherited` function; `inheritedFont()` resolves the
+  `letterSpacing`, `fontFamily`, `fontFeatures`, `fontVariations`, `underline` (the `inherited` function; `inheritedFont()` resolves the
   weight, where the nearest `fontWeight` or `bold` wins and `fontWeight` beats `bold` on the
   same node). Text widgets measure and paint with that `FontStyle`.
 - A widget that opens something on top returns `[node, <Show><Overlay>]` (the `Overlay` stays
@@ -322,15 +338,27 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   stops at the innermost node that has one.
 - Handlers are **chained, never replaced**: `applyProps` adds the app's handlers (and the
   ones from spread `createInteraction().props`, carried under a unique symbol key so a later
-  `onPointerEnter={...}` cannot drop them) after the node's; a widget that sets a handler
-  after `applyProps`/`interaction(node)` calls the previous one first (`Slider`, `TextField`).
+  `onPointerEnter={...}` cannot drop them) after the node's; a widget sets its own handlers
+  after `applyProps`/`interaction(node)` with `ownHandler(node, key, fn)` (`widgets/props.ts`),
+  which runs the previous ones first and, for `onKeyDown`, skips the widget's when the app
+  called `stop()`. Every widget's props type includes `Handlers` (a `Button` omits `onClick`,
+  which it wires itself through `disabled`).
   `interaction(node)` is one tracker per node (widgets and `hoverStyle` share it).
-- `hoverStyle`/`pressStyle` use `UINode.override(key, value)`: while it is active, `set()`
+- `hoverStyle`/`pressStyle`/`focusStyle` use `UINode.override(key, value)`: while it is active, `set()`
   only updates the base underneath, so theme effects and reactive props do not fight it and
   the latest base comes back on leave. `hoverStyle` alone attaches only enter/leave (an
   `onPointerDown` would make the node claim the press and break window drag regions).
 - Focus by click only (e.g. `<Text selectable>`, which needs focus for Ctrl+C):
-  `focusable = true` and `tabStop = false`, so it stays out of the Tab order.
+  `focusable = true` and `tabStop = false`, so it stays out of the Tab order. Containers get
+  the same through the `focusable` prop (`tabStop` opts into Tab). With nothing focused, keys
+  start at the topmost modal layer or the root's top nodes (`keyTargets()` in `input.ts`).
+- A widget that paints `color`/`background` itself (a bar's fill and track) takes them out of
+  `applyProps` with `ownColors()` (`ProgressBar`, `Slider`), so the box does not paint them too.
+- Sizes (`width`, `height`, `min*`, `max*`) may be `` `${number}%` `` in props only
+  (`SizeValues`): `applyProps` keeps them in `UINode.percents` and layout writes the px value
+  into `style` (`Style` stays numeric, so `hoverStyle` sizes are px).
+- Code in a component that needs its refs or its nodes in the tree goes in `onMount`
+  (`reactive/signals.ts`; drained when the outermost `insert` or update queue ends).
 - Color/size defaults come from `theme.ts`, not hard-coded in widgets. Theme colors go
   in an effect (or in painting), never copied into the style at creation, otherwise they do
   not follow `setTheme`; respect the color the app passed (`if (props.background === undefined) ...`).
@@ -376,16 +404,28 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   `nb_render_frame`, and `nb_render_read_pixels` returns straight alpha, top row first. The
   renderer's GL objects belong to one context, so `addon.c` refuses a window after a shot and
   a shot while a window is open.
-- **Fonts:** `nb_platform_font_path(weight, italic, &index, &oblique)` gives the UI font
-  closest to a CSS weight and slant (`oblique`: an upright face stands in for italic, the core
-  slants it), `nb_platform_font_fallback(cp, weight, italic, emoji, &index)` a file (and face
-  index) that has `cp`, color fonts only when `emoji` (JS thread, may be slow: `text.c` asks
-  once per font id, caches fallbacks per codepoint and font id, and never calls it for
-  ASCII-only strings). Font ids are `weight * 2 + italic`; variable fonts get their `wght`
-  axis set in the core (FreeType). Letter spacing is added per HarfBuzz cluster in
+- **Fonts:** `nb_platform_font_path(family, generic, weight, italic, &match)` gives the file
+  of an installed family (NULL: the UI font; a named family that is not installed: NULL)
+  closest to a CSS weight and slant (`match.oblique`/`match.embolden`: the core slants or
+  thickens it), `nb_platform_font_fallback(cp, family, generic, weight, italic, emoji, &index)`
+  a file (and face index) that has `cp`, color fonts only when `emoji`, and
+  `nb_platform_font_families` the installed names (JS thread, may be slow: `faces.c` asks once
+  per style, caches fallbacks per codepoint and style). App fonts (`nb_fonts_register`) are
+  portable: FreeType reads them from memory in `faces.c`, which also does the CSS matching.
+  A TEXT command's font is a font id (`weight * 2 + italic`) plus a spec (family list,
+  features, variations joined by U+001F); `faces.c` resolves the pair to a style (a stack of
+  faces) and drops all styles when a font is registered. Faces of variable files are evicted
+  (LRU) at the start of `nb_font_style` only, when the table runs low; a reused face id bumps
+  its generation (`nb_face_gen`, part of the glyph cache key). Variable fonts
+  get their axes set in the core (FreeType). Letter spacing is added per HarfBuzz cluster in
   `layout_runs`, shared by measure and draw. `text.c` keeps `measure` and `draw` on the same run itemization; color
   glyphs go to the RGBA atlas and are drawn with `MODE_COLOR_GLYPH` (texture unit 2, only the
   alpha of the text color applies).
+- **Diagnostics** (`diagnostics()` in `addon.c`, for `nodebuilder doctor`): must work when the
+  rest does not (no fonts, no display server), so it never calls `nb_text_init`;
+  `nb_platform_probe_display` connects with the same choice and order as `nb_platform_open` and
+  disconnects (each backend's `probe` in the vtable). glGetString only with a context of ours
+  current (`g_open || g_offscreen`).
 - After calls that may receive events (e.g. `eglSwapBuffers`), the core calls
   `nb_platform_flush()` and requests a delivery (`request_delivery()`).
 - Coordinates: JS works in **logical px**; C multiplies by the integer `scale`
@@ -412,11 +452,11 @@ Keep **`native/include/nb.h`, `src/render/paint.ts` and `native/core/render_gles
 
 | Op | Code | Following floats |
 |---|---|---|
-| RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
-| TEXT | 2 | x y(line top) size font id (weight * 2 + italic, `fontId()`) · r g b a · index into `texts[]` · letterSpacing |
-| CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
+| RECT | 1 | x y w h · r g b a · tl tr br bl (corner radii) · borderWidth · br bg bb ba |
+| TEXT | 2 | x y(line top) size font id (weight * 2 + italic, `fontId()`) · r g b a · index into `texts[]` · letterSpacing · font spec index into `texts[]` (`fontSpec()`; -1: none) |
+| CLIP | 3 | x y w h · tl tr br bl (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
-| SHADOW | 5 | x y w h · r g b a · radius blur |
+| SHADOW | 5 | x y w h · r g b a · tl tr br bl · blur |
 | IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tint; a = opacity) · radius · id (from `createImage`) |
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · capStart capEnd (0 butt, 1 round) |
 | TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
@@ -452,7 +492,8 @@ the stop lines and colors their vertices: exact for linear gradients, any shape.
   or the content if taller; measured nodes take the ratio as is). A fixed `height` gives the
   width (`ratioWidth`); a child stretched in a row of known inner height gets
   `height * ratio` as its flex basis (`rowBasis`).
-- **Grid** (`direction: "grid"` + `columns`, `rowGap`; the `Grid` widget): equal cells
+- **Grid** (`direction: "grid"` + `columns` or `minColumnWidth`, `rowGap`; the `Grid` widget;
+  `columnsOf(node, inner)` gives the column count, auto-fill with `minColumnWidth`): equal cells
   (`cellWidth`), rows as tall as their tallest cell (`gridRows`, shared by `intrinsic`,
   `heightAt` and `minHeightAt`), placed by `placeGrid`; cells stretch to the row unless
   `align`/`alignSelf` says otherwise or they have an `aspectRatio`. Children stay in one
@@ -500,6 +541,10 @@ the stop lines and colors their vertices: exact for linear gradients, any shape.
   the ordinary path at two comparisons per container; anything costlier runs only when
   something overflows.
 
+- **Percentages:** `place()` calls `resolvePercents(node, innerW, innerH)` before laying out the
+  children, writing their px sizes and dropping their cached measurements.
+- **onResize:** handlers run after the tree is placed; if they invalidated anything, `layout()`
+  places again (`RESIZE_PASSES` = 2 extra), then reports an `onResize` loop as a layout warning.
 - `translateX/Y` add to the position in `place()` (after flex); everything else sees the
   shifted position. Overlays: `root.layers` is recomputed on every `layout()`; a test that
   opens or closes an overlay needs `relayout()` before looking at `root.layers` or the commands.
@@ -551,8 +596,9 @@ Steps:
    `process.env.NB_APP_ID` is defined at build time and becomes the Wayland app id /
    WM_CLASS, which matches the `.desktop` (`StartupWMClass`).
 3. **Install tree:** `/usr/bin/<name>`, `.desktop` and icon (hicolor) in `/usr/share`.
-   System libraries are **declared dependencies, never bundled** (`DEB_DEPENDS`/`RPM_SONAMES`
-   in `cli/package/common.ts`; keep in sync with `PKGS` in `native/platform/linux/build.sh`).
+   System libraries are **declared dependencies, never bundled** (`SYSTEM_LIBS` in
+   `cli/package/common.ts`, which `DEB_DEPENDS`/`RPM_SONAMES` and `nodebuilder doctor` read; keep
+   in sync with `PKGS` in `native/platform/linux/build.sh`).
    libheif is only suggested (`DEB_SUGGESTS`/`RPM_SUGGESTS`).
 4. **Formats**, all without distro tools (only `tar`/`xz`):
    - `.deb`: hand-written `ar` (control.tar.xz + data.tar.xz);
@@ -596,11 +642,11 @@ packages, all with the version from the root `package.json`:
 
 ## Current limitations
 
-- TextField: no selection, copy, undo (paste exists); Text: a word longer than the line
-  overflows (selection only with `selectable`, no Shift+click or keyboard); weights only as
-  the system font has them (no synthetic bold; italic falls back to a slanted upright face),
-  no font family choice; `underline` is painted in TS and
-  `TextField` ignores it. Font fallback and color emoji work (CBDT/sbix/COLRv0), but COLRv1
+- TextField: no selection, copy, undo (paste exists; `password` masks the drawing only); Text: a word longer than the line
+  overflows (selection only with `selectable`, no Shift+click or keyboard); a family without a
+  weight or slant gets the closest face, emboldened or slanted (synthetic); app fonts are
+  registered synchronously (no `unicode-range`, no async loading); `underline` is painted in
+  TS and `TextField` ignores it. Font fallback and color emoji work (CBDT/sbix/COLRv0), but COLRv1
   fonts are not drawn in color and there is no bidi reordering.
 - `<Canvas>`: a self-intersecting polygon is not drawn; translucent lines get darker at the
   joins (each segment is drawn separately); adjacent pie slices show a thin light seam
@@ -612,6 +658,9 @@ packages, all with the version from the root `package.json`:
   (4 megapixels: PNG 80–130 ms, JPEG 140–170 ms, WebP 105–180 ms); no mipmaps (downscaling
   an image a lot makes it jagged) and no @2x variant.
 - `opacity` multiplies the alpha of each command (it is not group opacity); no `scale`/`rotate`.
+- Percentage sizes resolve against the parent's content box when the parent is placed; the
+  parent's own natural size counts a percentage child at its last value (its content the first
+  time). An `Image` with different corner radii is drawn inside a rounded clip.
 - Gradients: linear only (backgrounds and Canvas fills); no radial/conic; borders, text and
   shadows are solid.
 - `<ErrorBoundary>` does not cover the event handler's own code (only the effects its

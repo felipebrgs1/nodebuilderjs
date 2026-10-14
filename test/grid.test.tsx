@@ -217,3 +217,44 @@ test("aspectRatio on an Image wins over the picture's own size: square covers in
   ), { width: 8, height: 600 });
   expect(root.children[0]!.children.map(box)).toEqual([[0, 0, 4, 4], [4, 0, 4, 4]]);
 });
+
+test("Grid minColumnWidth: as many columns as fit (CSS auto-fill + minmax), cells share the leftover", () => {
+  const [width, setWidth] = createSignal(340);
+  const { root, relayout } = mount(() => (
+    <Column align="start">
+      <Grid minColumnWidth={100} gap={10} width={width}>
+        {[1, 2, 3, 4].map(() => <Box height={20} />)}
+      </Grid>
+    </Column>
+  ), { width: 400, height: 300 });
+  const grid = root.children[0]!.children[0]!;
+  // 340 px: three 100 px columns fit ((340 + 10) / 110 = 3.2); each takes (340 - 20) / 3.
+  expect(grid.children.map((c) => [Math.round(c.x), c.y, Math.round(c.width)])).toEqual([[0, 0, 107], [117, 0, 107], [233, 0, 107], [0, 30, 107]]);
+  setWidth(200);
+  relayout();
+  expect(grid.children.map((c) => [c.x, c.y, c.width])).toEqual([[0, 0, 200], [0, 30, 200], [0, 60, 200], [0, 90, 200]]);
+  expect(grid.height).toBe(110);
+});
+
+test("Grid minColumnWidth with columns: columns is the most there will be", () => {
+  const { root } = mount(() => (
+    <Grid minColumnWidth={50} columns={2} gap={0}>
+      {[1, 2, 3].map(() => <Box height={20} />)}
+    </Grid>
+  ), { width: 400, height: 300 });
+  expect(root.children[0]!.children.map((c) => [c.x, c.width])).toEqual([[0, 200], [200, 200], [0, 200]]);
+});
+
+test("Grid minColumnWidth: its natural width puts every cell in one row; it shrinks to one column", () => {
+  const { root } = mount(() => (
+    <Row>
+      <Grid minColumnWidth={60} gap={4}>
+        {[1, 2, 3].map(() => <Box height={20} />)}
+      </Grid>
+      <Box width={300} height={10} />
+    </Row>
+  ), { width: 400, height: 300 });
+  const grid = root.children[0]!.children[0]!;
+  expect(grid.width).toBe(100); // squeezed by the 300 px box: one 60 px column fits, stretched
+  expect(grid.children.map((c) => [c.x, c.y])).toEqual([[0, 0], [0, 24], [0, 48]]);
+});

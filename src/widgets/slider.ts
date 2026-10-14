@@ -1,15 +1,15 @@
 // <Slider>: a number in [min, max] picked by dragging a thumb along a track, or with the keys.
 
-import { type Style, UINode, invalidate } from "../render/node.js";
+import { type Handlers, type Style, UINode, invalidate } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, untrack } from "../reactive/signals.js";
 import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
+import { type StyleProps, applyProps, disableable, interaction, ownColors, ownHandler } from "./props.js";
 
 const THUMB = 16;
 const TRACK = 4;
 
 export function Slider(
-  props: StyleProps & {
+  props: StyleProps & Handlers & {
     value: Accessor<number>;
     onChange: (value: number) => void;
     min?: number;
@@ -23,7 +23,8 @@ export function Slider(
   const step = props.step ?? 1;
   const node = new UINode("Slider");
   Object.assign(node.style, { height: 20, minWidth: 80, width: 200 } satisfies Style);
-  applyProps(node, props);
+  const { rest, fill, track } = ownColors(props, () => theme.accent.base, () => theme.control.pressed);
+  applyProps(node, rest);
   const disabled = disableable(node, props);
   const state = interaction(node);
 
@@ -40,11 +41,11 @@ export function Slider(
     const travel = n.width - THUMB;
     const cx = n.x + THUMB / 2 + fraction() * travel;
     const cy = n.y + n.height / 2;
-    p.rect(n.x + THUMB / 2, cy - TRACK / 2, travel, TRACK, theme.control.pressed, TRACK / 2);
-    p.rect(n.x + THUMB / 2, cy - TRACK / 2, cx - n.x - THUMB / 2, TRACK, theme.accent.base, TRACK / 2);
+    p.rect(n.x + THUMB / 2, cy - TRACK / 2, travel, TRACK, track(), TRACK / 2);
+    p.rect(n.x + THUMB / 2, cy - TRACK / 2, cx - n.x - THUMB / 2, TRACK, fill(), TRACK / 2);
     const focused = untrack(state.focused);
     const hovered = untrack(state.hovered) || untrack(state.pressed);
-    p.rect(cx - THUMB / 2, cy - THUMB / 2, THUMB, THUMB, "#ffffff", THUMB / 2, focused ? 3 : hovered ? 2 : 1.5, focused ? theme.focusRing : hovered ? theme.accent.base : theme.field.border);
+    p.rect(cx - THUMB / 2, cy - THUMB / 2, THUMB, THUMB, "#ffffff", THUMB / 2, focused ? 3 : hovered ? 2 : 1.5, focused ? theme.focusRing : hovered ? fill() : theme.field.border);
   };
   createEffect(() => {
     props.value();
@@ -56,25 +57,19 @@ export function Slider(
 
   let dragging = false;
   // Chained: the press state (pressStyle) and the app's own handlers still run.
-  const prevDown = node.handlers.onPointerDown;
-  node.handlers.onPointerDown = (e) => {
-    prevDown?.(e);
+  ownHandler(node, "onPointerDown", (e) => {
     if (disabled() || e.button !== 0) return;
     dragging = true;
     set(valueAt(e.localX));
     e.stop(); // not a window drag
-  };
-  const prevMove = node.handlers.onPointerMove;
-  node.handlers.onPointerMove = (e) => {
-    prevMove?.(e);
+  });
+  ownHandler(node, "onPointerMove", (e) => {
     if (dragging && e.button === 0) set(valueAt(e.localX));
-  };
-  const prevUp = node.handlers.onPointerUp;
-  node.handlers.onPointerUp = (e) => {
+  });
+  ownHandler(node, "onPointerUp", () => {
     dragging = false;
-    prevUp?.(e);
-  };
-  node.handlers.onKeyDown = (e) => {
+  });
+  ownHandler(node, "onKeyDown", (e) => {
     const v = untrack(props.value);
     const page = Math.max(step, (max - min) / 10);
     switch (e.key) {
@@ -87,6 +82,6 @@ export function Slider(
       default: return;
     }
     e.stop(); // the keys belong to the slider, not to a Scroll around it
-  };
+  });
   return node;
 }

@@ -3,7 +3,7 @@
 
 import { type ImageSource, imageHandle } from "../image/source.js";
 import { boxGradient, isGradient, isLinearGradient, resolveStops } from "./gradient.js";
-import { type Color, type FontInput, type LineCap, type Paint, type Painter, type UINode, fontId, fontStyle, scrolls, stacked } from "./node.js";
+import { type Color, type FontInput, type LineCap, type Paint, type Painter, type Radius, type UINode, corners, fontId, fontSpec, fontStyle, insetRadius, scrolls, stacked } from "./node.js";
 import { scrollbar } from "./scrollbar.js";
 import { theme } from "../theme.js";
 
@@ -52,10 +52,13 @@ export class CommandBuffer implements Painter {
   length = 0;
   texts: string[] = [];
   opacity = 1;
+  /** Font spec -> its index in `texts`, so a frame sends each spec once. */
+  private specs = new Map<string, number>();
 
   reset() {
     this.length = 0;
     this.texts = [];
+    this.specs.clear();
   }
 
   /** Makes room for `n` more floats. */
@@ -100,20 +103,32 @@ export class CommandBuffer implements Painter {
     for (const v of values) this.data[this.length++] = v;
   }
 
-  rect(x: number, y: number, w: number, h: number, color: Paint, radius = 0, borderWidth = 0, borderColor: Color = "transparent") {
+  rect(x: number, y: number, w: number, h: number, color: Paint, radius: Radius = 0, borderWidth = 0, borderColor: Color = "transparent") {
     const border = this.rgba(borderColor);
-    this.push(OP_RECT, x, y, w, h, ...this.fill(color), radius, borderWidth, ...border);
+    this.push(OP_RECT, x, y, w, h, ...this.fill(color), ...corners(radius), borderWidth, ...border);
   }
 
-  shadow(x: number, y: number, w: number, h: number, color: Color, radius: number, blur: number) {
-    this.push(OP_SHADOW, x, y, w, h, ...this.rgba(color), radius, blur);
+  shadow(x: number, y: number, w: number, h: number, color: Color, radius: Radius, blur: number) {
+    this.push(OP_SHADOW, x, y, w, h, ...this.rgba(color), ...corners(radius), blur);
   }
 
   text(x: number, y: number, text: string, size: number, color: Color, font?: FontInput) {
     if (!text) return;
     this.texts.push(text);
+    const index = this.texts.length - 1;
     const f = fontStyle(font);
-    this.push(OP_TEXT, x, y, size, fontId(f.weight, f.italic), ...this.rgba(color), this.texts.length - 1, f.letterSpacing);
+    this.push(OP_TEXT, x, y, size, fontId(f.weight, f.italic), ...this.rgba(color), index, f.letterSpacing, this.spec(fontSpec(f)));
+  }
+
+  /** The index in `texts` of a font spec, or -1 for none. */
+  private spec(spec: string): number {
+    if (!spec) return -1;
+    let index = this.specs.get(spec);
+    if (index === undefined) {
+      index = this.texts.push(spec) - 1;
+      this.specs.set(spec, index);
+    }
+    return index;
   }
 
   image(x: number, y: number, w: number, h: number, source: ImageSource, uv: readonly [number, number, number, number], radius = 0, opacity = 1, tint: Color = "#ffffff") {
@@ -149,8 +164,8 @@ export class CommandBuffer implements Painter {
     this.push(OP_ARC, cx, cy, outerRadius, innerRadius, start, sweep, ...this.fill(color));
   }
 
-  clip(x: number, y: number, w: number, h: number, radius = 0) {
-    this.push(OP_CLIP, x, y, w, h, radius);
+  clip(x: number, y: number, w: number, h: number, radius: Radius = 0) {
+    this.push(OP_CLIP, x, y, w, h, ...corners(radius));
   }
 
   unclip() {
@@ -185,7 +200,7 @@ export function paintTree(node: UINode, p: Painter) {
   const clip = s.clip || scroller;
   if (clip) {
     const b = s.borderWidth ?? 0;
-    p.clip(node.x + b, node.y + b, node.width - 2 * b, node.height - 2 * b, Math.max(0, (s.radius ?? 0) - b));
+    p.clip(node.x + b, node.y + b, node.width - 2 * b, node.height - 2 * b, insetRadius(s.radius, b));
   }
   for (const c of stacked(node)) paintTree(c, p);
   if (clip) p.unclip();
@@ -224,7 +239,7 @@ function paintLayers(root: UINode, p: Painter) {
   const clip = frame?.style.clip;
   if (clip) {
     const b = frame.style.borderWidth ?? 0;
-    p.clip(frame.x + b, frame.y + b, frame.width - 2 * b, frame.height - 2 * b, Math.max(0, (frame.style.radius ?? 0) - b));
+    p.clip(frame.x + b, frame.y + b, frame.width - 2 * b, frame.height - 2 * b, insetRadius(frame.style.radius, b));
   }
   for (const layer of root.layers) paintTree(layer, p);
   if (clip) p.unclip();

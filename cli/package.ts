@@ -10,7 +10,7 @@ import { parseArgs } from "node:util";
 import { buildAppImage } from "./package/appimage.js";
 import { type AppInfo, type StagedFile, archOf } from "./package/common.js";
 import { buildDeb } from "./package/deb.js";
-import { buildNative, minGlibc } from "./package/native.js";
+import { buildNative, elfGlibc } from "./package/native.js";
 import { buildRpm } from "./package/rpm.js";
 
 /** Root of @nodebuilderjs/core: the framework checkout, or node_modules/@nodebuilderjs/core in an app. */
@@ -114,7 +114,7 @@ export async function packageCommand(argv: string[]) {
   } else {
     throw new Error(`--native deve ser prebuilt, docker ou local`);
   }
-  const glibc = await minGlibc(addon);
+  const glibc = elfGlibc(new Uint8Array(readFileSync(addon)));
   if (glibc) console.log(`  glibc mínima exigida pelo addon: ${glibc}`);
 
   // ---- 2. single executable ----------------------------------------------------

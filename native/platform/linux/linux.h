@@ -40,6 +40,11 @@ typedef struct {
   int (*process)(const struct pollfd *ready, int count);
   /** JS thread: dispatch already-received events and flush outgoing requests. */
   void (*flush)(void);
+  /**
+   * JS thread, no window needed: connects, fills `compose`/`locale`, disconnects. False with
+   * out->error when the display server is unreachable or lacks what a window needs.
+   */
+  bool (*probe)(nb_display_probe *out);
 } nb_linux_backend;
 
 extern const nb_linux_backend nb_wayland_backend;
@@ -50,6 +55,9 @@ const nb_linux_backend *nb_linux_active(void);
 
 /** JS thread: the backend's fds changed; the pump asks for them again. */
 void nb_linux_pump_refresh(void);
+
+/** The locale keyboard input is composed for: LC_ALL, LC_CTYPE, LANG, then "C". */
+const char *nb_linux_locale(void);
 
 /** Pushes an NB_EV_CLIPBOARD with a copy of `len` bytes of `text` (NULL = empty). */
 void nb_linux_clipboard_answer(const char *text, size_t len);

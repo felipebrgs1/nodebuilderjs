@@ -218,3 +218,37 @@ test("disabled Slider and Toggle ignore the pointer", () => {
   ui.release(toggle!);
   expect([v(), on()]).toEqual([0, false]);
 });
+
+test("Button variant is reactive: background, text weight and hover colors follow it", () => {
+  const [variant, setVariant] = createSignal<"default" | "primary">("default");
+  const { root } = mount(() => (
+    <Column align="start">
+      <Button label="Send" variant={variant} />
+    </Column>
+  ));
+  const button = root.children[0]!.children[0]!;
+  const text = () => commandsOf(button, "text")[0]!;
+  expect(button.style.background).toBe(theme.control.base);
+  expect(text().bold).toBe(false);
+  setVariant("primary");
+  expect(button.style.background).toBe(theme.accent.base);
+  expect(button.style.color).toBe(theme.accent.text);
+  expect(text().bold).toBe(true);
+  interact(root).hover(button);
+  expect(button.style.background).toBe(theme.accent.hover);
+});
+
+test("ProgressBar and Slider take color (the filled part) and background (the track) from the app", () => {
+  const [v, setV] = createSignal(50);
+  const { root } = mount(() => (
+    <Column align="start">
+      <ProgressBar value={0.5} color="#ff0000" background="#0000ff" width={100} />
+      <Slider value={v} onChange={setV} color="#00ff00" background="#000000" />
+    </Column>
+  ));
+  const [bar, slider] = root.children[0]!.children;
+  const colors = (n: typeof bar) => commandsOf(n!, "rect").map((r) => r.color.join(","));
+  expect(colors(bar)).toEqual(["0,0,1,1", "1,0,0,1"]); // the track (rounded), then the fill
+  expect(commandsOf(bar!, "rect")[0]!.radius).toBe(3);
+  expect(colors(slider).slice(0, 2)).toEqual(["0,0,0,1", "0,1,0,1"]);
+});

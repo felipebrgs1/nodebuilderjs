@@ -1,7 +1,7 @@
 // Overflow warnings: layout notices content that needs more room than it gets and ends up hidden
 // (clipped by an ancestor or the window), so a silently culled chip shows up in tests and dev runs.
 import { describe, expect, test } from "bun:test";
-import { Box, Column, Row, Scroll, Text, createSignal, debugTree } from "@nodebuilderjs/core";
+import { Box, Button, Card, Column, Row, Scroll, Text, createSignal, debugTree } from "@nodebuilderjs/core";
 import { layoutWarnings, mount } from "@nodebuilderjs/core/testing";
 
 /** Three 110px chips with a 6px gap: 342px of content. */
@@ -127,4 +127,17 @@ describe("overflow warnings", () => {
     ));
     expect(layoutWarnings()).toEqual([]);
   });
+});
+
+test("a clipping Card squeezed below its content (the button it hides) is reported, naming the Card", () => {
+  const { layoutWarnings } = mount(() => (
+    <Column height={100}>
+      <Box height={60} />
+      <Card clip ariaLabel="login">
+        <Text>Sign in</Text>
+        <Button label="Enter" />
+      </Card>
+    </Column>
+  ), { width: 300, height: 100 });
+  expect(layoutWarnings()).toEqual([expect.stringMatching(/^layout: Card\(login\) > .* overflows Card\(login\) by \d+px/)]);
 });

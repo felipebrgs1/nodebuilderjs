@@ -666,11 +666,7 @@ static bool wl_open(const nb_window_options *options) {
 
   setlocale(LC_CTYPE, "");
   S.xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-  const char *locale = getenv("LC_ALL");
-  if (!locale || !*locale) locale = getenv("LC_CTYPE");
-  if (!locale || !*locale) locale = getenv("LANG");
-  if (!locale || !*locale) locale = "C";
-  S.compose_table = xkb_compose_table_new_from_locale(S.xkb, locale, XKB_COMPOSE_COMPILE_NO_FLAGS);
+  S.compose_table = xkb_compose_table_new_from_locale(S.xkb, nb_linux_locale(), XKB_COMPOSE_COMPILE_NO_FLAGS);
   if (S.compose_table) S.compose = xkb_compose_state_new(S.compose_table, XKB_COMPOSE_STATE_NO_FLAGS);
 
   S.repeat_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -710,6 +706,43 @@ static bool wl_open(const nb_window_options *options) {
     fprintf(stderr, "nodebuilder: EGL initialisation failed (0x%x)\n", eglGetError());
     return false;
   }
+  return true;
+}
+
+// ---- probe (doctor) ----------------------------------------------------------------
+
+static void probe_global(void *data, struct wl_registry *r, uint32_t name, const char *iface, uint32_t version) {
+  int *found = data;
+  if (!strcmp(iface, wl_compositor_interface.name)) found[0] = 1;
+  else if (!strcmp(iface, xdg_wm_base_interface.name)) found[1] = 1;
+}
+static void probe_global_remove(void *data, struct wl_registry *r, uint32_t name) {}
+static const struct wl_registry_listener probe_listener = {.global = probe_global, .global_remove = probe_global_remove};
+
+static bool wl_probe(nb_display_probe *out) {
+  struct wl_display *display = wl_display_connect(NULL);
+  if (!display) {
+    const char *name = getenv("WAYLAND_DISPLAY");
+    snprintf(out->error, sizeof out->error, "cannot connect to the Wayland compositor (%s)", name && *name ? name : "wayland-0");
+    return false;
+  }
+  int found[2] = {0, 0};
+  struct wl_registry *registry = wl_display_get_registry(display);
+  wl_registry_add_listener(registry, &probe_listener, found);
+  int sync = wl_display_roundtrip(display);
+  wl_registry_destroy(registry);
+  wl_display_disconnect(display);
+  if (sync < 0 || !found[0] || !found[1]) {
+    snprintf(out->error, sizeof out->error, "the Wayland compositor lacks %s", sync < 0 ? "a working connection" : !found[0] ? "wl_compositor" : "xdg_wm_base (xdg-shell)");
+    return false;
+  }
+  snprintf(out->locale, sizeof out->locale, "%s", nb_linux_locale());
+  struct xkb_context *xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+  if (xkb) xkb_context_set_log_level(xkb, XKB_LOG_LEVEL_CRITICAL);  // a missing table is the answer, not an error
+  struct xkb_compose_table *table = xkb ? xkb_compose_table_new_from_locale(xkb, out->locale, XKB_COMPOSE_COMPILE_NO_FLAGS) : NULL;
+  out->compose = table != NULL;
+  if (table) xkb_compose_table_unref(table);
+  if (xkb) xkb_context_unref(xkb);
   return true;
 }
 
@@ -860,4 +893,5 @@ const nb_linux_backend nb_wayland_backend = {
     .fds = wl_fds,
     .process = wl_process,
     .flush = wl_flush,
+    .probe = wl_probe,
 };

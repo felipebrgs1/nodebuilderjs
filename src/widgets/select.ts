@@ -3,14 +3,14 @@
 // Enter picks, Escape closes.
 
 import { type Child, jsx } from "../jsx-runtime.js";
-import { type Style, UINode } from "../render/node.js";
+import { type Handlers, type Style, UINode } from "../render/node.js";
 import { createPresence } from "../animation/index.js";
 import { Show } from "../reactive/control.js";
 import { type Accessor, type MaybeAccessor, createEffect, createSignal, read, untrack } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 import { Box, Card, Scroll } from "./containers.js";
 import { Overlay } from "./overlay.js";
-import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
+import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "./props.js";
 import type { Choice } from "./radio.js";
 import { Text } from "./text.js";
 
@@ -25,7 +25,7 @@ function chevron(color: () => string) {
 }
 
 export function Select<T>(
-  props: StyleProps & {
+  props: StyleProps & Handlers & {
     value: Accessor<T | undefined>;
     onChange: (value: T) => void;
     options: readonly Choice<T>[];
@@ -79,8 +79,8 @@ export function Select<T>(
     return from;
   };
 
-  trigger.handlers.onClick = () => (untrack(open) ? close() : show());
-  trigger.handlers.onKeyDown = (e) => {
+  ownHandler(trigger, "onClick", () => (untrack(open) ? close() : show()));
+  ownHandler(trigger, "onKeyDown", (e) => {
     if (!untrack(open)) {
       if (["Down", "Up", "space", "Return", "KP_Enter"].includes(e.key)) {
         show();
@@ -100,7 +100,7 @@ export function Select<T>(
       default: return;
     }
     e.stop();
-  };
+  });
 
   const presence = createPresence(open, { enter: 120, exit: 90 });
   const list = () => {

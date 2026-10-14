@@ -12,7 +12,7 @@ import { frameNow, hasFrameCallbacks, runFrameCallbacks, setAnimating, setFrameC
 import { type Native, type NativeEvent, loadNative, nativeImageBackend, nativeTextMeasurer } from "./native.js";
 import { UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer } from "../render/node.js";
 import { CommandBuffer, paintTree } from "../render/paint.js";
-import { batch, createRoot, createSignal } from "../reactive/signals.js";
+import { batch, createRoot, createSignal, untrack } from "../reactive/signals.js";
 import { setTheme } from "../theme.js";
 import { type Screenshot, captureTree } from "./screenshot.js";
 
@@ -158,7 +158,7 @@ export async function screenshotApp(nat: Native, app: () => Child, env: Record<s
   try {
     createRoot((d) => {
       dispose = d;
-      insert(root, app);
+      insert(root, untrack(app));
     });
     const windowNode = root.children[0];
     const options: WindowOptions = (windowNode as any)?.[windowOptionsKey] ?? { title: "nodebuilder" };
@@ -201,7 +201,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
   let dispose = () => {};
   createRoot((d) => {
     dispose = d;
-    insert(root, app);
+    insert(root, untrack(app));
   });
   const windowNode = root.children[0];
   const options: WindowOptions = (windowNode as any)?.[windowOptionsKey] ?? { title: "nodebuilder" };

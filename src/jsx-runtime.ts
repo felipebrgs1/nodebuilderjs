@@ -2,7 +2,7 @@
 // jsx() only records a lightweight description; the component runs once when the
 // description is inserted into the tree (so <Show>/<For> can decide lazily).
 
-import { type Accessor, createEffect, createMemo, untrack } from "./reactive/signals.js";
+import { type Accessor, createEffect, createMemo, holdMounts, untrack } from "./reactive/signals.js";
 import { UINode } from "./render/node.js";
 
 export interface ElementDesc {
@@ -82,13 +82,17 @@ function isStatic(built: Child): boolean {
   return !Array.isArray(built) || built.every(isStatic);
 }
 
-/** Inserts children into `parent`; every accessor becomes its own reactive slot. */
+/** Inserts children into `parent`; every accessor becomes its own reactive slot. onMount runs when the outermost insert ends. */
 export function insert(parent: UINode, child: Child) {
+  holdMounts(() => insertNow(parent, child));
+}
+
+function insertNow(parent: UINode, child: Child) {
   if (child == null || typeof child === "boolean") return;
   if (Array.isArray(child)) {
-    for (const c of child) insert(parent, c);
+    for (const c of child) insertNow(parent, c);
   } else if (isElement(child)) {
-    insert(parent, instantiate(child));
+    insertNow(parent, instantiate(child));
   } else if (typeof child === "function") {
     const slot = parent.addSlot();
     const built = build(child);

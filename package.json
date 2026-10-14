@@ -1,6 +1,6 @@
 {
   "name": "@nodebuilderjs/core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Native Linux UI in TypeScript: TSX components with SolidJS-style reactivity, drawn by its own native core (Wayland/X11 + GLES2 + FreeType/HarfBuzz). No DOM, no Electron, no GTK/Qt.",
   "keywords": [
     "gui",

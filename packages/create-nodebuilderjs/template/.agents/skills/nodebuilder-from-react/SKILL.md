@@ -16,11 +16,14 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | `useState(0)` | `const [n, setN] = createSignal(0)`; read with `n()` |
 | `useMemo` | `createMemo(() => ...)` |
 | `useEffect(() => ..., [deps])` | `createEffect(() => ...)` (automatic deps) + `onCleanup` |
+| `useEffect(() => ..., [])` / `useLayoutEffect` that uses a `ref` | `onMount(() => ...)`: runs once the component's nodes are in the tree and its refs are set (an effect in the body runs before the JSX below it exists) |
 | component re-render | does not exist: the component runs **once** |
 | `{count}` in JSX | `{count}` (the function, not `count()`), otherwise it stays fixed |
 | `style={{ padding: 8 }}`, `className` | props: `padding={8}`, `background="#fff"` |
 | `div`, `span`, `p`, `h1` | `Column`, `Row`, `Box`, `Text fontSize={24} bold` |
 | input `onChange` | `TextField value={v} onInput={setV}` |
+| `<input type="password">` (+ "show password") | `<TextField password value={v} onInput={setV} />`; `password={hidden}` (an accessor) toggles it |
+| `:focus` / `:focus-visible` ring, `outline` | `focusStyle={{ borderColor: "#..." }}` on any widget; `TextField` also takes `focusBorderColor`/`focusBorderWidth` |
 | `<input type="range">`, `type="radio"`, MUI switch, `<progress>` | `Slider`, `RadioGroup`, `Toggle`, `ProgressBar`/`Spinner` |
 | `<select>`, Dialog/Modal, Tabs, Tooltip (MUI, Radix, shadcn) | `Select`, `Dialog`, `Tabs` (+ `<Switch>` for the content), `Tooltip` |
 | `disabled` on input/button | `disabled` on any control (value or function) |
@@ -35,10 +38,15 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | `overflow-y: auto` / `overflow-x: auto` / `overflow: auto` | `<Scroll>` / `<Scroll horizontal>` / `<Scroll horizontal vertical>` (with `grow={1}` or a size) |
 | `el.scrollIntoView()`, `el.scrollTo({ left, top })`, `scrollLeft`/`scrollTop` | `el.scrollIntoView()` (scrolls the minimum, on the next frame), `el.scrollTo({ x, y })`, `el.scrollX`/`el.scrollY` |
 | `min-height: 0` / `min-width: 0` around what scrolls | unnecessary: the content of a `Scroll` does not hold up the size of its container |
-| `ResizeObserver`, media queries | `onResize={(s) => setWidth(s.width)}` + signal |
+| `ResizeObserver`, media queries | `onResize={(s) => setWidth(s.width)}` + signal (what it changes is laid out in the same frame) |
+| `document.addEventListener("keydown", ...)` (Escape, Ctrl+K anywhere) | `<Window onKeyDown={(e) => ...}>`: gets every key nothing below took (`e.stop()`), also with nothing focused |
+| `tabIndex={-1}` on a div that handles keys | `<Column focusable onKeyDown={...}>`: a click focuses it, no focus ring; `tabStop` puts it in the Tab order |
+| CSS `width: 50%`, `max-width: 30%` | `width="50%"`, `maxWidth="30%"` (of the parent's content box; also `height`, `min*`) |
+| CSS `border-radius: 0 12px 12px 0` | `radius={[0, 12, 12, 0]}` (top left, top right, bottom right, bottom left); `clip` and `shadow` follow it |
 | `z-index` among siblings (badge over a card's content) | `zIndex={1}` (siblings only: no global stacking context; ties keep child order) |
 | `createPortal`, `position: fixed`, `z-index` above everything, library modal/dropdown/tooltip | `<Overlay>` (`modal`, `anchor={() => el}`, `onDismiss`); skill `nodebuilder-ui` |
 | CSS `display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; row-gap: 12px` | `<Grid columns={4} gap={8} rowGap={12}>` (equal columns only; no spans or named areas) |
+| CSS `grid-template-columns: repeat(auto-fill, minmax(160px, 1fr))` | `<Grid minColumnWidth={160} gap={8}>` (as many columns as fit; `columns` caps them) |
 | CSS `margin: 8px 16px`, `margin-top`, negative margins | `margin={[8, 16]}`, `margin={[12, 0, 0, 0]}`, `margin={[0, -16]}` (no collapsing, no `auto`; adds to `gap`) |
 | CSS `flex-wrap: wrap` (chips, tags), `row-gap` | `<Row wrap gap={6} rowGap={8}>` (lines start at the top: no `align-content`) |
 | CSS `flex: 1 1 0` (equal or 1:1:2 columns in one row) | `width={0} grow={1}` (`grow={2}`...) on each child |
@@ -52,11 +60,16 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 | CSS `text-align`, `line-height`, `text-decoration: underline` | `textAlign` (`start`/`center`/`end`), `lineHeight` (multiplier), `underline` (inherited) |
 | CSS `font-weight: 600`, `font-weight: bold` | `fontWeight={600}`, `bold` (= 700); inherited |
 | CSS `font-style: italic` | `italic` (inherited) |
+| CSS `font-family: Inter, sans-serif` | `fontFamily="Inter, sans-serif"` (inherited; installed, registered or generic families) |
+| CSS `@font-face`, `next/font`, `@fontsource/*` | `registerFont(path)` with the file imported `with { type: "file" }` (a `@fontsource` package's `.woff2` files work) |
+| CSS `font-feature-settings: "tnum"`, `font-variant-numeric: tabular-nums` | `fontFeatures="tnum"` (inherited) |
+| CSS `font-variation-settings: "wdth" 75` | `fontVariations="wdth 75"` (inherited) |
 | CSS `letter-spacing: 0.08em` / `2px` | `letterSpacing={2}` (px only: multiply `em` by the `fontSize`); inherited |
 | CSS `:hover` / `:active`, `.card:hover .play` | `hoverStyle={{ background: "#..." }}` / `pressStyle={{...}}` on any widget; state read elsewhere: `const card = createInteraction()`, `<Box {...card.props}>`, `<Show when={card.hovered}>` |
 | selectable text (the default on the web) | only with `<Text selectable>`; without the prop it does not select (like `user-select: none`) |
 | `navigator.clipboard.writeText/readText` | `clipboard.writeText(t)` / `await clipboard.readText()` |
 | `fetch`, `fs`, timers | they work (Bun/Node APIs); update signals with the result |
+| `window.requestAnimationFrame` | `import { requestAnimationFrame } from "@nodebuilderjs/core"`: there is no global of that name (this is not a browser); the import works in tests too (`frames()`) |
 
 ## npm libraries
 
@@ -78,3 +91,6 @@ or Solid**. The JSX looks the same as always, but the elements are the widgets f
 - Reading the signal in the component body (`const x = count();`) and expecting it to update.
 - Destructuring reactive props (`const { value } = props`) and losing the function.
 - Putting `createSignal` inside an effect to "reset" state: create it outside and use `set`.
+- Using a `ref` in the component body or in its first effect run: the JSX below has not run
+  yet. Do it in `onMount`, or create the effect there.
+- Calling the global `requestAnimationFrame`: it does not exist; import it from core.

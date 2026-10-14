@@ -2,6 +2,7 @@
 // in place by reactive bindings; any mutation schedules a new frame.
 
 import type { ImageSource } from "../image/source.js";
+import { onMount } from "../reactive/signals.js";
 import type { CanvasGradient, LinearGradient } from "./gradient.js";
 
 export type Color = string;
@@ -11,14 +12,37 @@ export type Paint = Color | CanvasGradient;
 export type Background = Color | LinearGradient;
 export type Axis = "x" | "y";
 export type Edges = number | [vertical: number, horizontal: number] | [top: number, right: number, bottom: number, left: number];
+/** A size relative to the parent's content box (inside its padding), as in CSS: `"50%"`. */
+export type Percent = `${number}%`;
+/** Sizes that may be a `Percent`. */
+export type SizeKey = "width" | "height" | "minWidth" | "minHeight" | "maxWidth" | "maxHeight";
+
+/** Corner radius: one for all corners, or one per corner (clockwise from the top left, as in CSS). */
+export type Radius = number | readonly [topLeft: number, topRight: number, bottomRight: number, bottomLeft: number];
+
+/** The four radii of `r` (top left, top right, bottom right, bottom left). */
+export function corners(r: Radius | undefined): readonly [number, number, number, number] {
+  return typeof r === "object" ? r : [r ?? 0, r ?? 0, r ?? 0, r ?? 0];
+}
+
+/** `r` minus `by` on every corner, never below 0 (the inside of a border, an image inside padding). */
+export function insetRadius(r: Radius | undefined, by: number): Radius {
+  if (typeof r !== "object") return Math.max(0, (r ?? 0) - by);
+  return [Math.max(0, r[0] - by), Math.max(0, r[1] - by), Math.max(0, r[2] - by), Math.max(0, r[3] - by)];
+}
 
 export interface Style {
   // layout
   /** "grid" places children in rows of `columns` equal cells (the `Grid` widget). */
   direction?: "row" | "column" | "grid";
   gap?: number;
-  /** Number of equal-width columns of a grid (`direction: "grid"`). */
+  /** Number of equal-width columns of a grid (`direction: "grid"`); with `minColumnWidth`, the most there will be. */
   columns?: number;
+  /**
+   * Grid: as many columns as fit at least this wide (CSS `repeat(auto-fill, minmax(w, 1fr))`);
+   * they share the leftover width, so cells grow until one more column fits.
+   */
+  minColumnWidth?: number;
   /**
    * Row/Column: children that do not fit start a new line (a Row breaks at its width, a
    * Column at its height), each line laid out on its own (grow, justify, alignSelf).
@@ -73,7 +97,8 @@ export interface Style {
   // paint
   /** A color, or a linear gradient: `{ linear: ["#1db954", "#121212"], angle: 180 }` (stops are colors or `[color, offset]`). */
   background?: Background;
-  radius?: number;
+  /** One radius, or `[topLeft, topRight, bottomRight, bottomLeft]` (e.g. `[0, 12, 12, 0]`). Also rounds the clip and the shadow. */
+  radius?: Radius;
   borderWidth?: number;
   borderColor?: Color;
   shadow?: { color: Color; blur: number; y?: number };
@@ -88,6 +113,17 @@ export interface Style {
   italic?: boolean;
   /** Extra px after every character (grapheme cluster), the last one too, as in browsers; may be negative. Inherited. */
   letterSpacing?: number;
+  /**
+   * A CSS font family list, e.g. `"Inter, 'Noto Sans', sans-serif"`: families added with
+   * `registerFont`, installed ones by name, or generic ones (`sans-serif`, `serif`, `monospace`,
+   * `system-ui`, `emoji`...). Each character uses the first family that has it, then the system's
+   * fallback; missing families are skipped. Default: the system UI font. Inherited.
+   */
+  fontFamily?: string;
+  /** OpenType features, CSS `font-feature-settings` or HarfBuzz syntax: `"tnum, ss01, -liga"`, `'"liga" 0'`. Inherited. */
+  fontFeatures?: string;
+  /** Variable font axes, CSS `font-variation-settings` or HarfBuzz syntax: `"wdth 75, opsz 12"`; `wght` wins over `fontWeight`. Inherited. */
+  fontVariations?: string;
   /** A line under the text of <Text> (inherited, like `bold`). */
   underline?: boolean;
   // interaction
@@ -154,8 +190,8 @@ export interface Size {
 export interface Painter {
   /** 0..1, multiplies the alpha of everything drawn (set by paintTree from `opacity`). */
   opacity: number;
-  rect(x: number, y: number, w: number, h: number, color: Paint, radius?: number, borderWidth?: number, borderColor?: Color): void;
-  shadow(x: number, y: number, w: number, h: number, color: Color, radius: number, blur: number): void;
+  rect(x: number, y: number, w: number, h: number, color: Paint, radius?: Radius, borderWidth?: number, borderColor?: Color): void;
+  shadow(x: number, y: number, w: number, h: number, color: Color, radius: Radius, blur: number): void;
   /** `font`: true for bold (the old flag), or the weight, italic and letter spacing. */
   text(x: number, y: number, text: string, size: number, color: Color, font?: FontInput): void;
   /** Draws `uv` (a sub-rectangle of the image, 0..1) stretched over the box, multiplied by `tint` (default white). */
@@ -167,7 +203,7 @@ export interface Painter {
   /** Ring sector (pie slice with innerRadius 0). Angles in radians, 0 = up, positive = clockwise. */
   arc(cx: number, cy: number, outerRadius: number, innerRadius: number, start: number, sweep: number, color: Paint): void;
   /** Clips to a (optionally rounded) rect until the matching unclip(). */
-  clip(x: number, y: number, w: number, h: number, radius?: number): void;
+  clip(x: number, y: number, w: number, h: number, radius?: Radius): void;
   unclip(): void;
 }
 
@@ -179,23 +215,40 @@ export interface TextMetrics {
   descent: number;
 }
 
-/** The face text is drawn with, resolved: weight 1..1000, italic, and letterSpacing in px. */
+/**
+ * The face text is drawn with, resolved: weight 1..1000, italic, letterSpacing in px, and the
+ * family list, features and variations as written in the style ("" = none).
+ */
 export interface FontStyle {
   weight: number;
   italic: boolean;
   letterSpacing: number;
+  family: string;
+  features: string;
+  variations: string;
 }
 /** `true`/`false` = bold or regular (the old flag); an object fills in the rest from regular. */
 export type FontInput = boolean | Partial<FontStyle>;
 
-export const REGULAR: FontStyle = Object.freeze({ weight: 400, italic: false, letterSpacing: 0 });
-const BOLD: FontStyle = Object.freeze({ weight: 700, italic: false, letterSpacing: 0 });
+export const REGULAR: FontStyle = Object.freeze({ weight: 400, italic: false, letterSpacing: 0, family: "", features: "", variations: "" });
+const BOLD: FontStyle = Object.freeze({ ...REGULAR, weight: 700 });
 
 export function fontStyle(font: FontInput | undefined): FontStyle {
   if (font === undefined || font === false) return REGULAR;
   if (font === true) return BOLD;
-  if (font.weight !== undefined && font.italic !== undefined && font.letterSpacing !== undefined) return font as FontStyle;
-  return { weight: font.weight ?? 400, italic: font.italic ?? false, letterSpacing: font.letterSpacing ?? 0 };
+  if (font.weight !== undefined && font.italic !== undefined && font.letterSpacing !== undefined && font.family !== undefined && font.features !== undefined && font.variations !== undefined) return font as FontStyle;
+  return {
+    weight: font.weight ?? 400, italic: font.italic ?? false, letterSpacing: font.letterSpacing ?? 0,
+    family: font.family ?? "", features: font.features ?? "", variations: font.variations ?? "",
+  };
+}
+
+/**
+ * The addon's font spec (TEXT command, measureText): family, features and variations joined by
+ * U+001F, or "" when all are empty (the UI font, nothing else).
+ */
+export function fontSpec(font: FontStyle): string {
+  return font.family || font.features || font.variations ? `${font.family}\x1f${font.features}\x1f${font.variations}` : "";
 }
 
 /** The addon's font id (TEXT command, measureText): the weight, rounded into 1..1000, times 2, plus 1 if italic. */
@@ -249,8 +302,14 @@ export function setDisplayScale(value: number) {
 export function measureText(text: string, size: number, font?: FontInput): TextMetrics {
   return measurer(text, size, fontStyle(font));
 }
+let invalidations = 0;
 export function invalidate() {
+  invalidations++;
   scheduleFrame();
+}
+/** Counts invalidate() calls: layout compares it around onResize handlers to know whether they changed anything. */
+export function invalidationCount() {
+  return invalidations;
 }
 
 export type Placement = "bottom" | "top" | "right" | "left";
@@ -264,6 +323,8 @@ export interface OverlayOptions {
   matchWidth: boolean;
   /** Covers the window (ignoring `anchor`), blocks the pointer and keeps Tab inside. */
   modal: boolean;
+  /** Without an anchor (or modal): distance from the window's edges; what it leaves uncovered stays usable. */
+  inset?: Edges;
   onDismiss?: () => void;
 }
 
@@ -323,6 +384,8 @@ export class UINode implements ElementRef {
   label: string;
   /** Accessible name for nodes without text of their own (icon-only buttons); what `findByLabel` matches. */
   ariaLabel?: string;
+  /** On a text field: its value, what it draws (masked for a password) and its placeholder; what `findByValue` reads. */
+  field?: { value(): string; shown(): string; placeholder(): string | undefined };
 
   // Layout results (absolute, logical pixels).
   x = 0;
@@ -409,8 +472,25 @@ export class UINode implements ElementRef {
   overlay?: OverlayOptions;
   /** On a root: the input system's focus, set by createInput (what focus()/blur() go through). */
   focusHost?: { readonly focused: UINode | null; setFocus(node: UINode | null): void };
+  /** On a root without input yet (a test before interact()): the node focus() asked for, taken by createInput. */
+  pendingFocus: UINode | null = null;
   /** Last size given to onResize. */
   reportedSize: Size | null = null;
+  /** Sizes given as percentages (0..100 and more); layout writes the px value into `style` from the parent's content box. */
+  percents: Partial<Record<SizeKey, number>> | null = null;
+
+  /** Makes `key` a percentage of the parent's content box (`undefined`: no longer one). */
+  setPercent(key: SizeKey, value: number | undefined) {
+    if (value === undefined) {
+      if (this.percents?.[key] === undefined) return;
+      delete this.percents[key];
+      delete this.style[key];
+    } else {
+      if (this.percents?.[key] === value) return;
+      (this.percents ??= {})[key] = value;
+    }
+    invalidate();
+  }
 
   private host() {
     let n: UINode = this;
@@ -418,15 +498,26 @@ export class UINode implements ElementRef {
     return n.isRoot ? n.focusHost : undefined;
   }
 
-  /** Focuses the node if it is focusable. Called while the node is being created, it waits until it is in the tree. */
+  /**
+   * Focuses the node if it is focusable. Called while the node is being created (a `ref`), it
+   * lands as soon as the insert that creates it puts it in the tree.
+   */
   focus() {
-    const host = this.host();
-    if (host) {
-      if (this.focusable) host.setFocus(this);
-    } else {
+    if (!this.focusNow()) {
       // Still being created: widgets may set `focusable` after handing out the ref.
-      queueMicrotask(() => this.focusable && this.host()?.setFocus(this));
+      onMount(() => this.focusNow() || queueMicrotask(() => this.focusNow()));
     }
+  }
+
+  /** False while the node is not in a tree yet. */
+  private focusNow(): boolean {
+    let root: UINode = this;
+    while (root.parent) root = root.parent;
+    if (!root.isRoot) return false;
+    if (!this.focusable) return true;
+    if (root.focusHost) root.focusHost.setFocus(this);
+    else root.pendingFocus = this;
+    return true;
   }
 
   blur() {

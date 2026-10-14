@@ -32,6 +32,15 @@ let currentListener: Computation | null = null;
 let batchDepth = 0;
 const pending = new Set<Computation>();
 
+/** onMount callbacks waiting for the insert or update that creates their component to finish. */
+interface MountEntry {
+  owner: Owner | null;
+  fn: () => void;
+  cancelled: boolean;
+}
+let mounts: MountEntry[] = [];
+let mountHold = 0;
+
 function cleanOwner(owner: Owner) {
   for (const child of owner.owned) disposeOwner(child);
   owner.owned = [];
@@ -106,7 +115,7 @@ function flushPending() {
           if (!c.disposed) execute(c);
           if (++guard > 100_000) {
             pending.clear();
-            throw new Error("nodebuilder: reactive update loop detected");
+            throw new Error("nodebuilder: reactive update loop detected (an effect or memo keeps changing a signal it reads)");
           }
         } while (pending.size);
       } catch (error) {
@@ -121,6 +130,58 @@ function flushPending() {
     batchDepth--;
   }
   if (failed) throw firstError;
+  if (batchDepth === 0 && mountHold === 0) runMounts();
+}
+
+function runMounts() {
+  while (mounts.length) {
+    const list = mounts;
+    mounts = [];
+    for (const m of list) {
+      if (m.cancelled) continue;
+      m.cancelled = true;
+      const prevOwner = currentOwner;
+      const prevListener = currentListener;
+      currentOwner = m.owner;
+      currentListener = null;
+      batchDepth++;
+      try {
+        m.fn();
+      } catch (error) {
+        currentOwner = prevOwner;
+        currentListener = prevListener;
+        handleError(m.owner, error);
+      } finally {
+        currentOwner = prevOwner;
+        currentListener = prevListener;
+        batchDepth--;
+      }
+    }
+    if (pending.size) flushPending(); // what the callbacks wrote
+  }
+}
+
+/**
+ * Runs `fn` once the component calling it is in the tree, with its refs set: after the
+ * insert (or the update, e.g. a <Show> turning on) that created it, before the next layout.
+ * Untracked; effects and cleanups created inside belong to the component. Not called for a
+ * component disposed before that.
+ */
+export function onMount(fn: () => void): void {
+  const entry: MountEntry = { owner: currentOwner, fn, cancelled: false };
+  mounts.push(entry);
+  if (currentOwner) currentOwner.cleanups.push(() => (entry.cancelled = true));
+  if (batchDepth === 0 && mountHold === 0 && !currentListener && !currentOwner) runMounts();
+}
+
+/** Holds onMount callbacks until `fn` (an insert) returns, then runs them unless an outer one is still going. */
+export function holdMounts<T>(fn: () => T): T {
+  mountHold++;
+  try {
+    return fn();
+  } finally {
+    if (--mountHold === 0 && batchDepth === 0) runMounts();
+  }
 }
 
 /** Runs `fn` with all signal writes coalesced; effects run once at the end. */

@@ -17,11 +17,12 @@ for the rules and conventions for anyone changing the code, see [AGENTS.md](AGEN
 │ render/       node: retained tree · layout: flexbox · paint: command buffer  │
 │ runtime/      frame loop, events, focus, hover, NB_STATS; native addon       │
 └────┬─────────────────────────────────────────────────────────────────────────┘
-     │  N-API: render(commands, texts), measureText, createImage, decodeImage, events
+     │  N-API: render(commands, texts), measureText, registerFont, createImage, events
 ┌────▼──────────────────────────── portable core (native/core/) ───────────────┐
 │ addon.c         N-API surface, event queue, threadsafe function              │
 │ render_gles2.c  one shader, one vertex format, one batch per frame           │
-│ text.c          HarfBuzz + FreeType, font fallback, alpha and color atlases  │
+│ text.c          HarfBuzz + FreeType shaping, runs, alpha and color atlases   │
+│ faces.c         font faces, app fonts, family lists, CSS matching, fallback  │
 └────┬─────────────────────────────────────────────────────────────────────────┘
      │  nb_platform.h contract (window, events, fonts)
 ┌────▼──────────────────────── OS backend (native/platform/linux/) ────────────┐
@@ -29,7 +30,7 @@ for the rules and conventions for anyone changing the code, see [AGENTS.md](AGEN
 │ wayland.c    xdg-shell, EGL, pointer, keyboard (xkb + compose), cursor       │
 │ x11.c        Xlib + EWMH, EGL, XIM, Xcursor, XRandR                          │
 │ pump.c       poll() thread that signals when there are events                │
-│ fonts.c      fontconfig: UI font, fallback order per codepoint               │
+│ fonts.c      fontconfig: families by name, fallback order, installed list    │
 │ codecs.c     AVIF/HEIC via libheif (dlopen, optional)                        │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -48,7 +49,7 @@ The model is SolidJS's, implemented from scratch in `src/reactive/signals.ts`:
   (`flushPending`). While that queue is running, new writes only join it: the effect that
   wrote finishes before the ones it triggered (it never runs reentrantly, in the middle of
   itself), and an update cycle is detected by the 100 000-run limit instead of blowing the
-  stack. An error that no scope handles does not stall the queue: the remaining pending
+  stack (it throws "reactive update loop detected"). An error that no scope handles does not stall the queue: the remaining pending
   effects run and the first error is rethrown at the end, to whoever wrote the signal.
 - **Ownership:** everything created inside an effect or `createRoot` is disposed of along
   with it (`onCleanup`). That is how switching tabs, for example, releases everything from the old tab.
@@ -75,6 +76,20 @@ create **descriptions** (`ElementDesc`). The component runs when the description
 into the tree. This lets `<Show>`, `<Switch>` and `<For>` decide when (and whether) to
 instantiate their children; `<Switch>` reads the props of each `<Match>` straight from the
 description, without running anything.
+
+`run(app)` and `mount(view)` call the callback with `untrack` before inserting what it
+returns, so it behaves like a component body: reading a signal there and then setting it does
+not make the whole app a reactive slot that reruns (and loops) on every write.
+
+**`onMount`** queues a callback with the current owner. The queue is held while an `insert`
+is in progress (`holdMounts`, counted, so nested inserts wait for the outermost one) and while
+an update queue is running; it is drained when both end, which is after the nodes created by
+that insert (or by the update: a `<Show>` turning on) have been placed in their slots, before
+the next layout. Each callback runs untracked under its owner (effects created there belong to
+the component); a cleanup on the owner cancels a callback whose component was disposed or
+rerun before that. `UINode.focus()` uses the same queue for a `ref` that focuses during
+creation: it lands when the node is attached (or, on a root without input yet, as
+`root.pendingFocus`, which `createInput` takes), not a microtask later.
 
 Since there is no compiler, the rule is explicit: **only functions are reactive**. A prop
 `text={() => ...}` or a child `{count}` becomes an effect that updates the node directly; a
@@ -155,7 +170,19 @@ counts `render` calls while sending `configure`, `frame` and pointer events.
 
 `src/render/layout.ts` is a simplified flexbox: `direction`, `gap`, `padding`, `grow`, `align`
 (default `stretch`, overridden per child by `alignSelf`), `justify`, `min/max`, and
-`position: "absolute"` with `left/top/right/bottom`. Absolute children are placed after the
+`position: "absolute"` with `left/top/right/bottom`.
+
+**Percentages** (`width="50%"`, also `height` and the `min`/`max` sizes) are kept on the node
+(`UINode.percents`, set by `applyProps`); `Style` stays numeric. `place()` resolves a node's
+children against its content box before it lays them out (`resolvePercents`), writing the px
+value into the child's style and dropping that child's cached measurements. Before that (the
+parent's own natural size, measured earlier in the same pass), a percentage child counts with
+its last value, or its content the first time, as CSS does for percentages in intrinsic sizes.
+
+**Auto-fill grids** (`minColumnWidth`): `columnsOf(node, inner)` fits as many columns of at
+least that width as the inner width allows (capped by `columns`); without a width (the natural
+size) every cell goes in one row, so the grid "wraps" (height depends on width) and can shrink
+down to one column. Absolute children are placed after the
 in-flow ones, from the content box and minus the scroll offset (they scroll with the content);
 both edges of an axis without a size stretch them (`absoluteSpan`), and a wrapping child gets
 its height at that width (`heightAt`).
@@ -237,17 +264,49 @@ uses. `underline` needs no opcode: `Text` paints a RECT under each line it drew,
 that line, a third of the descent below the baseline (ascent from the font metrics), with a
 thickness of `max(1, fontSize / 14)` and both snapped to device pixels so it stays sharp.
 
-**Weights, italics, letter spacing.** `inheritedFont()` (`widgets/props.ts`) resolves a
-node's `FontStyle` (`{ weight, italic, letterSpacing }`; the nearest `fontWeight` or `bold`
-up the tree gives the weight) and keeps the same object while nothing changed, so the
-per-node layout caches compare it by identity. The measurer receives it, and the TEXT
-command carries it as a font id (`weight * 2 + italic`, `fontId()`) plus the spacing. In
-`text.c` each font id gets its UI face from `nb_platform_font_path(weight, italic, ...)` the
-first time it is used (fontconfig's closest match; an upright match for italic comes back
-with `oblique` and gets a FreeType shear). A variable font is opened at its base index with
-the `wght` axis set (HarfBuzz ignores the coordinates FreeType gives a named instance), and
-gets one face per weight; a static file is shared by every weight that maps to it. Fallback
-fonts are asked per (weight, italic) too. Letter spacing is added in `layout_runs` after the
+**Fonts: weights, italics, families, features, letter spacing.** `inheritedFont()`
+(`widgets/props.ts`) resolves a node's `FontStyle` (`{ weight, italic, letterSpacing, family,
+features, variations }`; the nearest `fontWeight` or `bold` up the tree gives the weight) and
+keeps the same object while nothing changed, so the per-node layout caches compare it by
+identity. The measurer receives it, and the TEXT command carries it as a font id (`weight * 2
++ italic`, `fontId()`), the spacing, and a *spec*: family list, features and variations
+joined by U+001F (`fontSpec()`, "" when all are empty), sent once per frame in `texts[]`.
+
+`core/faces.c` turns (spec, font id) into a *style*: specs are interned and parsed once (the
+CSS family list, with quotes and generic names; features and variations with HarfBuzz's
+parsers, which take CSS syntax), and each style resolves, the first time it is used, to a
+stack of faces: for each family of the list, the app's faces registered under that name (CSS
+font matching: slant first, then the weight rules; faces with the same descriptors all join,
+in registration order) or else the installed family (`nb_platform_font_path(family, ...)`,
+NULL when not installed; generic names always resolve), then the UI font. A cluster's face
+is the first of the stack that has its base, else the platform's fallback after the list's
+first system family (cached per codepoint and style). A style whose first face has all of
+printable ASCII keeps the ASCII fast path. Registering a font drops styles and fallbacks
+(and TS bumps the metrics generation, which empties the measurer cache and re-wraps text).
+What the platform answers for an installed family at a weight and slant is remembered (256
+lookups), since fontconfig costs far more than the rest of resolving a style.
+
+**Eviction.** Every distinct weight of a variable font and every distinct `fontVariations`
+string is a face of its own, so animating either makes one per frame. At the start of each
+measure or draw call (the only point where nothing holds a face), when fewer than 32 of the 255
+face slots are free, the least recently used faces of variable files are evicted down to half
+the table (never face 0, the UI font; the faces of static files are bounded by the files): text.c
+closes their sized fonts, styles that used one resolve again on their next use and fallback
+slots that pointed at one are looked up again. A reused slot gets a new generation, which is
+part of the glyph cache key, so glyphs of the old face just stop matching (their atlas pixels
+stay until the next reset, so quads already emitted in the frame are still right). Variation
+lists (256) are referenced by specs too: when they run low, every spec and style is dropped,
+faces are evicted and the lists no face uses are freed. `fontStats()` in the addon reports the
+live entries for tests.
+
+A face is a file (a path, or the bytes of a registered font, copied once and shared by all
+its faces) drawn one way: `oblique` (italic asked, none in the family: a FreeType shear),
+`embolden` (600+ asked of a lighter face: `FT_Outline_Embolden` by 1/24 em before rendering,
+advances unchanged; for system fonts fontconfig's `embolden` says so), and, for a file with
+variation axes, its coordinates: the named instance's, then `wght` = the weight, then the
+spec's variations. A variable font is opened at its base index (HarfBuzz ignores the
+coordinates FreeType gives a named instance) and gets one face per weight and variation list;
+a static file is shared by every weight that maps to it. Letter spacing is added in `layout_runs` after the
 last glyph of every HarfBuzz cluster, the last one included, so `width(a + b) = width(a) +
 width(b)` keeps holding: wrapping sums word widths and selection measures prefixes, and both
 stay exact. A nonzero spacing turns `liga`/`clig` off, as CSS does.
@@ -351,7 +410,10 @@ anchored layer disappears if the anchor left the tree or is in a `culled` subtre
 would be stale). Painting draws the layers after the tree, clipped by the root's first child
 if it clips (the `Window`'s corners). The hit test starts with the layers, top to bottom; a
 layer that covers the window is only a target if it is `modal`. Registration happens before
-the children run, so an overlay opened from inside another one sits on top of it.
+the children run, so an overlay opened from inside another one sits on top of it. A layer
+without an anchor may take an `inset` from the window's edges: what it leaves uncovered (a
+title bar) is hit-tested in the tree below even under a modal, and a press there does not
+dismiss it.
 
 `translateX`/`translateY` are added to the node's position in `place()`, after flex: the
 children are positioned from it, and hit testing, culling and `ref` see the offset position
@@ -367,11 +429,11 @@ Painting does not call the C node by node: `render/paint.ts` writes everything i
 
 | Op | Code | Following floats |
 |---|---|---|
-| RECT | 1 | x y w h · r g b a · radius borderWidth · br bg bb ba |
-| TEXT | 2 | x y(line top) size font id (weight * 2 + italic) · r g b a · index into `texts[]` · letterSpacing |
-| CLIP | 3 | x y w h radius (scissor + innermost rounded mask) |
+| RECT | 1 | x y w h · r g b a · tl tr br bl (corner radii) · borderWidth · br bg bb ba |
+| TEXT | 2 | x y(line top) size font id (weight * 2 + italic) · r g b a · index into `texts[]` · letterSpacing · spec index into `texts[]` (-1: none) |
+| CLIP | 3 | x y w h · tl tr br bl (scissor + innermost rounded mask) |
 | UNCLIP | 4 | (none) |
-| SHADOW | 5 | x y w h · r g b a · radius blur |
+| SHADOW | 5 | x y w h · r g b a · tl tr br bl · blur |
 | IMAGE | 6 | x y w h · u0 v0 u1 v1 · r g b a (tint; a = opacity) · radius · image id |
 | LINE | 7 | x0 y0 x1 y1 · width · r g b a · start cap, end cap (0 butt, 1 round) |
 | TRIANGLES | 8 | n · r g b a · n × (x y coverage) |
@@ -385,7 +447,13 @@ The format exists in three places that must stay in sync: `native/include/nb.h`,
 
 `render_gles2.c` uses a single shader and a single vertex format. Rectangles with borders and
 rounded corners, shadows and glyphs all become triangles in a single batch. Corners and
-shadows are computed in the fragment shader with distance functions.
+shadows are computed in the fragment shader with distance functions. A rect or shadow carries
+one radius per corner: the top left one in the radius slot, the other three in the `uv`
+attribute (unused by those modes; a vec3, so the vertex is 20 floats), and the shader picks the
+radius of the quadrant the fragment is in. The rounded clip mask is a `vec4` uniform the same
+way. One more float per vertex cost nothing measurable (`bun run bench` MODE=all N=2000,
+2026-10-14: native 0.43–0.48 → 0.44–0.45 ms/frame; commands 21 → 23 KB). An `Image` keeps one
+radius; with different corners the widget draws it inside a rounded clip.
 
 Colors are composited in **premultiplied alpha** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`), and the
 border is drawn over the background, as in CSS. Blending in "straight" alpha produces dark
@@ -395,7 +463,7 @@ varies across a shape (gradients, antialiasing coverage) is interpolated in prem
 **Gradients.** A `GRADIENT` op is a prefix: it fills the op right after it (RECT, LINE,
 TRIANGLES, ARC; paint.ts sends that op in white, which multiplies the gradient). While it is
 active, `push_vertex` collects each triangle and cuts it along the stop lines
-(Sutherland-Hodgman on `t`, the position projected on the gradient line, interpolating all 19
+(Sutherland-Hodgman on `t`, the position projected on the gradient line, interpolating all 20
 vertex floats); each piece's vertices are colored from the two stops around it. Between two
 stops a linear gradient is affine in position, so per-vertex colors are exact, at any angle and
 with any number of stops, and the shape keeps its own distance function: rounded corners,
@@ -405,24 +473,39 @@ style form (`{ linear, angle }`) becomes a line in `render/gradient.ts` with the
 affine and would need a shader mode; they are not implemented.
 
 Text: HarfBuzz does the shaping (accents, ligatures, kerning), FreeType rasterizes each glyph
-once and stores it in a texture atlas. The measurements the layout asks of the C are cached
-on the TypeScript side.
+once and stores it in a texture atlas. Each face is one `FT_Face`, opened while some size uses
+it; each pixel size is an `FT_Size` on it with its own HarfBuzz font (64 kept, least recently
+used out), activated before shaping or loading glyphs, so a new size (an animated `fontSize`)
+does not read and parse the file again. The atlas is one 2048 px A8 texture cut into four
+1024 px pages, each filled shelf by shelf; when all are full, the least recently used page is
+wiped (its generation bumps, so glyph slots that pointed into it rasterize again), never one a
+glyph of the current frame came from unless every page did, so quads already emitted in the
+frame keep their pixels (`nb_text_begin_frame`, called by `nb_render_frame`, counts frames).
+Only the rows that changed are uploaded (`glTexSubImage2D`), the whole texture once per GL
+context. A bitmap larger than 512 px on a side (display sizes: `fontSize` around 700 at scale 1)
+is box-filtered down to 512 px and the quad stretches it back, so one glyph never fills or
+overflows a page; the atlas is sampled with `GL_LINEAR`, which at the usual 1:1, pixel-aligned
+quads equals `NEAREST`. The measurements the layout asks of the C are cached on the TypeScript
+side.
 
-**Font fallback.** A string the UI font cannot fully draw is cut into clusters (a base
+**Font fallback.** A string the first face of its style cannot fully draw is cut into clusters (a base
 codepoint plus its combining marks, variation selectors, skin-tone modifiers, ZWJ-joined
 parts, tag sequences; regional indicators in pairs), so an emoji sequence never splits across
 fonts. Each cluster picks a face by its base: one with emoji presentation (emoji planes, the
 BMP `Emoji_Presentation` list, or a U+FE0F, ZWJ or skin tone in the cluster; U+FE0E forces
-text) asks for a color font first; otherwise the UI font if it has the glyph
-(`FT_Get_Char_Index`), then the platform's fallback, `nb_platform_font_fallback`. On Linux
-that is fontconfig's `FcFontSort` of the UI font's pattern (or of `emoji` with `color=true`),
-computed once and walked for the first font whose charset has the codepoint. The answer is
-cached per codepoint, so fontconfig is asked once per character the UI font lacks, and up to
-32 faces stay loaded (UI fonts included; past that, the UI font's tofu). Consecutive clusters
+text) asks for a color font first (one of the style's, then the system's); otherwise the
+first face of the style that has the glyph (`FT_Get_Char_Index`), then the platform's
+fallback, `nb_platform_font_fallback`. On Linux that is fontconfig's `FcFontSort` of the
+list's first system family (the UI font's pattern without one, or `emoji` with
+`color=true`), computed once and walked for the first font whose charset has the codepoint.
+The answer is cached per codepoint and style, so fontconfig is asked once per character the
+fonts lack, and up to 255 faces stay loaded (variable instances are evicted, see above; past
+that, the closest face of the same file, or the UI font). Consecutive clusters
 with the same face become a run, each run is shaped with its own font and the pens
 concatenate. `measure` and `draw` walk the same runs, so layout and painting agree. Strings
-that are pure ASCII skip all of it (one run, no decoding). Ascent and descent always come from
-the UI font, so a fallback glyph never changes the line height.
+that are pure ASCII skip all of it when the first face has every ASCII glyph (one run, no
+decoding). Ascent and descent always come from the style's first face, so a fallback glyph
+never changes the line height.
 
 **Color emoji.** Noto Color Emoji is a CBDT font: bitmaps at fixed strikes (109 px), no
 outlines. For such a face the closest strike is selected with `FT_Select_Size`, HarfBuzz scales
@@ -433,7 +516,9 @@ COLRv0 and sbix fonts go through the same path (FreeType renders them to BGRA); 
 (gradients) is not rendered by FreeType, so such fonts show their monochrome fallback glyphs.
 The renderer draws those quads with their own mode: the shader samples the color atlas
 (texture unit 2) and multiplies by the text color's alpha only, so `color` does not tint an
-emoji but `opacity` fades it. Both atlases are reset together when either fills up.
+emoji but `opacity` fades it. The color atlas is 1024 px with four 512 px pages and a 256 px
+cap (emoji strikes are 109 to 136 px, so little is lost), paged like the alpha one; both are
+reset together only when the glyph slot table (8192) fills.
 
 Images: PNG, JPEG and WebP are decoded in TypeScript to RGBA (`src/image/png.ts` with the
 runtime's zlib, `jpeg.ts`, `webp.ts`). All three reproduce the output of the reference
@@ -550,10 +635,18 @@ the event miss silently.
 
 `createInput` registers focus on the root (`root.focusHost`); that is how a `ref`'s
 `focus()` and `blur()` reach the input. A `focus()` made while the widget is being created
-(still outside the tree) is repeated in a microtask, once the tree is mounted. `onResize` is
-collected during `layout()` and delivered in a batch after the whole tree has been
-positioned, so that the handler can change state (and the tree) without disrupting the layout
-in progress; the change lands in the next frame.
+(still outside the tree) lands when the insert that creates it ends (the `onMount` queue, see
+Reactivity). Keys bubble from the focused node; with nothing focused they start at the
+topmost modal layer, or else at the root's top nodes (the `Window`), so a window-level
+`onKeyDown` sees everything nothing below took. A control's own key handler is chained after
+the app's (`ownHandler`), and the app's `stop()` skips it.
+
+`onResize` is collected during `layout()` and delivered in a batch after the whole tree has
+been positioned, so that the handler can change state (and the tree) without disrupting the
+layout in progress. If the handlers invalidated anything, `layout()` places the tree again
+(at most two extra passes), so nodes they create have boxes before the frame is painted (and
+in a test, right after `relayout()`); a handler still changing sizes after that is reported
+among the layout warnings as an `onResize` loop.
 
 ## Wayland and X11
 
@@ -590,6 +683,37 @@ server.
   process). Pasting is `XConvertSelection` + `SelectionNotify`, with the INCR protocol for
   large texts (chunks via `PropertyNotify`). Sending with INCR is not implemented: texts above
   the maximum request size (~16 MB with BIG-REQUESTS) are refused.
+
+## Diagnostics (`nodebuilder doctor`)
+
+`cli/doctor.ts` runs a list of checks over injected probes (`DoctorProbes`), so every check is
+tested with fakes; `systemProbes()` is the real machine. The order matters because the report
+is most useful when things are broken:
+
+1. **Without the addon** (plain TypeScript): Bun against `engines.bun`; which addon file
+   `loadNative()` would pick (the same candidates) and, for the npm package, that its version
+   matches core's; the glibc the addon needs, read from its ELF `.gnu.version_r` section
+   (`elfGlibc` in `cli/package/native.ts`, also used by packaging and `npm:build`, so `objdump`
+   is not needed), against the system's (`process.report`); the sonames `ldd` cannot find,
+   mapped to their package through `SYSTEM_LIBS` (`cli/package/common.ts`, the same table the
+   `.deb`/`.rpm` dependencies come from); libheif via the library directories or `ldconfig -p`.
+   A failure here skips the native checks instead of loading an addon that would throw.
+2. **With the addon:** `diagnostics()` (`addon.c`) returns the FreeType and HarfBuzz versions
+   (`nb_fonts_versions`; both diagnostics functions in `faces.c` borrow a FreeType instance, since
+   `nb_fonts_init` fails on a machine without fonts), `nb_platform_probe_display` (contract:
+   connect to the display server `open()` would pick, in the same order, check what a window
+   needs, load the keyboard's compose data for the locale, disconnect; Wayland checks for
+   `wl_compositor` and `xdg_wm_base` and loads the xkb compose table, X11 opens XIM, which is
+   what handles dead keys there), the UI font through `nb_platform_font_path` (its family read
+   by FreeType) and the fallbacks for U+1F600 (emoji) and U+4E2D (CJK) through
+   `nb_platform_font_fallback`, and the current GL context's strings. GL is tested by one 1x1
+   `renderOffscreen`, or with `--window` by opening a window, drawing one frame and waiting for
+   its frame callback (5 s timeout). The two can differ: on a hybrid laptop surfaceless EGL may
+   pick the discrete GPU while the compositor's window uses the integrated one.
+
+Each check has an id, a status (`ok`, `warn`, `fail`, `off` for an optional feature, `skip`), a
+title, an optional detail and a fix (a command for the detected package manager, from
+`/etc/os-release`). `--json` prints them as they are.
 
 ## Porting to other systems
 

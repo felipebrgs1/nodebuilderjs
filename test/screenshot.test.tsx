@@ -129,6 +129,28 @@ test.skipIf(!offscreen)("screenshot(root): the mounted size, real colors, and pi
   dispose();
 });
 
+test.skipIf(!offscreen)("radius per corner: square corners stay filled, rounded ones are cut, for the box and for its clip", () => {
+  const shot = screenshot(
+    () => (
+      <Column align="start" gap={0}>
+        <Box width={100} height={100} background="#ff0000" radius={[0, 30, 30, 0]} />
+        <Box width={100} height={100} clip radius={[30, 0, 0, 30]}>
+          <Box grow={1} background="#00ff00" />
+        </Box>
+      </Column>
+    ),
+    { width: 100, height: 200 },
+  );
+  expect(shot.pixel(1, 1)).toEqual([255, 0, 0, 255]); // top left: square
+  expect(shot.pixel(98, 1)[3]).toBe(0); // top right: rounded
+  expect(shot.pixel(98, 98)[3]).toBe(0); // bottom right: rounded
+  expect(shot.pixel(1, 98)).toEqual([255, 0, 0, 255]); // bottom left: square
+  expect(shot.pixel(1, 101)[3]).toBe(0); // clip: top left rounded
+  expect(shot.pixel(98, 101)).toEqual([0, 255, 0, 255]); // clip: top right square
+  expect(shot.pixel(1, 198)[3]).toBe(0);
+  expect(shot.pixel(98, 198)).toEqual([0, 255, 0, 255]);
+});
+
 test.skipIf(!offscreen)("screenshot(view) mounts, shoots at the given size and scale, with a background", () => {
   const shot = screenshot(() => <Box width={10} height={10} background="#00ff00" />, { width: 40, height: 20, scale: 2, background: "#ffffff" });
   expect([shot.width, shot.height]).toEqual([80, 40]);

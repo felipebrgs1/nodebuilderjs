@@ -3,6 +3,7 @@
 // via a threadsafe function; events are then processed and delivered to JS on
 // the JS thread. No libuv, so the addon loads in Bun and Node alike.
 #define NAPI_VERSION 8
+#include <GLES2/gl2.h>
 #include <node_api.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -332,11 +333,11 @@ static napi_value js_render_offscreen(napi_env env, napi_callback_info info) {
   return out;
 }
 
-// measureText(text, size, font, scale?, letterSpacing?) -> [width, ascent, descent] in logical px.
-// `font`: a font id (weight * 2 + italic).
+// measureText(text, size, font, scale?, letterSpacing?, spec?) -> [width, ascent, descent] in logical px.
+// `font`: a font id (weight * 2 + italic); `spec`: family list, features, variations (fontSpec()).
 static napi_value js_measure_text(napi_env env, napi_callback_info info) {
-  size_t argc = 5;
-  napi_value argv[5];
+  size_t argc = 6;
+  napi_value argv[6];
   CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
   if (!nb_text_init()) {
     napi_throw_error(env, NULL, "text engine initialisation failed");
@@ -360,9 +361,14 @@ static napi_value js_measure_text(napi_env env, napi_callback_info info) {
   napi_valuetype spacing_type = napi_undefined;
   if (argc > 4) napi_typeof(env, argv[4], &spacing_type);
   if (spacing_type == napi_number) CHECK(napi_get_value_double(env, argv[4], &spacing));
+  char *spec = NULL;
+  napi_valuetype spec_type = napi_undefined;
+  if (argc > 5) napi_typeof(env, argv[5], &spec_type);
+  if (spec_type == napi_string) spec = get_string(env, argv[5]);
   int px = (int)(size * scale + 0.5);
-  float w = nb_text_measure(font, text ? text : "", px, (float)spacing * scale, &ascent, &descent);
+  float w = nb_text_measure(font, spec, text ? text : "", px, (float)spacing * scale, &ascent, &descent);
   free(text);
+  free(spec);
 
   napi_value out, n;
   napi_create_array_with_length(env, 3, &out);
@@ -373,6 +379,100 @@ static napi_value js_measure_text(napi_env env, napi_callback_info info) {
   napi_create_double(env, descent / scale, &n);
   napi_set_element(env, out, 2, n);
   return out;
+}
+
+// registerFont(bytes: Uint8Array, family: string | null, weightMin, weightMax, italic: -1 | 0 | 1)
+//   -> [{ family, weightMin, weightMax, italic, variable }]. Works without a window.
+static napi_value js_register_font(napi_env env, napi_callback_info info) {
+  size_t argc = 5;
+  napi_value argv[5];
+  CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+  napi_typedarray_type type;
+  size_t length, offset;
+  void *data;
+  napi_value arraybuffer;
+  bool is_typed = false;
+  napi_is_typedarray(env, argv[0], &is_typed);
+  if (!is_typed || napi_get_typedarray_info(env, argv[0], &type, &length, &data, &arraybuffer, &offset) != napi_ok ||
+      type != napi_uint8_array) {
+    napi_throw_type_error(env, NULL, "font bytes must be a Uint8Array");
+    return NULL;
+  }
+  napi_valuetype family_type;
+  napi_typeof(env, argv[1], &family_type);
+  char *family = family_type == napi_string ? get_string(env, argv[1]) : NULL;
+  int32_t weight_min = 0, weight_max = 0, italic = -1;
+  napi_get_value_int32(env, argv[2], &weight_min);
+  napi_get_value_int32(env, argv[3], &weight_max);
+  napi_get_value_int32(env, argv[4], &italic);
+  nb_font_info faces[64];
+  char error[256] = "";
+  int n = nb_fonts_register(data, length, family, weight_min, weight_max, italic, faces, 64, error, sizeof error);
+  free(family);
+  if (n < 0) {
+    napi_throw_error(env, NULL, error);
+    return NULL;
+  }
+  napi_value out;
+  napi_create_array_with_length(env, n, &out);
+  for (int i = 0; i < n && i < 64; i++) {
+    napi_value o, v;
+    napi_create_object(env, &o);
+    set_str(env, o, "family", faces[i].family);
+    napi_create_int32(env, faces[i].weight_min, &v);
+    napi_set_named_property(env, o, "weightMin", v);
+    napi_create_int32(env, faces[i].weight_max, &v);
+    napi_set_named_property(env, o, "weightMax", v);
+    napi_get_boolean(env, faces[i].italic, &v);
+    napi_set_named_property(env, o, "italic", v);
+    napi_get_boolean(env, faces[i].variable, &v);
+    napi_set_named_property(env, o, "variable", v);
+    napi_set_element(env, out, i, o);
+  }
+  return out;
+}
+
+typedef struct {
+  napi_env env;
+  napi_value array;
+  uint32_t count;
+} family_list;
+
+static void add_family(const char *family, void *ud) {
+  family_list *list = ud;
+  napi_value s;
+  napi_create_string_utf8(list->env, family, NAPI_AUTO_LENGTH, &s);
+  napi_set_element(list->env, list->array, list->count++, s);
+}
+
+// fontFamilies() -> string[]: registered and installed families (unsorted, maybe repeated).
+static napi_value js_font_families(napi_env env, napi_callback_info info) {
+  if (!nb_text_init()) {
+    napi_throw_error(env, NULL, "text engine initialisation failed");
+    return NULL;
+  }
+  family_list list = {.env = env};
+  napi_create_array(env, &list.array);
+  nb_fonts_families(add_family, &list);
+  return list.array;
+}
+
+// fontStats() -> { faces, variations, specs, styles, sizes }: live entries of the font tables.
+static napi_value js_font_stats(napi_env env, napi_callback_info info) {
+  if (!nb_text_init()) {
+    napi_throw_error(env, NULL, "text engine initialisation failed");
+    return NULL;
+  }
+  nb_font_stats st;
+  nb_fonts_stats(&st);
+  napi_value o;
+  napi_create_object(env, &o);
+  set_num(env, o, "faces", st.faces);
+  set_num(env, o, "variations", st.variations);
+  set_num(env, o, "specs", st.specs);
+  set_num(env, o, "styles", st.styles);
+  set_num(env, o, "sizes", st.sizes);
+  return o;
 }
 
 // createImage(width, height, rgba: Uint8Array) -> id (> 0). Works before the window opens.
@@ -520,6 +620,77 @@ static napi_value js_read_clipboard(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
+static napi_value string_or_null(napi_env env, const char *s) {
+  napi_value v;
+  if (s) napi_create_string_utf8(env, s, NAPI_AUTO_LENGTH, &v);
+  else napi_get_null(env, &v);
+  return v;
+}
+
+static void set_string(napi_env env, napi_value obj, const char *key, const char *s) {
+  napi_set_named_property(env, obj, key, string_or_null(env, s));
+}
+
+// A fallback font for `cp`, as `nodebuilder doctor` reports it (path or null).
+static napi_value fallback_path(napi_env env, uint32_t cp, bool emoji) {
+  int index = 0;
+  char *path = nb_platform_font_fallback(cp, NULL, false, 400, false, emoji, &index);
+  napi_value v = string_or_null(env, path);
+  free(path);
+  return v;
+}
+
+// diagnostics() -> { freetype, harfbuzz, display, fonts, gl } (see src/runtime/native.ts).
+static napi_value js_diagnostics(napi_env env, napi_callback_info info) {
+  napi_value out, display, fonts, ui, gl, v;
+  CHECK(napi_create_object(env, &out));
+
+  char freetype[32];
+  const char *harfbuzz;
+  nb_fonts_versions(freetype, sizeof freetype, &harfbuzz);
+  set_string(env, out, "freetype", freetype);
+  set_string(env, out, "harfbuzz", harfbuzz);
+
+  nb_display_probe probe;
+  nb_platform_probe_display(&probe);
+  CHECK(napi_create_object(env, &display));
+  set_string(env, display, "backend", probe.backend);
+  set_string(env, display, "error", probe.error);
+  napi_get_boolean(env, probe.compose, &v);
+  napi_set_named_property(env, display, "compose", v);
+  set_string(env, display, "locale", probe.locale);
+  napi_set_named_property(env, out, "display", display);
+
+  CHECK(napi_create_object(env, &fonts));
+  nb_font_match match = {0};
+  char *path = nb_platform_font_path(NULL, false, 400, false, &match);
+  char family[256];
+  if (path && nb_fonts_file_family(path, match.index, family, sizeof family)) {
+    CHECK(napi_create_object(env, &ui));
+    set_string(env, ui, "path", path);
+    set_string(env, ui, "family", family);
+  } else {
+    napi_get_null(env, &ui);
+  }
+  free(path);
+  napi_set_named_property(env, fonts, "ui", ui);
+  napi_set_named_property(env, fonts, "emoji", fallback_path(env, 0x1F600, true));  // 😀
+  napi_set_named_property(env, fonts, "cjk", fallback_path(env, 0x4E2D, false));    // 中
+  napi_set_named_property(env, out, "fonts", fonts);
+
+  // Only with a context of ours current: glGetString without one is undefined behavior.
+  if (g_open || g_offscreen) {
+    CHECK(napi_create_object(env, &gl));
+    set_string(env, gl, "vendor", (const char *)glGetString(GL_VENDOR));
+    set_string(env, gl, "renderer", (const char *)glGetString(GL_RENDERER));
+    set_string(env, gl, "version", (const char *)glGetString(GL_VERSION));
+  } else {
+    napi_get_null(env, &gl);
+  }
+  napi_set_named_property(env, out, "gl", gl);
+  return out;
+}
+
 NAPI_MODULE_INIT() {
   napi_property_descriptor props[] = {
       {"open", NULL, js_open, NULL, NULL, NULL, napi_default, NULL},
@@ -527,6 +698,9 @@ NAPI_MODULE_INIT() {
       {"render", NULL, js_render, NULL, NULL, NULL, napi_default, NULL},
       {"renderOffscreen", NULL, js_render_offscreen, NULL, NULL, NULL, napi_default, NULL},
       {"measureText", NULL, js_measure_text, NULL, NULL, NULL, napi_default, NULL},
+      {"registerFont", NULL, js_register_font, NULL, NULL, NULL, napi_default, NULL},
+      {"fontFamilies", NULL, js_font_families, NULL, NULL, NULL, napi_default, NULL},
+      {"fontStats", NULL, js_font_stats, NULL, NULL, NULL, napi_default, NULL},
       {"createImage", NULL, js_create_image, NULL, NULL, NULL, napi_default, NULL},
       {"destroyImage", NULL, js_destroy_image, NULL, NULL, NULL, napi_default, NULL},
       {"decodeImage", NULL, js_decode_image, NULL, NULL, NULL, napi_default, NULL},
@@ -539,6 +713,7 @@ NAPI_MODULE_INIT() {
       {"requestFrame", NULL, js_request_frame, NULL, NULL, NULL, napi_default, NULL},
       {"writeClipboard", NULL, js_write_clipboard, NULL, NULL, NULL, napi_default, NULL},
       {"readClipboard", NULL, js_read_clipboard, NULL, NULL, NULL, napi_default, NULL},
+      {"diagnostics", NULL, js_diagnostics, NULL, NULL, NULL, napi_default, NULL},
   };
   napi_define_properties(env, exports, sizeof props / sizeof props[0], props);
   return exports;

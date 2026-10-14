@@ -40,6 +40,35 @@ test.skipIf(!canScreenshot())("screenshot: runs the app without a window and wri
   expect(px(10, 60)).toEqual([255, 255, 255, 255]);
 });
 
+test.skipIf(!canScreenshot())("screenshot --props: renders the entry's exported component with those props", () => {
+  writeFileSync(
+    join(dir, "page.ts"),
+    `import { jsx } from ${JSON.stringify(join(repo, "src/jsx-runtime.ts"))};
+     import { Box, Column } from ${JSON.stringify(join(repo, "src/index.ts"))};
+     export default function App(props: { color: string }) {
+       return jsx(Column, { background: "#ffffff", children: jsx(Box, { height: 20, background: props.color }) });
+     }
+     export function Other() {
+       return jsx(Box, { grow: 1, background: "#0000ff" });
+     }`,
+  );
+  const r = nodebuilder("screenshot", "page.ts", "props.png", "--width", "30", "--height", "30", "--props", '{"color":"#00ff00"}');
+  expect(r.err).toBe("");
+  expect(r.code).toBe(0);
+  const png = decodeImage(new Uint8Array(readFileSync(join(dir, "props.png"))));
+  expect(Array.from(png.data.subarray((5 * 30 + 5) * 4, (5 * 30 + 5) * 4 + 4))).toEqual([0, 255, 0, 255]);
+  const named = nodebuilder("screenshot", "page.ts", "named.png", "--width", "10", "--height", "10", "--export", "Other");
+  expect(named.code).toBe(0);
+  const blue = decodeImage(new Uint8Array(readFileSync(join(dir, "named.png"))));
+  expect(Array.from(blue.data.subarray(0, 4))).toEqual([0, 0, 255, 255]);
+  const bad = nodebuilder("screenshot", "page.ts", "bad.png", "--props", "{nope");
+  expect(bad.code).toBe(1);
+  expect(bad.err).toContain("--props");
+  const missing = nodebuilder("screenshot", "page.ts", "bad.png", "--export", "Nope");
+  expect(missing.code).toBe(1);
+  expect(missing.err).toContain("Nope");
+});
+
 test("screenshot: an app that never calls run() is an error, and so are missing arguments", () => {
   writeFileSync(join(dir, "norun.ts"), "export {};\n");
   const r = nodebuilder("screenshot", "norun.ts", "never.png");

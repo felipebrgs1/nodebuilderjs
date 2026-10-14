@@ -6,9 +6,9 @@
 // two steps: the natural (max-content) size of every node, cached per layout, and
 // `heightAt(node, width)`, which only does real work in subtrees that contain them.
 
-import { type Edges, type Size, type UINode, overlayLayers, revealRequests, scrolls } from "./node.js";
+import { type Edges, type Size, type UINode, invalidationCount, overlayLayers, revealRequests, scrolls } from "./node.js";
 import { scrollRange } from "./scrollbar.js";
-import { checkOverflow, resetOverflow } from "./overflow.js";
+import { checkOverflow, reportResizeLoop, resetOverflow } from "./overflow.js";
 import { batch } from "../reactive/signals.js";
 
 let cache = new Map<UINode, Natural>();
@@ -25,20 +25,30 @@ export interface Rect {
   y1: number;
 }
 
+/** Extra layouts in one call when onResize handlers change the tree (a grid built from its width). */
+const RESIZE_PASSES = 2;
+
 export function layout(root: UINode, width: number, height: number) {
-  cache = new Map();
-  heights = new Map();
-  mins = new Map();
-  shrinkable = new Map();
-  resized = [];
-  placeAll(root, width, height);
-  // scrollIntoView() needs current boxes, so it runs after placing, which is then redone
-  // with the new scroll positions.
-  if (revealRequests.size && reveal(root)) placeAll(root, width, height);
-  // After the whole tree is placed: handlers may change state (and the tree) freely.
-  const nodes = resized;
-  resized = [];
-  if (nodes.length) batch(() => nodes.forEach((n) => n.handlers.onResize?.(n.reportedSize!)));
+  for (let pass = 0; ; pass++) {
+    cache = new Map();
+    heights = new Map();
+    mins = new Map();
+    shrinkable = new Map();
+    resized = [];
+    placeAll(root, width, height);
+    // scrollIntoView() needs current boxes, so it runs after placing, which is then redone
+    // with the new scroll positions.
+    if (revealRequests.size && reveal(root)) placeAll(root, width, height);
+    // After the whole tree is placed: handlers may change state (and the tree) freely.
+    const nodes = resized;
+    resized = [];
+    if (!nodes.length) return;
+    const before = invalidationCount();
+    batch(() => nodes.forEach((n) => n.handlers.onResize?.(n.reportedSize!)));
+    // What they changed is placed now, not a frame later (or never, in a test).
+    if (invalidationCount() === before) return;
+    if (pass === RESIZE_PASSES) return reportResizeLoop(nodes);
+  }
 }
 
 function placeAll(root: UINode, width: number, height: number) {
@@ -129,7 +139,8 @@ function rootOf(node: UINode): UINode {
 function placeLayer(layer: UINode, width: number, height: number, view: Rect): boolean {
   const o = layer.overlay!;
   if (!o.anchor || o.modal) {
-    place(layer, 0, 0, width, height, view);
+    const [t, r, b, l] = edges(o.inset);
+    place(layer, l, t, Math.max(0, width - l - r), Math.max(0, height - t - b), view);
     return true;
   }
   const a = o.anchor() as UINode | undefined;
@@ -240,16 +251,18 @@ export function intrinsic(node: UINode): Natural {
     wraps = node.minContentWidth !== undefined;
   } else if (s.direction === "grid") {
     const kids = node.children.filter(inFlow);
-    let cell = 0;
+    let cell = s.minColumnWidth ?? 0;
     for (const c of kids) {
       const k = intrinsic(c);
       cell = Math.max(cell, k.width + marginX(c));
       wraps ||= k.wraps;
       fluid ||= k.fluid;
     }
+    // Auto-fill columns: narrower than its natural width (one row), it has more rows.
+    wraps ||= s.minColumnWidth !== undefined;
     const cols = columnsOf(node);
     width = cols * cell + (cols - 1) * (s.gap ?? 0) + pl + pr;
-    height = gridHeight(node, kids, cell, heightAt) + pt + pb;
+    height = gridHeight(node, kids, cell, cols, heightAt) + pt + pb;
   } else {
     const row = s.direction === "row";
     // A row of fixed height already knows how wide its stretched aspectRatio children are.
@@ -311,7 +324,7 @@ function shrinks(node: UINode): number {
   if (hit !== undefined) return hit;
   let flags = 0;
   if (node.measure) flags = node.minContentWidth ? SHRINKS_X : 0;
-  else if (wrapsRow(node)) flags = SHRINKS_X | shrinksChildren(node, SHRINKS_X);
+  else if (wrapsRow(node) || (node.style.direction === "grid" && node.style.minColumnWidth !== undefined)) flags = SHRINKS_X | shrinksChildren(node, SHRINKS_X);
   else flags = shrinksChildren(node, 0);
   if (node.style.width !== undefined) flags &= ~SHRINKS_X;
   if (node.style.height !== undefined) flags &= ~SHRINKS_Y;
@@ -357,10 +370,10 @@ function minWidth(node: UINode): number {
     else {
       const kids = node.children.filter(inFlow);
       const floors = kids.map((c) => minFloor(c) + marginX(c));
-      const cols = columnsOf(node);
+      const cols = s.minColumnWidth === undefined ? columnsOf(node) : 1;
       if (wrapsRow(node)) content = Math.max(0, ...floors); // one item per line
       else if (s.direction === "row") content = floors.reduce((a, b) => a + b, 0) + Math.max(0, kids.length - 1) * (s.gap ?? 0);
-      else if (s.direction === "grid") content = cols * Math.max(0, ...floors) + (cols - 1) * (s.gap ?? 0);
+      else if (s.direction === "grid") content = cols * Math.max(s.minColumnWidth ?? 0, ...floors) + (cols - 1) * (s.gap ?? 0);
       else if (s.wrap && s.height !== undefined) content = k.content - pl - pr; // its lines side by side
       else content = Math.max(0, ...floors);
     }
@@ -392,7 +405,7 @@ function minHeightAt(node: UINode, width: number): number {
     const widths = mainSizes(node, kids, inner, true);
     content = kids.reduce((h, c, i) => Math.max(h, heightFloor(c, widths[i]!) + marginY(c)), 0);
   } else if (s.direction === "grid") {
-    content = gridHeight(node, kids, cellWidth(node, inner), heightFloor);
+    content = gridHeight(node, kids, cellWidth(node, inner), columnsOf(node, inner), heightFloor);
   } else {
     content = kids.reduce((h, c) => h + heightFloor(c, columnChildWidth(node, c, inner)) + marginY(c), 0);
     content += Math.max(0, kids.length - 1) * (s.gap ?? 0);
@@ -420,7 +433,7 @@ function heightAt(node: UINode, width: number): number {
     const widths = mainSizes(node, kids, inner, true);
     content = kids.reduce((h, c, i) => Math.max(h, heightAt(c, widths[i]!) + marginY(c)), 0);
   } else if (s.direction === "grid") {
-    content = gridHeight(node, kids, cellWidth(node, inner), heightAt);
+    content = gridHeight(node, kids, cellWidth(node, inner), columnsOf(node, inner), heightAt);
   } else {
     content = kids.reduce((h, c) => h + heightAt(c, columnChildWidth(node, c, inner)) + marginY(c), 0);
     content += Math.max(0, kids.length - 1) * (s.gap ?? 0);
@@ -480,13 +493,23 @@ function rowBasis(node: UINode, c: UINode, innerH?: number): number {
   return intrinsic(c).width;
 }
 
-function columnsOf(node: UINode): number {
-  return Math.max(1, Math.floor(node.style.columns ?? 1));
+/**
+ * Columns of a grid `inner` wide: `columns`, or with `minColumnWidth` as many as fit (at most
+ * `columns`). Without `inner` (its natural width), every cell in one row.
+ */
+function columnsOf(node: UINode, inner?: number): number {
+  const s = node.style;
+  const fixed = s.columns === undefined ? undefined : Math.max(1, Math.floor(s.columns));
+  if (s.minColumnWidth === undefined) return fixed ?? 1;
+  if (inner === undefined) return fixed ?? Math.max(1, node.children.filter(inFlow).length);
+  const gap = s.gap ?? 0;
+  const fit = Math.max(1, Math.floor((inner + gap) / (Math.max(1, s.minColumnWidth) + gap)));
+  return fixed === undefined ? fit : Math.min(fixed, fit);
 }
 
 /** Width of each cell of a grid `inner` wide: equal columns, whatever the content. */
 function cellWidth(node: UINode, inner: number): number {
-  const cols = columnsOf(node);
+  const cols = columnsOf(node, inner);
   return Math.max(0, (inner - (cols - 1) * (node.style.gap ?? 0)) / cols);
 }
 
@@ -497,8 +520,7 @@ function cellChildWidth(c: UINode, cell: number): number {
 }
 
 /** Height of each row of a grid: its tallest cell, measured with `measure` (heightAt or a floor). */
-function gridRows(node: UINode, kids: UINode[], cell: number, measure: (c: UINode, width: number) => number): number[] {
-  const cols = columnsOf(node);
+function gridRows(kids: UINode[], cell: number, cols: number, measure: (c: UINode, width: number) => number): number[] {
   const rows: number[] = [];
   for (let i = 0; i < kids.length; i += cols) {
     let h = 0;
@@ -508,8 +530,8 @@ function gridRows(node: UINode, kids: UINode[], cell: number, measure: (c: UINod
   return rows;
 }
 
-function gridHeight(node: UINode, kids: UINode[], cell: number, measure: (c: UINode, width: number) => number): number {
-  const rows = gridRows(node, kids, cell, measure);
+function gridHeight(node: UINode, kids: UINode[], cell: number, cols: number, measure: (c: UINode, width: number) => number): number {
+  const rows = gridRows(kids, cell, cols, measure);
   return rows.reduce((a, b) => a + b, 0) + Math.max(0, rows.length - 1) * (node.style.rowGap ?? node.style.gap ?? 0);
 }
 
@@ -580,6 +602,33 @@ function mainMargins(kids: UINode[], row: boolean): number {
   return sum;
 }
 
+/**
+ * Children sized in percentages get their px sizes from `node`'s content box, before its
+ * layout reads them. Until then (its own natural size) they count with their last value, or
+ * their content the first time, like CSS percentages in intrinsic sizes.
+ */
+function resolvePercents(node: UINode, innerW: number, innerH: number) {
+  for (const c of node.children) {
+    const p = c.percents;
+    if (!p) continue;
+    let changed = false;
+    for (const key in p) {
+      const k = key as keyof typeof p;
+      const v = (p[k]! * (k.endsWith("idth") ? innerW : innerH)) / 100;
+      if (c.style[k] !== v) {
+        c.style[k] = v;
+        changed = true;
+      }
+    }
+    if (changed) {
+      cache.delete(c);
+      heights.delete(c);
+      mins.delete(c);
+      shrinkable.delete(c);
+    }
+  }
+}
+
 function place(node: UINode, x: number, y: number, width: number, height: number, view: Rect) {
   node.x = x + (node.style.translateX ?? 0);
   node.y = y + (node.style.translateY ?? 0);
@@ -604,6 +653,7 @@ function place(node: UINode, x: number, y: number, width: number, height: number
   const innerH = Math.max(0, height - pt - pb);
   const row = s.direction === "row";
   const gap = s.gap ?? 0;
+  resolvePercents(node, innerW, innerH);
   const kids = node.children.filter(inFlow);
   if (s.direction === "grid") {
     const offsetY = placeGrid(node, kids, innerX, innerY, innerW, view);
@@ -804,11 +854,11 @@ function placeAbsolute(node: UINode, x: number, y: number, innerW: number, inner
 function placeGrid(node: UINode, kids: UINode[], innerX: number, innerY: number, innerW: number, view: Rect): number {
   const s = node.style;
   const [pt, pr, pb, pl] = edges(s.padding);
-  const cols = columnsOf(node);
+  const cols = columnsOf(node, innerW);
   const gap = s.gap ?? 0;
   const rowGap = s.rowGap ?? gap;
   const cell = cellWidth(node, innerW);
-  const rows = gridRows(node, kids, cell, heightAt);
+  const rows = gridRows(kids, cell, cols, heightAt);
   node.contentWidth = innerW + pl + pr;
   node.contentHeight = rows.reduce((a, b) => a + b, 0) + Math.max(0, rows.length - 1) * rowGap + pt + pb;
   if (node.scrollable) node.scrollY = clamp(node.scrollY, 0, Math.max(0, node.contentHeight - node.height));

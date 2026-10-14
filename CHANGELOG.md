@@ -1,5 +1,116 @@
 # Changelog
 
+## 0.4.0 (2026-10-14)
+
+### New
+- `nodebuilder doctor` (`bun run doctor` in new apps): checks Bun, the native core (found,
+  same version as core, glibc, missing system libraries with the apt/dnf/pacman command that
+  installs them), the display server, the keyboard's compose table (dead keys), GL (offscreen,
+  or a real window with `--window`), the UI font, emoji and CJK fallbacks, and libheif.
+  `--json` for scripts and agents; exits 1 when something is broken.
+- **From a user report (a Discord clone built with 0.2.5):**
+  - `onMount(fn)`: runs once the component's nodes are in the tree and its refs are set (an
+    effect in the component body runs before the JSX below it exists). Effects created inside
+    it see the refs from their first run.
+  - Window-wide keys: with nothing focused (a click on empty space), keys go to the `Window`'s
+    `onKeyDown` (with a modal open, to the modal first), so Escape and Ctrl+K shortcuts work
+    anywhere. `focusable` on any container (`<Column focusable onKeyDown={...}>`) lets a page
+    or a menu hold the keyboard without being a button and without a focus ring; `tabStop`
+    adds it to the Tab order.
+  - `<TextField password>`: draws `•` for each character while the value stays real (editing
+    in the middle, Backspace, paste); reactive, for a "show password" toggle.
+    `focusBorderColor`/`focusBorderWidth` restyle the field's focus ring.
+  - `focusStyle` on every widget, like `hoverStyle`, while it has the keyboard focus.
+  - Event props (`onPointerEnter`, `onKeyDown`, `onFocus`...) on every widget's type
+    (`Button`, `Toggle`, `Checkbox`, `Slider`, `Select`, `Tabs`, `RadioGroup`, `ProgressBar`,
+    `Spinner`, `Tooltip`, `TextField`, `Window`, `WindowControls`), added to the widget's own
+    handlers: a `Button` keeps its hover color, and an app's `onKeyDown` runs first and can
+    `stop()` a key from the control.
+  - `Button` `variant` may be a function (colors, hover and weight follow it).
+  - `radius` per corner: `radius={[topLeft, topRight, bottomRight, bottomLeft]}`; borders,
+    `clip`, `shadow` and `Canvas`'s `g.rect` follow it.
+  - `<Grid minColumnWidth={180}>`: as many columns as fit (CSS `repeat(auto-fill, minmax(180px,
+    1fr))`), reflowing with the width without `onResize`; `columns` next to it is the most.
+  - Percentage sizes: `width="50%"`, `height`, `minWidth`... of the parent's content box.
+  - `inset` on `<Overlay>` and `Dialog`: a full-window or modal overlay can leave the title bar
+    usable (`inset={[theme.window.titlebarHeight + 1, 0, 0, 0]}`); pressing there does not
+    dismiss it.
+  - `ProgressBar` and `Slider` take `color` (the fill) and `background` (the track).
+  - Testing: `findByValue`/`findAllByValue` find a `TextField` by what it holds,
+    `findByPlaceholder` an empty one, `shownText(node)` gives what a node draws (masked for a
+    password); `findByText(root, "Quit", { in: "Button" })` picks the text inside a kind of
+    widget when the same text repeats (a dialog title and its button).
+  - `nodebuilder screenshot <file> out.png --props '{"page":"settings"}'` renders the component
+    the file exports (`--export Name` for a named one) with those props: a screenshot of any
+    page without editing the app.
+  - Template docs and skills: `onMount`, `requestAnimationFrame` is imported (there is no
+    global), clipping cards may be squeezed below their content, overlapping layouts with a
+    negative `margin`, screenshots of a given page, and never `pkill -f` to stop an app (it
+    matches the agent's own shell).
+- **Fonts:**
+  - `fontFamily` on every widget, inherited: a CSS family list (`"Inter, 'Noto Sans',
+    sans-serif"`) of app fonts, installed families and generic ones (`serif`, `monospace`,
+    `system-ui`...). Each character uses the first family that has it, then the system's
+    fallback; missing families are skipped.
+  - `registerFont(pathOrBytes, { family?, weight?, italic? })` adds a font file (TTF,
+    OTF/CFF, TTC collections, WOFF, WOFF2, variable fonts) like CSS `@font-face`; an import
+    `with { type: "file" }` works in packaged executables. Faces are picked with the CSS
+    matching rules; a missing bold is synthesized (thicker outlines), like a missing italic.
+  - `fontFeatures` (`"tnum, smcp, -liga"`) and `fontVariations` (`"wdth 75"`), inherited.
+  - `fontFamilies()`: installed and registered families, for font pickers.
+  - `<Canvas>` text takes `{ family, features, variations }` and otherwise follows the
+    `fontFamily`/`fontFeatures`/`fontVariations` around it, so charts use the app's font.
+  - Font files (`*.ttf`, `*.otf`, `*.ttc`, `*.woff`, `*.woff2`) can be imported as paths in
+    TypeScript.
+
+### Changed
+- The command buffer and `Native` changed (below): core 0.4 needs `@nodebuilderjs/linux-x64`
+  0.4, which it installs with it. `nodebuilder doctor` reports a mismatch.
+- Command buffer: RECT, SHADOW and CLIP carry four corner radii (top left, top right, bottom
+  right, bottom left) instead of one: RECT is 17 floats, SHADOW 13, CLIP 8. `Painter.rect`,
+  `shadow` and `clip` take a `Radius` (a number or the four). The renderer's vertex has one more
+  float (20); `bun run bench` (MODE=all N=2000) native time 0.43–0.48 → 0.44–0.45 ms/frame.
+- `Style.radius` is `number | [tl, tr, br, bl]`; code reading it as a number should use
+  `corners()`/`insetRadius()`.
+- A `TextField` with `borderColor` or `borderWidth` keeps them when focused (the theme's focus
+  ring only applies without them, or through `focusBorderColor`/`focusBorderWidth`); a
+  `Button` with its own `borderColor`/`borderWidth` no longer gets the focus ring over them
+  (use `focusStyle`).
+- `layout()` lays the tree out again (up to two extra passes) when `onResize` handlers changed
+  it; a handler that keeps changing sizes is reported in `layoutWarnings()`.
+- Command buffer: TEXT has one more float, the index in `texts[]` of the font spec (family,
+  features, variations; -1 for none). `FontStyle` has `family`, `features` and `variations`
+  (`""` for none); a custom `TextMeasurer` receives them. `Native.measureText` takes the spec
+  as a sixth argument.
+- `Native` has `fontStats()` (live entries of the addon's font tables); a fake native for tests
+  must provide it.
+
+### Fixed
+- The `run()` callback (and `mount()` in testing) was a reactive slot: reading a signal there
+  and then setting it re-ran the whole app forever, before any window showed. It now runs
+  once, untracked, like a component body. An effect that keeps writing a signal it reads
+  throws "reactive update loop detected (an effect or memo keeps changing a signal it reads)".
+- `TextField` overwrote the app's `borderWidth`/`borderColor`, and replaced an `onKeyDown`
+  given to it.
+- `Button`, `Checkbox`, `Toggle`, `Select` and `Slider` replaced the app's `onClick`/`onKeyDown`
+  (and `Button` rejected pointer handlers in its type).
+- Nodes created by an `onResize` handler had no position until another layout: in a test, a
+  click right after `relayout()` hit nothing.
+- `ref={(el) => el.focus()}` landed a microtask later, so a key sent right after mounting
+  (in a test) went nowhere; it now lands when the element is inserted.
+- Text with a glyph larger than the 1024 px glyph atlas (`fontSize` around 1200, or 600 at
+  scale 2) froze the app. Glyphs over 512 px are now stored downscaled and stretched back
+  when drawn.
+- Animating `fontWeight` on a variable font, or `fontVariations`, filled the font tables within
+  seconds, and text then snapped to the nearest face already loaded. Unused variable-font
+  faces and variation lists are now freed.
+- A frame with more text than the glyph atlas holds (many sizes, big headings) drew some
+  glyphs with another glyph's bitmap and re-rasterized everything every frame. The atlas now
+  has pages and drops the least recently used one, never one the current frame uses (a scene
+  over one page: 5.1 -> 0.9 ms per frame).
+- An animated `fontSize` reopened the font file for every new size; sizes now share one
+  FreeType face.
+
 ## 0.3.0 (2026-10-12)
 
 ### New

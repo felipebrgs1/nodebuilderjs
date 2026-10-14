@@ -1,6 +1,6 @@
 ---
 name: nodebuilder-testing
-description: Write and debug tests for nodebuilder apps with bun test, without opening a window (mount, findByText, findByLabel, click, interact for mouse and keyboard, layout, debugTree, layoutWarnings for hidden overflow, real text metrics), and look at the UI with screenshots (nodebuilder screenshot, screenshot()). Use when creating tests, when verifying a behavior, layout or visual change, or when a component test fails.
+description: Write and debug tests for nodebuilder apps with bun test, without opening a window (mount, findByText with { in } for repeated texts, findByLabel, findByValue/findByPlaceholder for text fields, shownText, click, interact for mouse and keyboard, layout, debugTree, layoutWarnings for hidden overflow, real text metrics), and look at the UI with screenshots (nodebuilder screenshot, --props for a given page, screenshot()). Use when creating tests, when verifying a behavior, layout or visual change, or when a component test fails.
 ---
 
 # Tests without a window
@@ -37,7 +37,14 @@ test("adds a task", () => {
   not fail on them; assert `expect(layoutWarnings()).toEqual([])` in screen tests so a hidden
   chip fails right away instead of when a click finds it.
 - `findByText(root, "text" | /regex/)`: first `Text` whose entire content matches;
-  `findAllByText` returns every match (e.g. a title repeated in a list and in a player bar).
+  `findAllByText` returns every match (e.g. a title repeated in a list and in a player bar),
+  in tree order with overlay layers (dialogs, menus) last. When the same text is in several
+  places, narrow it by the widget it is in: `findByText(root, "Quit", { in: "Button" })`
+  (the button, not the dialog title or the menu item), or search inside a container:
+  `findByText(dialogNode, "Quit")`.
+- `findByValue(root, "typed" | /regex/)` / `findAllByValue`: text fields (`TextField`) by
+  their value; `findByPlaceholder(root, "Email")` finds an empty field. `shownText(node)` is
+  what a node draws: a field's value, `"••••"` for a `password` field, a `Text`'s content.
 - `findByLabel(root, "label" | /regex/)` / `findAllByLabel`: by `ariaLabel`, for elements
   without text (`<Button ariaLabel="Play">` with only an icon). Built-in labels: the window's
   title-bar buttons (`"Minimize"`, `"Maximize"` or `"Restore"`, `"Close"`), and a `Tooltip`'s
@@ -118,9 +125,12 @@ test.skipIf(!canUseRealTextMetrics())("the header fits with real fonts", () => {
 - Animations finish immediately in tests (there is no window): a closed `Dialog` leaves the
   tree at once. To test the animation, `const clock = frames()` after `mount()` and
   `clock.advance(ms)` (16 ms frames).
-- `ref={(el) => el.focus()}` (focus on creation) takes effect in a microtask: create
-  `interact(root)` and `await Promise.resolve()` before typing. `onResize` fires on every
-  `relayout()` in which the size changed.
+- `ref={(el) => el.focus()}` (focus on creation) lands as soon as the element is in the
+  tree: `interact(root).type(...)` right after `mount` reaches it, no `await`. `onResize`
+  fires on every `relayout()` in which the size changed, and what it changes (children built
+  from the width) is placed by that same layout: clickable right away.
+- With nothing focused (a click on empty space), keys go to the top node (the `Window`'s
+  `onKeyDown`): `interact(root).key("Escape")` tests a window-wide shortcut.
 - Scrolling: `n.scrollY`/`n.scrollX` give the position; `ui.scroll(n, 60)` uses the wheel,
   `ui.key("Next")` (PageDown; PageUp is `"Prior"`) the keyboard. `scrollTo` and `scrollIntoView()`
   apply on the next layout: call `relayout()` before checking.
@@ -139,8 +149,22 @@ bun run screenshot                      # screenshot.png: src/main.tsx at the <W
 nodebuilder screenshot src/main.tsx dark.png --theme dark --scale 2 --width 1024 --height 700
 ```
 
-Animations run to their end on a simulated clock (`--wait-frames <n>` stops earlier). In a
-test, `screenshot()` gives the real pixels of a mounted tree, with real fonts:
+Animations run to their end on a simulated clock (`--wait-frames <n>` stops earlier).
+
+**A given page or state:** let the top component take its initial state as props
+(`<App page="settings" />`; `src/main.tsx` passes the real one), then shoot the component
+the file exports with `--props` (the file must not call `run()` itself, so point it at
+`src/App.tsx`, not `src/main.tsx`); `--export Name` picks a named export:
+
+```sh
+nodebuilder screenshot src/App.tsx settings.png --props '{"page":"settings"}' --export App
+```
+
+Or keep small shot files in the repo (they double as visual fixtures):
+`src/shots/settings.tsx` = `run(() => <App page="settings" />)`, then
+`nodebuilder screenshot src/shots/settings.tsx settings.png`.
+
+In a test, `screenshot()` gives the real pixels of a mounted tree, with real fonts:
 
 ```tsx
 import { expect, test } from "bun:test";

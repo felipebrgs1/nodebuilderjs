@@ -64,6 +64,12 @@ test("an effect finishes before the effects its writes trigger (no re-entrant ru
   expect(log).toEqual(["start 1", "end 2", "b 1", "start 2", "end 2", "b 2"]);
 });
 
+test("an effect that keeps writing what it reads throws a loop error instead of hanging", () => {
+  const [a, setA] = createSignal(0);
+  expect(() => createRoot(() => createEffect(() => setA(a() + 1)))).toThrow(/reactive update loop/);
+  expect(() => createRoot(() => createEffect(() => setA(a() + 1)))).toThrow(/reactive update loop/);
+});
+
 test("reactive text updates in place without recreating nodes", () => {
   const [n, setN] = createSignal(1);
   const { root } = mount(() => <Text>Cliques: {n}</Text>);

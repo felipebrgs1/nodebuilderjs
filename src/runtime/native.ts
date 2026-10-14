@@ -2,7 +2,7 @@
 
 import { createRequire } from "node:module";
 import type { ImageBackend } from "../image/source.js";
-import { type TextMeasurer, fontId } from "../render/node.js";
+import { type TextMeasurer, fontId, fontSpec, metricsGeneration } from "../render/node.js";
 
 export { fontId };
 
@@ -23,9 +23,34 @@ export interface Native {
   render(commands: Float32Array, texts: string[]): void;
   /**
    * Logical px. `font` is a font id (`fontId(weight, italic)`); `scale` (default: the window's) is the
-   * device scale the text is hinted for; `letterSpacing` (logical px) goes after every character.
+   * device scale the text is hinted for; `letterSpacing` (logical px) goes after every character;
+   * `spec` (`fontSpec()`) the family list, features and variations.
    */
-  measureText(text: string, size: number, font: number, scale?: number, letterSpacing?: number): [width: number, ascent: number, descent: number];
+  measureText(text: string, size: number, font: number, scale?: number, letterSpacing?: number, spec?: string): [width: number, ascent: number, descent: number];
+  /**
+   * Adds the faces of a font file (any format FreeType reads; every face of a collection) to the
+   * app's families. `family` null: the file's own; weight 0: the file's (a variable font, its wght
+   * range); italic -1: the file's. Throws when the bytes are not a font. Copies the bytes.
+   */
+  registerFont(bytes: Uint8Array, family: string | null, weightMin: number, weightMax: number, italic: number): { family: string; weightMin: number; weightMax: number; italic: boolean; variable: boolean }[];
+  /** The registered font families and the installed ones, unsorted, possibly with duplicates. */
+  fontFamilies(): string[];
+  /**
+   * What `nodebuilder doctor` reports: library versions; the display server a window would use
+   * (connected to and closed, without a window; `error` says why none, `compose` whether the
+   * keyboard's compose table loaded for `locale`); the UI font and the fallback files for a
+   * color emoji and a CJK character; the current GL context's strings (null without one: call
+   * after `renderOffscreen` or while a window is open).
+   */
+  diagnostics(): {
+    freetype: string;
+    harfbuzz: string;
+    display: { backend: string | null; error: string; compose: boolean; locale: string };
+    fonts: { ui: { path: string; family: string } | null; emoji: string | null; cjk: string | null };
+    gl: { vendor: string; renderer: string; version: string } | null;
+  };
+  /** Live entries of the font tables (debugging and tests: they must stay bounded). */
+  fontStats(): { faces: number; variations: number; specs: number; styles: number; sizes: number };
   /**
    * Draws `commands` without a window (no display needed) into a `width*scale` x `height*scale`
    * target and returns its pixels: RGBA8, straight alpha, rows top to bottom. Throws
@@ -101,16 +126,25 @@ export function loadNative(): Native {
   );
 }
 
-/** Real text metrics from the addon (FreeType + HarfBuzz) at device `scale`, cached by text, size, font and letter spacing. */
+/**
+ * Real text metrics from the addon (FreeType + HarfBuzz) at device `scale`, cached by text, size and
+ * font; the cache is dropped when the metrics generation changes (e.g. a font was registered).
+ */
 export function nativeTextMeasurer(nat: Native, scale: number): TextMeasurer {
   const metrics = new Map<string, { width: number; ascent: number; descent: number }>();
+  let generation = metricsGeneration();
   return (text, size, font) => {
+    if (generation !== metricsGeneration()) {
+      metrics.clear();
+      generation = metricsGeneration();
+    }
     const id = fontId(font.weight, font.italic);
-    const key = `${id}|${font.letterSpacing}|${size}|${text}`;
+    const spec = fontSpec(font);
+    const key = `${id}|${font.letterSpacing}|${size}|${spec}|${text}`;
     let m = metrics.get(key);
     if (!m) {
       if (metrics.size > 20_000) metrics.clear();
-      const [width, ascent, descent] = nat.measureText(text, size, id, scale, font.letterSpacing);
+      const [width, ascent, descent] = nat.measureText(text, size, id, scale, font.letterSpacing, spec);
       m = { width, ascent, descent };
       metrics.set(key, m);
     }

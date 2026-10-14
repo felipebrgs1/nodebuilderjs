@@ -7,7 +7,7 @@
 // treat it as a separate layer of the root (root.layers).
 
 import { type Child, insert } from "../jsx-runtime.js";
-import { type ElementRef, type Handlers, type Placement, UINode, invalidate, overlayLayers } from "../render/node.js";
+import { type Edges, type ElementRef, type Handlers, type Placement, UINode, invalidate, overlayLayers } from "../render/node.js";
 import { type MaybeAccessor, onCleanup, read } from "../reactive/signals.js";
 import { type StyleProps, applyProps } from "./props.js";
 
@@ -23,6 +23,12 @@ export function Overlay(
     matchWidth?: boolean;
     /** Covers the window and blocks the pointer and Tab below it (dialogs); `background` dims what is behind. */
     modal?: boolean;
+    /**
+     * Without an anchor (or modal): space left uncovered at the window's edges, like padding
+     * (`[top, right, bottom, left]`). What it leaves out keeps working under a modal, e.g. the
+     * title bar: `inset={[theme.window.titlebarHeight + 1, 0, 0, 0]}`.
+     */
+    inset?: Edges;
     /** A press outside the overlay (on a modal: its backdrop; never on the anchor) or Escape: close it here. */
     onDismiss?: () => void;
     children?: Child;
@@ -38,6 +44,7 @@ export function Overlay(
     offset: props.offset ?? 4,
     matchWidth: !!props.matchWidth,
     modal: !!props.modal,
+    inset: props.inset,
     onDismiss: props.onDismiss,
   };
   applyProps(layer, props);

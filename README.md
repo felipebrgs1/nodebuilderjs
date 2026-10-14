@@ -25,7 +25,7 @@ function App() {
 run(() => <App />);
 ```
 
-> **Status:** version 0.2, experimental. The API may still change. See the [roadmap](ROADMAP.md).
+> **Status:** version 0.4, experimental. The API may still change. See the [roadmap](ROADMAP.md).
 
 ## Getting started
 
@@ -40,6 +40,31 @@ bun run dev        # opens the window and restarts on save
 The project comes with an example test (`bun test`, no window), TypeScript already
 configured (`bun run typecheck`) and an `AGENTS.md` that explains the framework to coding
 agents such as Claude Code.
+
+Window does not open, text looks wrong or something fails to load? Run the doctor:
+
+```sh
+bun run doctor     # or: bunx nodebuilder doctor
+```
+
+```
+✓ Bun 1.4.3
+✓ native core: @nodebuilderjs/linux-x64 (glibc 2.34 required, system 2.39) · FreeType 2.13.2 · HarfBuzz 8.3.0
+✓ Wayland (WAYLAND_DISPLAY=wayland-0)
+✓ compose table for pt_BR.UTF-8 (dead keys, accents)
+✓ GLES offscreen: Mesa Intel(R) Xe Graphics (OpenGL ES 3.2 Mesa 25.2)
+✓ UI font: Noto Sans
+! no color emoji font: emoji draw as boxes or in monochrome
+    → sudo apt install fonts-noto-color-emoji
+- libheif not found: AVIF/HEIC images disabled
+```
+
+It checks Bun, the native core and the system libraries it links to (naming the apt, dnf or
+pacman package of each missing one), the display server a window would use, the keyboard's
+compose table, GL, the UI font and the emoji and CJK fallbacks, and libheif. It exits 1 when
+something is broken. `--json` is for scripts and coding agents; `--window` tests GL by opening
+a small window for a moment (by default GL is tested offscreen, and on a laptop with two GPUs
+the window may use the other one). Paste its output in bug reports.
 
 ## How it works, in 30 seconds
 
@@ -65,7 +90,8 @@ with tabs, a table and a chart.
 
 A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch by default;
 `alignSelf` overrides it for one child), `justify`, `min/max` sizes, `wrap`, `margin`, plus
-`Grid` and `aspectRatio`. There are no percentages:
+`Grid` and `aspectRatio`. Sizes (`width`, `height`, `min*`, `max*`) also take a percentage of the
+parent's content box, as in CSS (`width="50%"`):
 
 - **`margin`** (`8`, `[v, h]` or `[top, right, bottom, left]`, like `padding`): space outside the
   border that the parent keeps free. It adds to the child's size in everything around it
@@ -98,6 +124,9 @@ A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch
   equal. Each row is as tall as its tallest cell and cells stretch to it (`align`/`alignSelf`
   change that). `rowGap` defaults to `gap`. Works with `<For>` (items stay keyed; adding one
   reflows the cells).
+- **`<Grid minColumnWidth={180}>`:** as many columns as fit at least 180 px wide, sharing the
+  leftover (CSS `repeat(auto-fill, minmax(180px, 1fr))`): the grid reflows as the window
+  resizes. `columns` next to it is the most per row.
 - **`aspectRatio`** (width / height) on any widget: the free side follows the other, like CSS
   `aspect-ratio`. In a column (or a `Grid` cell) the height follows the width; with a fixed
   `height`, or stretched in a `Row` of known height, the width follows the height. `min/max`
@@ -127,8 +156,13 @@ A simplified flexbox: `Column`/`Row`, `gap`, `padding`, `grow`, `align` (stretch
   (so without it, a later child covers an earlier one). It only orders siblings, with no global
   stacking context: a raised node stays inside its parent's place in the order. Overlays stay
   above everything.
+- `radius` is one number or one per corner, `[topLeft, topRight, bottomRight, bottomLeft]`
+  (`radius={[0, 12, 12, 0]}`); borders, `clip` and `shadow` follow it.
 - `clip` cuts the children to the box, rounded by `radius`; `shadow={{ color, blur, y }}` is
-  drawn even without a `background` (the blurred box shows through).
+  drawn even without a `background` (the blurred box shows through). Like CSS `overflow:
+  hidden`, a clipping node may shrink below its content (what it cuts is neither seen nor
+  clicked); give it a `minHeight` where that must not happen. `run()` warns about it in
+  development.
 - **Gradients:** `background={{ linear: ["#1db954", "#121212"], angle: 180 }}` is a CSS
   `linear-gradient`: `angle` in degrees (0 = to top, 90 = to right, default 180 = to bottom),
   stops as colors or `[color, offset]` (offset 0 to 1; missing offsets are spread evenly).
@@ -160,6 +194,8 @@ the widget or pressing it:
 
 - `pressStyle` wins over `hoverStyle`; leaving brings back the base values, which stay
   reactive underneath (a signal that changed meanwhile shows its latest value).
+- `focusStyle` applies while the widget has the keyboard focus (a custom focus ring); hover
+  and press win over it.
 - They win over a widget's own hover colors (a `Button`'s theme background); a `disabled`
   widget ignores them.
 - `hoverStyle` alone leaves presses alone; `pressStyle` (and `createInteraction().props`)
@@ -191,7 +227,8 @@ before or after the spread; nothing is replaced, and several interactions can sh
 ### Events
 
 Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onScroll`,
-`onKeyDown`, `onFocus` and `onBlur`. Pointer events carry `x`/`y` (window), `localX`/`localY`
+`onKeyDown`, `onFocus` and `onBlur` (controls too: they are added to the control's own
+handlers, never replace them). Pointer events carry `x`/`y` (window), `localX`/`localY`
 (node), `button` (0 left, 1 middle, 2 right) and `clicks` (2 = double click).
 
 - `onClick` is the left button only and runs on the innermost node that has one (pressed and
@@ -201,6 +238,12 @@ Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onScro
   a list's `onPointerDown` with `e.button === 2` (context menu) sees a right press on any of
   its clickable rows. On keys and the wheel, `stop()` also keeps the surrounding `Scroll` still.
 - While a button is held, `onPointerMove` keeps reaching the node where the press started.
+- Keys start at the focused element; with nothing focused they go to the `Window` (and, with
+  a modal open, to the modal first): `<Window onKeyDown={...}>` sees every key nothing below
+  took, which makes window-wide shortcuts. On a control, the app's `onKeyDown` runs first and
+  `e.stop()` takes the key from the control.
+- `focusable` on a container (`<Column focusable onKeyDown={...}>`) lets a page or a menu hold
+  the keyboard: a click focuses it, without a focus ring; `tabStop` adds it to the Tab order.
 
 ### Images
 
@@ -289,11 +332,13 @@ caps, filled polygons (concave ones included), circles and arcs (pie, donut, gau
 text. Coordinates are local to the canvas; `g.width` and `g.height` give its size. `draw` is
 reactive: it runs inside an effect, so the signals it reads (data, `theme` colors) are tracked
 and changing one of them redraws. Geometry is computed when the data changes, not every frame.
-`g.text(text, x, y, color, size?, bold?, { maxWidth, ellipsis, weight, italic, letterSpacing })`
+`g.text(text, x, y, color, size?, bold?, { maxWidth, ellipsis, weight, italic, letterSpacing, family, features, variations })`
 draws one line; with `maxWidth` text that does not fit is cut and ends in "…" (`ellipsis:
 false` just cuts it; nothing is drawn when not even the "…" fits); `weight` wins over `bold`.
-`g.measureText(text, size?, bold?, { weight, italic, letterSpacing })` (`{ width, height }`)
-measures it, to align it.
+`g.measureText(text, size?, bold?, { weight, italic, letterSpacing, family, features, variations })`
+(`{ width, height }`) measures it, to align it. Without `family`, `features` or `variations`,
+canvas text uses the `fontFamily`, `fontFeatures` and `fontVariations` around the canvas, so
+charts follow the app's font.
 Lines take a dash pattern (`g.line(..., cap, [4, 3])`, `g.polyline(..., { dash })`).
 `g.linearGradient(x0, y0, x1, y1, stops)` returns a gradient (from offset 0 at the first point
 to 1 at the second, in canvas coordinates) that every shape takes in place of a color:
@@ -390,7 +435,7 @@ const [scores] = createSignal([7, 9, 10]);
 ### Context, `ref` and size
 
 ```tsx
-import { Box, Column, TextField, Text, createContext, createSignal, useContext } from "@nodebuilderjs/core";
+import { Box, Column, Scroll, TextField, Text, createContext, createSignal, onMount, useContext, type ElementRef } from "@nodebuilderjs/core";
 
 // Context: a value any descendant can read, without passing props through every level.
 const Language = createContext("en");
@@ -403,7 +448,15 @@ function Greeting() {
 const [name, setName] = createSignal("");
 <TextField ref={(el) => el.focus()} value={name} onInput={setName} />;
 
+// onMount: runs once the component's nodes are in the tree and its refs are set.
+function Chat() {
+  let list: ElementRef | undefined;
+  onMount(() => list!.scrollTo(1e9));
+  return <Scroll ref={(el) => (list = el)} height={200}><Text>...</Text></Scroll>;
+}
+
 // onResize: the node's size after layout (the first time and whenever it changes).
+// What it changes is laid out in the same frame.
 const [width, setWidth] = createSignal(0);
 <Box grow={1} onResize={(s) => setWidth(s.width)}>
   <Column>{() => (width() > 600 ? "wide" : "narrow")}</Column>
@@ -416,7 +469,8 @@ const [width, setWidth] = createSignal(0);
   coordinates), `focus()`, `blur()`, `scrollIntoView()` and, on a `Scroll`, `scrollTo(y)` or
   `scrollTo({ x, y })`, `scrollX` and `scrollY`. `ref` is called when the widget is created,
   before layout; a `focus()` or `scrollIntoView()` at that point takes effect as soon as the
-  widget enters the tree.
+  widget enters the tree. Code that uses the element once it exists goes in `onMount` (an
+  effect in the component body runs before the JSX below it, so the ref is still unset).
 - `ariaLabel` (any widget, fixed or a function) names an element that has no text, such as an
   icon-only button: `<Button ariaLabel="Play">`. Tests find it with `findByLabel` (see
   [Testing](#testing)). The window's title-bar buttons are labelled `"Minimize"`,
@@ -484,7 +538,12 @@ const [volume, setVolume] = createSignal(40);
   keys (one `step`), PageUp/PageDown (one tenth), Home/End.
 - `Toggle` is the on/off switch: the name `Switch` is already taken by the control flow
   component.
-- `Spinner` spins while it is on screen (`size`, `color`).
+- `Spinner` spins while it is on screen (`size`, `color`). `ProgressBar` and `Slider` take
+  `color` (the filled part) and `background` (the track).
+- `Button`'s `variant` may be a function: the colors, hover and weight follow it.
+- `<TextField password>` draws `•` for each character (the value stays real; a function
+  toggles it for a "show password" button). A `TextField` keeps the app's `borderColor` and
+  `borderWidth` when focused; `focusBorderColor`/`focusBorderWidth` restyle its focus ring.
 
 ```tsx
 import { Button, Dialog, Match, Select, Switch, Tabs, Text, Tooltip, createSignal } from "@nodebuilderjs/core";
@@ -516,7 +575,8 @@ const [confirming, setConfirming] = createSignal(false);
   (`"top"`); it hides on leave or click.
 - `Dialog` is a ready-made `<Overlay modal>`: it focuses the first control when it opens and
   gives focus back when it closes; Esc and the backdrop call `onClose` (`dismissible={false}`
-  turns that off).
+  turns that off). `inset={[theme.window.titlebarHeight + 1, 0, 0, 0]}` leaves the title bar
+  usable while it is open (the same prop works on `<Overlay>`).
 
 ### Dark theme and animations
 
@@ -582,6 +642,44 @@ import { Text } from "@nodebuilderjs/core";
 <Text fontWeight={300} fontSize={28}>Light headline</Text>;
 <Text fontSize={12} bold letterSpacing={1.5}>SECTION</Text>;
 <Text italic>An aside</Text>;
+```
+
+### Fonts
+
+`fontFamily` takes a CSS family list, inherited like `fontSize`: fonts the app registers,
+installed families by name, and the generic `sans-serif` (the default, the system UI font),
+`serif`, `monospace`, `cursive`, `fantasy`, `emoji`, `math` and `system-ui`. Names match without
+case and may be quoted. Each character uses the first family of the list that has it, then the
+system's fallback; families that are not there are skipped.
+
+`registerFont(source, options?)` adds a font file to the families, like CSS `@font-face`:
+`source` is a path or the file's bytes, and an import `with { type: "file" }` keeps working in
+the packaged executable. TrueType (`.ttf`), OpenType/CFF (`.otf`), collections (`.ttc`, every
+face), WOFF and WOFF2; family, weight and slant come from the file (`{ family, weight, italic }`
+override them; `weight: [100, 900]` for a range). Register every weight and slant under the
+same family: text picks among them with the CSS rules (a variable font covers its whole `wght`
+range), and synthesizes what the family lacks: bold (thicker outlines) and italic (slanted
+glyphs). It returns the faces it added. Text already on screen is measured and drawn again.
+
+`fontFeatures` turns OpenType features on and off (`"tnum"`, `"smcp, onum"`, `"-liga"`,
+`'"ss01" 1'`: CSS `font-feature-settings` syntax, or HarfBuzz's) and `fontVariations` sets the
+axes of variable fonts (`"wdth 75, opsz 12"`, CSS `font-variation-settings`; a `wght` there wins
+over `fontWeight`). Both are inherited. `fontFamilies()` lists the installed and registered
+families (sorted), e.g. for a font picker.
+
+```tsx
+import { Column, Text, registerFont } from "@nodebuilderjs/core";
+import interRegular from "./fonts/Inter-Regular.woff2" with { type: "file" };
+import interBold from "./fonts/Inter-Bold.woff2" with { type: "file" };
+
+registerFont(interRegular);
+registerFont(interBold);
+
+<Column fontFamily="Inter, sans-serif">
+  <Text bold>Inter Bold</Text>
+  <Text fontFamily="monospace" fontFeatures="zero">0O 1l</Text>
+  <Text fontFeatures="tnum">1,234.50</Text>
+</Column>;
 ```
 
 - `underline`: a line under each line of text, in the text color (it follows wrapping,
@@ -717,9 +815,18 @@ test("play and pause", () => {
 });
 ```
 
-- `findByText`/`findAllByText` match `Text` content (a string or a RegExp);
-  `findByLabel`/`findAllByLabel` match `ariaLabel`; `findAll(root, predicate)` is free-form.
-  All of them also search open overlays.
+- `findByText`/`findAllByText` match `Text` content (a string or a RegExp), in tree order with
+  open overlays last; `{ in: "Button" }` keeps only text inside that kind of widget (the
+  "Quit" button, not the dialog title that says the same). `findByLabel`/`findAllByLabel`
+  match `ariaLabel`; `findByValue`/`findAllByValue` match what a `TextField` holds and
+  `findByPlaceholder` an empty one; `shownText(node)` is what a node draws (`"•••"` for a
+  password); `findAll(root, predicate)` is free-form. All of them also search open overlays.
+- The `mount` (and `run`) callback runs once, untracked, like a component body: reading and
+  setting a signal there does not loop. An effect that keeps writing a signal it reads throws
+  "reactive update loop detected" instead of hanging.
+- A `ref` that calls `focus()` while the tree is created focuses as soon as it is inserted:
+  `interact(root).key(...)` right after `mount` reaches it. Nodes built by an `onResize`
+  handler are placed by the same `relayout()`.
 - `click(node)` calls the nearest `onClick` directly; `interact(root)` delivers pointer and
   keyboard input like a window does (`hover`, `press`, `release`, `drag`, `scroll`, `key`,
   `type`, plus `down`/`up`/`move` at window positions). `frames()` controls time for
@@ -771,7 +878,15 @@ nodebuilder screenshot src/main.tsx shot@2x.png --scale 2 --theme dark --width 1
 
 The command runs the app with `NB_SCREENSHOT=<out.png>` set, so `run()` lays out, lets
 animations finish on a simulated clock (`--wait-frames <n>` to stop earlier), renders one
-frame offscreen, writes the PNG and exits. In tests:
+frame offscreen, writes the PNG and exits. To shoot a given page, let the top component take
+its initial state as props and render the component a file exports, with those props (the
+file must not call `run()` itself; `--export` picks a named export instead of the default):
+
+```sh
+nodebuilder screenshot src/App.tsx settings.png --export App --props '{"page":"settings"}'
+```
+
+In tests:
 
 ```tsx
 import { expect, test } from "bun:test";
@@ -904,8 +1019,8 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
 - Linux x64 only (arm64, Windows and macOS are on the roadmap).
 - Screenshots (`nodebuilder screenshot`, `screenshot()`) need a GPU driver with EGL
   (Mesa or NVIDIA); a process that took one can't open a window afterwards.
-- Text weights come from the system font's files (or its `wght` axis); a family without a
-  weight uses the closest one (no synthetic bold). A word longer than the line overflows. Characters the UI font lacks (symbols, CJK, emoji) come from the
+- A family without the weight or slant asked for uses the closest face, emboldened or slanted
+  (synthetic, like browsers). A word longer than the line overflows. Characters the UI font lacks (symbols, CJK, emoji) come from the
   system's fallback fonts and color emoji are drawn in color (Noto Color Emoji and other
   CBDT, sbix or COLRv0 fonts; COLRv1-only fonts are not rendered in color). No bidi: a
   right-to-left run is shaped, but lines are not reordered.

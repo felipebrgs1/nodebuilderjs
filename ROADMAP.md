@@ -3,7 +3,7 @@
 Para onde o nodebuilder vai. A ordem dentro de cada seção é a prioridade atual; não há
 datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebuilderjs/issues).
 
-## Already shipped (0.3)
+## Already shipped (0.4)
 
 - Reatividade estilo SolidJS (signals, memos, effects, ownership), JSX próprio, `<For>` e `<Show>`
 - Controle de fluxo completo (2026-10-12): `<Switch>`/`<Match>`, `<Index>` (lista por
@@ -36,7 +36,20 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   spacing, `underline`, font fallback and color emoji, `<Icon fill>`, `nodebuilder icons add`,
   overflow warnings, frame tracing (`NB_TRACE=frames`) and testing helpers (`findByLabel`,
   `layoutWarnings`, `useRealTextMetrics`, `screenshot`)
+- 0.4 (2026-10-14): font families and app fonts (`fontFamily`, `registerFont`, OpenType
+  features and variable axes), paged glyph atlases, `nodebuilder doctor` and the fixes from a
+  user report below
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
+- `nodebuilder doctor` (2026-10-14): checks the machine (runtime, native core and system
+  libraries, display, keyboard, GL, fonts, libheif) and prints the command that fixes each
+  problem; `--json` for agents, `--window` for a real window
+- Fixes from a user report (a Discord clone, 2026-10-14): the `run()`/`mount()` callback runs
+  untracked, `onMount`, keys reach the `Window` with nothing focused, `focusable` containers,
+  `<TextField password>` and border props that stick, `focusStyle`, event props on every
+  widget (chained), reactive `Button variant`, nodes built in `onResize` placed in the same
+  layout, focus in a `ref` with no microtask, `findByText(..., { in })`, `findByValue`,
+  per-corner `radius`, `<Grid minColumnWidth>`, percentage sizes, `Overlay`/`Dialog` `inset`,
+  `nodebuilder screenshot --props/--export`
 
 ## Onde estamos (benchmarks de 2026-10-11)
 
@@ -118,11 +131,14 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
   `<Canvas>` text cut to a `maxWidth` with "…".
 - ~~Font weights, italics, letter spacing~~ **done** (2026-10-12): `fontWeight` (closest
   face via fontconfig, the `wght` axis of variable fonts), `italic` (slanted upright face when
-  there is no italic), `letterSpacing` per cluster in `text.c`. Still missing: synthetic bold
-  and choosing the font family.
+  there is no italic), `letterSpacing` per cluster in `text.c`.
 - ~~Font fallback (emoji, CJK)~~ **done** (2026-10-12): fontconfig's fallback order per
-  codepoint, clusters kept whole, color emoji in an RGBA atlas. Still missing: choosing the
-  font family, COLRv1 and bidi.
+  codepoint, clusters kept whole, color emoji in an RGBA atlas. Still missing: COLRv1 and bidi.
+- ~~Font families and app fonts~~ **done** (2026-10-12): `fontFamily` (CSS lists: app,
+  installed and generic families, per-character fallback through the list), `registerFont`
+  (TTF, OTF/CFF, TTC, WOFF, WOFF2, variable; CSS weight/slant matching), synthetic bold and
+  italic, `fontFeatures`, `fontVariations`, `fontFamilies()`. Everything still missing for
+  fonts (bugs, core, API, CLI, tests, order of work) is mapped in [FONTS.md](FONTS.md).
 - Seleção no `TextField` (com Ctrl+C/Ctrl+X); seleção primária (colar com o botão do meio);
   Shift+clique e setas para estender a seleção do `<Text selectable>`
 - `TextField`: desfazer/refazer, campo de várias linhas

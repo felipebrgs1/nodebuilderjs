@@ -78,23 +78,34 @@ void nb_platform_flush(void);
 
 // ---- fonts ------------------------------------------------------------------
 
+typedef struct {
+  int index;      // face inside the file (collections, named instances of variable fonts)
+  bool oblique;   // italic was asked but the match is upright: the core slants it
+  bool embolden;  // a bold weight was asked but the match is lighter: the core emboldens it
+} nb_font_match;
+
 /**
- * JS thread. The system UI font file closest to `weight` (1..1000, CSS scale: 400 regular, 700
- * bold) and `italic`: the path (malloc'd) or NULL, the face index inside it (collections, named
- * instances of variable fonts) in *face_index, and *oblique = true when italic was asked but
- * the match is upright (the core slants it). A variable match gets its `wght` axis set by the
- * core, so it need not be the exact weight. Called once per (weight, italic).
+ * JS thread. The installed font file for `family` closest to `weight` (1..1000, CSS scale: 400
+ * regular, 700 bold) and `italic`: the path (malloc'd) or NULL, and how to use it in *match. A
+ * variable match gets its `wght` axis set by the core, so it need not be the exact weight.
+ * `family` NULL: the system UI font (never NULL when any font is installed). `generic`: `family`
+ * is a CSS generic family ("sans-serif", "serif", "monospace", "cursive", "fantasy", "emoji",
+ * "math"), which always resolves; otherwise it is a family name, and NULL is returned when no
+ * installed family has that name (ASCII case-insensitive). Called once per (family, weight, italic).
  */
-char *nb_platform_font_path(int weight, bool italic, int *face_index, bool *oblique);
+char *nb_platform_font_path(const char *family, bool generic, int weight, bool italic, nb_font_match *match);
 /**
- * JS thread. A font file with a glyph for `codepoint`, to draw what the UI font lacks: the
- * system's fallback order for that `weight` and `italic`, or, when `emoji`, only color fonts
- * (emoji presentation; weight and italic ignored). Returns the path (malloc'd) and the face
- * index inside it (font collections) in *face_index, or NULL when no font has it. May be slow
- * (the core caches the answer per codepoint and font); the first call per font may build the
- * fallback list.
+ * JS thread. A font file with a glyph for `codepoint`, to draw what the chosen fonts lack: the
+ * system's fallback order after `family` (as in nb_platform_font_path; NULL: the UI font) for
+ * that `weight` and `italic`, or, when `emoji`, only color fonts (emoji presentation; weight and
+ * italic ignored). Returns the path (malloc'd) and the face index inside it (font collections)
+ * in *face_index, or NULL when no font has it. May be slow (the core caches the answer per
+ * codepoint and font); the first call per font may build the fallback list.
  */
-char *nb_platform_font_fallback(uint32_t codepoint, int weight, bool italic, bool emoji, int *face_index);
+char *nb_platform_font_fallback(uint32_t codepoint, const char *family, bool generic, int weight, bool italic, bool emoji,
+                                int *face_index);
+/** JS thread. Calls `fn` with the name of every installed font family (in any order, maybe twice). */
+void nb_platform_font_families(void (*fn)(const char *family, void *ud), void *ud);
 
 // ---- image codecs -----------------------------------------------------------
 
@@ -105,3 +116,19 @@ char *nb_platform_font_fallback(uint32_t codepoint, int weight, bool italic, boo
  */
 bool nb_platform_decode_image(const uint8_t *data, size_t size, int *width, int *height, uint8_t **rgba,
                               char *error, size_t error_size);
+
+// ---- diagnostics (`nodebuilder doctor`) ---------------------------------------
+
+typedef struct {
+  const char *backend;  // the display server reached ("wayland", "x11"...); NULL: none
+  char error[256];      // why none was reachable, when backend is NULL
+  bool compose;         // the keyboard's compose data (dead keys, accents) loads for `locale`
+  char locale[64];
+} nb_display_probe;
+
+/**
+ * JS thread. Connects to the display server nb_platform_open would use (the same choice and
+ * order), checks what a window needs from it and disconnects, without creating a window.
+ * Works while a window is open (a second connection).
+ */
+void nb_platform_probe_display(nb_display_probe *out);

@@ -12,7 +12,7 @@ import { type StyleProps, applyProps } from "./props.js";
 import { Text } from "./text.js";
 
 export function Tooltip(
-  props: StyleProps & {
+  props: StyleProps & Handlers & {
     text: MaybeAccessor<string>;
     /** Side of the child (default "top"); flips when it does not fit. */
     placement?: Placement;

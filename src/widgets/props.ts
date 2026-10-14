@@ -1,14 +1,17 @@
 // Props shared by every widget: style keys, event handlers, inheritance and interaction state.
 
 import type { Child } from "../jsx-runtime.js";
-import { type ElementRef, type FontStyle, type Handlers, REGULAR, type Style, UINode } from "../render/node.js";
+import { type Color, type ElementRef, type FontStyle, type Handlers, type KeyEvent, type Percent, REGULAR, type SizeKey, type Style, UINode, invalidate } from "../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, createSignal, read } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 
 /** Style values as props: each one static or an accessor. */
 export type StyleValues = { [K in keyof Style]?: MaybeAccessor<NonNullable<Style[K]>> };
 
-export type StyleProps = StyleValues & {
+/** Sizes as props: px, or a percentage of the parent's content box (`"50%"`). */
+export type SizeValues = { [K in SizeKey]?: MaybeAccessor<number | Percent> };
+
+export type StyleProps = Omit<StyleValues, SizeKey> & SizeValues & {
   /** Called with the widget's element when it is created: focus(), scrollTo(), its laid-out box. */
   ref?: (el: ElementRef) => void;
   /** Accessible name, for elements without text (an icon-only button); tests find it with `findByLabel`. */
@@ -22,27 +25,57 @@ export type StyleProps = StyleValues & {
   hoverStyle?: StyleValues;
   /** Like `hoverStyle`, while the widget is pressed; it wins over `hoverStyle`. */
   pressStyle?: StyleValues;
+  /** Like `hoverStyle`, while the widget has the keyboard focus (a custom focus ring); hover and press win over it. */
+  focusStyle?: StyleValues;
 };
-export type BoxProps = StyleProps & Handlers & { children?: Child };
+export type BoxProps = StyleProps & Handlers & {
+  /**
+   * Takes the keyboard focus when clicked (its `onKeyDown` then gets the keys), without
+   * looking like a control: a page or a menu that handles Escape. Out of the Tab order
+   * unless `tabStop`.
+   */
+  focusable?: MaybeAccessor<boolean>;
+  /** With `focusable`: also reached with Tab. */
+  tabStop?: boolean;
+  children?: Child;
+};
 
 const STYLE_KEYS: (keyof Style)[] = [
   "direction", "gap", "padding", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow",
   "align", "justify", "position", "left", "top", "clip", "background", "radius", "borderWidth", "borderColor",
   "shadow", "color", "fontSize", "bold", "underline", "cursor", "opacity", "translateX", "translateY",
   "alignSelf", "right", "bottom", "zIndex", "columns", "rowGap", "aspectRatio", "wrap", "margin",
-  "fontWeight", "italic", "letterSpacing",
+  "fontWeight", "italic", "letterSpacing", "fontFamily", "fontFeatures", "fontVariations", "minColumnWidth",
 ];
 const HANDLER_KEYS: (keyof Handlers)[] = [
   "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur", "onResize",
 ];
+
+/**
+ * For widgets that paint `color` and `background` themselves (a bar's fill and track): the
+ * props without them, for applyProps, and accessors of the two (theme defaults), which also
+ * repaint when they change.
+ */
+export function ownColors<P extends StyleProps>(props: P, color: () => Color, background: () => Color) {
+  const { color: c, background: bg, ...rest } = props;
+  const fill = () => (c === undefined ? color() : read(c));
+  // A gradient track would need the box; a bar takes plain colors.
+  const track = () => {
+    const v = bg === undefined ? undefined : read(bg);
+    return typeof v === "string" ? v : background();
+  };
+  createEffect(() => (fill(), track(), invalidate()));
+  return { rest, fill, track };
+}
 
 /** Binds style props (static or reactive), event handlers, `hoverStyle`/`pressStyle` and `ref` onto a node. */
 export function applyProps(node: UINode, props: Record<string | symbol, any>) {
   for (const key of STYLE_KEYS) {
     if (!(key in props)) continue;
     const value = props[key];
-    if (typeof value === "function") createEffect(() => node.set(key, value()));
-    else node.set(key, value);
+    const apply = SIZE_KEYS.has(key) ? (v: unknown) => setSize(node, key as SizeKey, v) : (v: unknown) => node.set(key, v as never);
+    if (typeof value === "function") createEffect(() => apply(value()));
+    else apply(value);
   }
   // Spread createInteraction() props first, so the app's handlers already see the new state.
   for (const key of Object.getOwnPropertySymbols(props)) {
@@ -51,10 +84,16 @@ export function applyProps(node: UINode, props: Record<string | symbol, any>) {
   const own: Handlers = {};
   for (const key of HANDLER_KEYS) if (props[key]) own[key] = props[key];
   addHandlers(node, own);
-  if (props.hoverStyle || props.pressStyle) stateStyles(node, props);
+  if (props.hoverStyle || props.pressStyle || props.focusStyle) stateStyles(node, props);
   const aria = props.ariaLabel;
   if (typeof aria === "function") createEffect(() => (node.ariaLabel = aria()));
   else if (aria !== undefined) node.ariaLabel = aria;
+  const focusable = props.focusable;
+  if (focusable !== undefined) {
+    node.tabStop = !!props.tabStop;
+    if (typeof focusable === "function") createEffect(() => (node.focusable = !!focusable()) || node.blur());
+    else node.focusable = !!focusable;
+  }
   const drag = props.dragRegion;
   if (typeof drag === "function") createEffect(() => (node.dragRegion = !!drag()));
   else if (drag !== undefined) node.dragRegion = !!drag;
@@ -62,6 +101,40 @@ export function applyProps(node: UINode, props: Record<string | symbol, any>) {
 }
 
 type AnyHandler = (e?: unknown) => void;
+
+const SIZE_KEYS = new Set<keyof Style>(["width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight"]);
+
+/** A size prop: px into the style, `"50%"` for layout to resolve against the parent. */
+function setSize(node: UINode, key: SizeKey, value: unknown) {
+  if (typeof value === "string" && value.endsWith("%")) {
+    const n = Number(value.slice(0, -1));
+    if (!Number.isFinite(n)) throw new Error(`nodebuilder: bad ${key} "${value}" (use a number or a percentage like "50%")`);
+    node.setPercent(key, n);
+    return;
+  }
+  node.setPercent(key, undefined);
+  node.set(key, value as number | undefined);
+}
+
+/**
+ * Sets a widget's own handler after applyProps without dropping the ones the node has (the
+ * app's, press state): those run first. For keys, a stop() there skips the widget's handler,
+ * so an app can take a key from a control.
+ */
+export function ownHandler<K extends keyof Handlers>(node: UINode, key: K, handler: NonNullable<Handlers[K]>) {
+  const all = node.handlers as Record<string, AnyHandler | undefined>;
+  const prev = all[key];
+  const own = handler as AnyHandler;
+  if (!prev) all[key] = own;
+  else if (key === "onKeyDown") {
+    all[key] = (e) => {
+      const ev = e as KeyEvent;
+      let stopped = false;
+      prev({ ...ev, stop: () => ((stopped = true), ev.stop()) } satisfies KeyEvent);
+      if (!stopped) own(ev);
+    };
+  } else all[key] = (e) => (prev(e), own(e));
+}
 
 /** Chains `handlers` after (or, with `first`, before) the ones the node has: nothing is replaced. */
 function addHandlers(node: UINode, handlers: Handlers, first = false) {
@@ -74,24 +147,28 @@ function addHandlers(node: UINode, handlers: Handlers, first = false) {
   }
 }
 
-/** hoverStyle/pressStyle: per key, an override on top of whatever set() gives the node. */
-function stateStyles(node: UINode, props: { hoverStyle?: StyleValues; pressStyle?: StyleValues; disabled?: MaybeAccessor<boolean> }) {
+/** hoverStyle/pressStyle/focusStyle: per key, an override on top of whatever set() gives the node. */
+function stateStyles(node: UINode, props: { hoverStyle?: StyleValues; pressStyle?: StyleValues; focusStyle?: StyleValues; disabled?: MaybeAccessor<boolean> }) {
   const hover = props.hoverStyle ?? {};
   const press = props.pressStyle ?? {};
-  // Only pressStyle tracks the press: an onPointerDown would make the node claim the press
-  // (e.g. a hover-styled child of a window drag region would stop moving the window).
-  const state = props.pressStyle ? interaction(node) : hoverOf(node);
-  const keys = new Set([...Object.keys(hover), ...Object.keys(press)] as (keyof Style)[]);
+  const focus = props.focusStyle ?? {};
+  // Only pressStyle and focusStyle track the press: an onPointerDown would make the node claim
+  // the press (e.g. a hover-styled child of a window drag region would stop moving the window).
+  const state: InteractionState = props.pressStyle || props.focusStyle ? interaction(node) : { ...hoverOf(node), focused: () => false };
+  const keys = new Set([...Object.keys(hover), ...Object.keys(press), ...Object.keys(focus)] as (keyof Style)[]);
   for (const key of keys) {
     createEffect(() => {
       const on = !read(props.disabled ?? false);
-      const from = on && state.pressed() && key in press ? press : on && state.hovered() && key in hover ? hover : null;
+      const from = on && state.pressed() && key in press ? press
+        : on && state.hovered() && key in hover ? hover
+        : on && state.focused() && key in focus ? focus
+        : null;
       node.override(key, from ? read(from[key]) : undefined);
     });
   }
 }
 
-export function inherited<K extends "color" | "fontSize" | "bold" | "underline" | "fontWeight" | "italic" | "letterSpacing">(node: UINode, key: K): Style[K] | undefined {
+export function inherited<K extends "color" | "fontSize" | "bold" | "underline" | "fontWeight" | "italic" | "letterSpacing" | "fontFamily" | "fontFeatures" | "fontVariations">(node: UINode, key: K): Style[K] | undefined {
   for (let n: UINode | null = node; n; n = n.parent) if (n.style[key] !== undefined) return n.style[key];
   return undefined;
 }
@@ -105,14 +182,20 @@ function inheritedWeight(node: UINode): number {
   return 400;
 }
 
-/** The font of the node's text (weight, italic, letter spacing), inherited; `last` is returned while nothing changed. */
+/** The font of the node's text (weight, italic, letter spacing, family...), inherited; `last` is returned while nothing changed. */
 export function inheritedFont(node: UINode, last?: FontStyle): FontStyle {
   const weight = inheritedWeight(node);
   const italic = inherited(node, "italic") ?? false;
   const letterSpacing = inherited(node, "letterSpacing") ?? 0;
-  if (last && last.weight === weight && last.italic === italic && last.letterSpacing === letterSpacing) return last;
-  if (weight === 400 && !italic && !letterSpacing) return REGULAR;
-  return { weight, italic, letterSpacing };
+  const family = inherited(node, "fontFamily") ?? "";
+  const features = inherited(node, "fontFeatures") ?? "";
+  const variations = inherited(node, "fontVariations") ?? "";
+  if (
+    last && last.weight === weight && last.italic === italic && last.letterSpacing === letterSpacing &&
+    last.family === family && last.features === features && last.variations === variations
+  ) return last;
+  if (weight === 400 && !italic && !letterSpacing && !family && !features && !variations) return REGULAR;
+  return { weight, italic, letterSpacing, family, features, variations };
 }
 
 /** Hover, press and focus state, and the handlers that keep it. */
