@@ -51,23 +51,24 @@ test("decodeImage picks the decoder from the file's signature", () => {
   expect(() => decodeImage(new Uint8Array([1, 2, 3]))).toThrow(/unknown image format/);
 });
 
-// AVIF/HEIC go through the system's libheif via the addon; skipped where either is missing.
-const heif = (() => {
+// AVIF/HEIC go through the system's libheif via the addon; each is skipped where libheif or
+// its decoder plugin for that format (dav1d/aom, libde265) is missing.
+const decodes = (file: string) => {
   try {
-    loadNative().decodeImage(read("avif-lossless.avif"));
+    loadNative().decodeImage(read(file));
     return true;
   } catch {
     return false;
   }
-})();
+};
 
-test.skipIf(!heif)("AVIF and HEIC (libheif), lossless round trip", () => {
-  for (const file of ["avif-lossless.avif", "heic-lossless.heic"]) {
+for (const file of ["avif-lossless.avif", "heic-lossless.heic"]) {
+  test.skipIf(!decodes(file))(`${file.split(".")[1]!.toUpperCase()} (libheif), lossless round trip`, () => {
     const bitmap = decodeImage(read(file));
     expect([bitmap.width, bitmap.height]).toEqual([13, 9]);
     same(bitmap.data, expected("rgba.raw", 4));
-  }
-});
+  });
+}
 
 function mount(view: () => any, width = 400, height = 300) {
   const root = new UINode("root");

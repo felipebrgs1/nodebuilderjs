@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.2 (2026-10-14)
+
+No API changes: core 0.4.2 works with `@nodebuilderjs/linux-x64` 0.4.2, which it installs
+with it (the addon is the same as 0.4.1's).
+
+### Docs
+- The app template's `AGENTS.md` and the UI skill warn up front that JSX inside a false
+  `<Show>`/`<Match>` still runs (no compiler), with the ways to defer it. Apps get it with
+  `nodebuilder agents update`.
+
+### Project
+- Releases are published by GitHub Actions from `main`, with npm provenance (trusted
+  publishing), and each version gets a GitHub release with its changelog section.
+- `CONTRIBUTING.md`: branches (`developer` collects features and fixes, `main` gets releases),
+  commit and pull request rules, enforced by CI checks and branch rulesets.
+
 ## 0.4.1 (2026-10-14)
 
 From a second report of the Discord clone (with 0.4.0) and from the Dia report (an Obsidian

@@ -37,6 +37,10 @@ nodebuilder app: native Linux UI in TSX, **no DOM and no React**. Read this befo
   `<Index each={list}>{(item) => ...}</Index>` (by position; `item` is an accessor).
   Conditions: `<Show when={() => ...} fallback={...}>`; several cases: `<Switch>` with
   `<Match when={...}>`. Errors: `<ErrorBoundary fallback={(error, reset) => ...}>`.
+- **No compiler, unlike Solid:** an expression in JSX runs when that JSX is evaluated, even
+  inside a `<Show>`/`<Match>` that is false. `<Show when={() => t.due}><Text>{fmt(t.due!)}</Text></Show>`
+  calls `fmt(undefined)` right away. Defer it: `{() => fmt(t.due!)}`, or take the value from a
+  function child, `{(due) => <Text>{fmt(due())}</Text>}`. Components inside (`<Card/>`) do wait.
 - Styles are flat props (`padding`, `gap`, `grow`, `background`...), not CSS. There is no
   `className`, `style={{}}`, `div` or `useState`, and React libraries (e.g. `lucide-react`) don't work.
 
