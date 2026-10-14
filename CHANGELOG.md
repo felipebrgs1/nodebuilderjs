@@ -79,6 +79,8 @@ clone: text editing, rich text, input), plus window icons and the system tray.
   `nodebuilder doctor` warns when the docs are behind.
 
 ### Docs
+- The app template's `AGENTS.md` and the UI skill warn up front that JSX inside a false
+  `<Show>`/`<Match>` still runs (no compiler), with the ways to defer it.
 - Testing skill: a click inside a `Scroll` focuses it (keys bubble from there), and testing a
   reactive prop on the same node, since a screen switch can recreate it.
 

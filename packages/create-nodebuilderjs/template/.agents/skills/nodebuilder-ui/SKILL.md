@@ -237,6 +237,20 @@ function SongCard(props: { title: string; onPlay: () => void }) {
 
 ## Conditions, lists and errors
 
+**Not like Solid: there is no compiler.** Children of `<Show>` and `<Match>` are ordinary JS
+arguments, evaluated where the JSX is written, before `Show` decides anything. Only components
+and functions wait until the branch is shown:
+
+<!-- no-check -->
+```tsx
+<Show when={() => task.due}>
+  <Text>{shortDate(task.due!)}</Text>            {/* WRONG: runs now, with due undefined */}
+  <Text>{() => shortDate(task.due!)}</Text>      {/* ok: a function, read when shown */}
+</Show>
+<Show when={() => task.due}>{(due) => <Text>{shortDate(due())}</Text>}</Show> {/* ok: the value, narrowed */}
+<Show when={() => task.due}><DueDate task={task} /></Show>                     {/* ok: a component body waits */}
+```
+
 ```tsx
 import { Button, ErrorBoundary, Index, Match, Show, Switch, Text, createSignal } from "@nodebuilderjs/core";
 
