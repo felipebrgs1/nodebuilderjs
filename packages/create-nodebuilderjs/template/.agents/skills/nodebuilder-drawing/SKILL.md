@@ -86,4 +86,7 @@ For wrapping paragraphs, a `<Text>` next to the canvas (or over it: an absolute 
   and translucent ones for areas.
 - Interaction (tooltip, clicking a point, dragging): use `onPointerMove`/`onClick` on the
   `Canvas` itself; `e.localX`/`e.localY` are in the same coordinates as the drawing (the `padding`
-  offsets them: subtract it).
+  offsets them: subtract it). Keys need focus: `<Canvas focusable onKeyDown={...}>`.
+- Measuring outside `draw` (to size the content, e.g. a `Box` around the `Canvas` as tall as the
+  wrapped text): `measureText(text, size, { weight, italic, family })` from `@nodebuilderjs/core`
+  gives `{ width, ascent, descent }` with the same metrics as layout and `g.measureText`.

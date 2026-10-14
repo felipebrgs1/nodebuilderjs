@@ -639,7 +639,13 @@ the event miss silently.
 Reactivity). Keys bubble from the focused node; with nothing focused they start at the
 topmost modal layer, or else at the root's top nodes (the `Window`), so a window-level
 `onKeyDown` sees everything nothing below took. A control's own key handler is chained after
-the app's (`ownHandler`), and the app's `stop()` skips it.
+the app's (`ownHandler`), and the app's `stop()` skips it. Key releases (`onKeyUp`) take the same
+path. Key names are normalized once, in `createInput` (`normalizeKey`): xkb aliases
+(`ISO_Left_Tab`, `Prior`/`Next`, the keypad's navigation keys) become one name, and with Ctrl
+or Alt a letter is lowercase; widgets compare only the plain names. Every input event carries the
+modifiers (the addon reads xkb's state on Wayland, the event's `state` on X11); a right press
+ends with the innermost `onContextMenu`, and the Menu key or Shift+F10 opens the focused node's
+at its bottom-left corner.
 
 `onResize` is collected during `layout()` and delivered in a batch after the whole tree has
 been positioned, so that the handler can change state (and the tree) without disrupting the

@@ -649,3 +649,159 @@ describe("stacking (zIndex) and overflow", () => {
     expect(log).toEqual(["down badge"]);
   });
 });
+
+describe("modifiers", () => {
+  test("pointer and scroll events carry ctrl, shift, alt and meta", () => {
+    const seen: string[] = [];
+    const mods = (e: { ctrl: boolean; shift: boolean; alt: boolean; meta: boolean }) => `${+e.ctrl}${+e.shift}${+e.alt}${+e.meta}`;
+    const { input } = setup(() => (
+      <Box width={100} height={100} onPointerDown={(e) => seen.push(`down ${mods(e)}`)} onPointerUp={(e) => seen.push(`up ${mods(e)}`)}
+        onClick={(e) => seen.push(`click ${mods(e)}`)} onPointerMove={(e) => seen.push(`move ${mods(e)}`)} onScroll={(e) => seen.push(`scroll ${mods(e)}`)} />
+    ));
+    input.pointerMove(10, 10, { ctrl: false, shift: true, alt: false, meta: false });
+    input.pointerDown(10, 10, 0, { ctrl: true, shift: false, alt: false, meta: false });
+    input.pointerUp(10, 10, 0, { ctrl: true, shift: false, alt: true, meta: false });
+    input.scroll(10, 10, 0, 5, { ctrl: true, shift: false, alt: false, meta: true });
+    input.pointerDown(10, 10, 0); // without modifiers: all false
+    expect(seen).toEqual(["move 0100", "down 1000", "up 1010", "click 1010", "scroll 1001", "down 0000"]);
+  });
+
+  test("Shift+wheel still scrolls sideways", () => {
+    const { root, input } = setup(() => (
+      <Scroll horizontal width={100} height={50}>
+        <Box width={400} height={40} />
+      </Scroll>
+    ));
+    input.scroll(10, 10, 0, 30, { ctrl: false, shift: true, alt: false, meta: false });
+    layout(root, 300, 200);
+    expect(root.children[0]!.scrollX).toBe(30);
+  });
+
+  test("interact() passes modifiers to clicks, keys and the wheel", () => {
+    const seen: string[] = [];
+    const { root } = mount(() => (
+      <Column focusable width={200} height={100} onClick={(e) => seen.push(`click ctrl=${e.ctrl}`)} onKeyDown={(e) => seen.push(`key ${e.key} alt=${e.alt} meta=${e.meta}`)}
+        onScroll={(e) => seen.push(`scroll ctrl=${e.ctrl}`)}>
+        <Text>target</Text>
+      </Column>
+    ));
+    const ui = interact(root);
+    ui.click(findByText(root, "target")!, { ctrl: true });
+    ui.key("x", { alt: true, meta: true });
+    ui.scroll(findByText(root, "target")!, 10, { ctrl: true });
+    expect(seen).toEqual(["click ctrl=true", "key x alt=true meta=true", "scroll ctrl=true"]);
+  });
+});
+
+describe("key up", () => {
+  test("onKeyUp goes the way onKeyDown does, from the focused node up", () => {
+    const seen: string[] = [];
+    const { root } = mount(() => (
+      <Window title="w" onKeyUp={(e) => seen.push(`window up ${e.key}`)}>
+        <Column focusable onKeyDown={(e) => seen.push(`down ${e.key}`)} onKeyUp={(e) => seen.push(`up ${e.key} ctrl=${e.ctrl}`)}>
+          <Text>field</Text>
+        </Column>
+      </Window>
+    ));
+    const ui = interact(root);
+    ui.keyUp("Control_L"); // nothing focused: the Window
+    ui.click(findByText(root, "field")!);
+    ui.key("a", { ctrl: true });
+    ui.keyUp("a", { ctrl: true });
+    expect(seen).toEqual(["window up Control_L", "down a", "up a ctrl=true", "window up a"]);
+  });
+});
+
+describe("key names", () => {
+  const keys = (press: (ui: ReturnType<typeof interact>) => void) => {
+    const seen: string[] = [];
+    const { root } = mount(() => <Window title="w" onKeyDown={(e) => seen.push(`${e.key}${e.shift ? "+shift" : ""}`)} />);
+    press(interact(root));
+    return seen;
+  };
+
+  test("Shift+Tab is Tab with shift", () => {
+    expect(keys((ui) => ui.key("ISO_Left_Tab", { shift: true }))).toEqual(["Tab+shift"]);
+  });
+
+  test("keypad keys and page keys get their plain names", () => {
+    expect(keys((ui) => ["KP_Enter", "KP_Delete", "KP_Home", "KP_Up", "Prior", "Next", "KP_Prior", "KP_5"].forEach((k) => ui.key(k)))).toEqual(
+      ["Return", "Delete", "Home", "Up", "Page_Up", "Page_Down", "Page_Up", "KP_5"],
+    );
+  });
+
+  test("with Ctrl or Alt, a letter is always lowercase (Shift and Caps Lock aside)", () => {
+    expect(keys((ui) => {
+      ui.key("O", { ctrl: true, shift: true });
+      ui.key("N", { alt: true });
+      ui.key("A", { shift: true }); // typing keeps the case
+    })).toEqual(["o+shift", "n", "A+shift"]);
+  });
+
+  test("Page keys still scroll and Shift+Tab still moves focus backwards", () => {
+    const { root } = mount(() => (
+      <Column>
+        <Button label="one" />
+        <Button label="two" />
+      </Column>
+    ));
+    const ui = interact(root);
+    ui.key("Tab");
+    ui.key("ISO_Left_Tab", { shift: true });
+    expect(ui.focused?.ariaLabel ?? debugTree(ui.focused!)).toContain("two");
+  });
+});
+
+describe("context menu", () => {
+  test("a right press runs the innermost onContextMenu, at the pointer, after onPointerDown", () => {
+    const seen: string[] = [];
+    const { input } = setup(() => (
+      <Box width={200} height={200} onContextMenu={() => seen.push("outer")}>
+        <Box width={100} height={100} onPointerDown={() => seen.push("down")} onContextMenu={(e) => seen.push(`inner ${e.x},${e.y} local ${e.localX},${e.localY}`)} />
+      </Box>
+    ));
+    input.pointerDown(30, 40, 2);
+    input.pointerDown(150, 150, 2);
+    input.pointerDown(30, 40, 0); // left press: no menu
+    expect(seen).toEqual(["down", "inner 30,40 local 30,40", "outer", "down"]);
+  });
+
+  test("onPointerDown's stop() keeps the menu from opening", () => {
+    const seen: string[] = [];
+    const { input } = setup(() => <Box width={100} height={100} onPointerDown={(e) => e.stop()} onContextMenu={() => seen.push("menu")} />);
+    input.pointerDown(10, 10, 2);
+    expect(seen).toEqual([]);
+  });
+
+  test("the Menu key and Shift+F10 open the focused node's menu below it", () => {
+    const seen: string[] = [];
+    const { root } = mount(() => (
+      <Column padding={20}>
+        <Column focusable width={100} height={30} onContextMenu={(e) => seen.push(`menu ${e.x},${e.y} button ${e.button}`)}>
+          <Text>row</Text>
+        </Column>
+      </Column>
+    ));
+    const ui = interact(root);
+    ui.click(findByText(root, "row")!);
+    ui.key("Menu");
+    ui.key("F10", { shift: true });
+    expect(seen).toEqual(["menu 20,50 button -1", "menu 20,50 button -1"]);
+  });
+
+  test("interact().contextMenu(node) right-clicks it", () => {
+    const seen: string[] = [];
+    const { root } = mount(() => <Text onContextMenu={() => seen.push("menu")}>file.md</Text>);
+    interact(root).contextMenu(findByText(root, "file.md")!);
+    expect(seen).toEqual(["menu"]);
+  });
+});
+
+test("the built-in title bar shows a reactive title", () => {
+  const [name, setName] = createSignal("a.md");
+  const { root, relayout } = mount(() => <Window title={name} />);
+  expect(findByText(root, "a.md")).toBeDefined();
+  setName("b.md");
+  relayout();
+  expect(findByText(root, "b.md")).toBeDefined();
+});

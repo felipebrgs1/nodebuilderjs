@@ -73,12 +73,12 @@ export function Slider(
     const v = untrack(props.value);
     const page = Math.max(step, (max - min) / 10);
     switch (e.key) {
-      case "Right": case "Up": case "KP_Right": case "KP_Up": set(v + step); break;
-      case "Left": case "Down": case "KP_Left": case "KP_Down": set(v - step); break;
-      case "Prior": case "Page_Up": case "KP_Prior": set(v + page); break;
-      case "Next": case "Page_Down": case "KP_Next": set(v - page); break;
-      case "Home": case "KP_Home": set(min); break;
-      case "End": case "KP_End": set(max); break;
+      case "Right": case "Up": set(v + step); break;
+      case "Left": case "Down": set(v - step); break;
+      case "Page_Up": set(v + page); break;
+      case "Page_Down": set(v - page); break;
+      case "Home": set(min); break;
+      case "End": set(max); break;
       default: return;
     }
     e.stop(); // the keys belong to the slider, not to a Scroll around it

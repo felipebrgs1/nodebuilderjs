@@ -2,7 +2,7 @@ import type { IconInput } from "../image/icon.js";
 import { type Child, insert } from "../jsx-runtime.js";
 import { windowControls, windowOptionsKey, windowState } from "../runtime/app.js";
 import { type Handlers, type Style, UINode, measureText } from "../render/node.js";
-import { createEffect } from "../reactive/signals.js";
+import { type MaybeAccessor, createEffect } from "../reactive/signals.js";
 import { theme } from "../theme.js";
 import { Column, Divider, Row, Spacer } from "./containers.js";
 import { type StyleProps, applyProps, interaction } from "./props.js";
@@ -48,7 +48,8 @@ export function WindowControls(props: StyleProps & Handlers = {}) {
 
 export function Window(
   props: StyleProps & Handlers & {
-    title: string;
+    /** Title bar and window list; an accessor follows changes. */
+    title: MaybeAccessor<string>;
     width?: number;
     height?: number;
     appId?: string;
@@ -62,6 +63,15 @@ export function Window(
 ) {
   const node = new UINode("Window");
   (node as any)[windowOptionsKey] = props;
+  // The window opens with the first value; later ones go to the compositor.
+  if (typeof props.title === "function") {
+    const title = props.title;
+    createEffect<string>((prev) => {
+      const next = title();
+      if (prev !== undefined && next !== prev) windowControls.setTitle(next);
+      return next;
+    });
+  }
   Object.assign(node.style, {
     direction: "column", borderWidth: 1, clip: true,
     padding: 1, // keep children (e.g. the titlebar divider) off the border
@@ -79,7 +89,7 @@ export function Window(
   return node;
 }
 
-function Titlebar(text: string) {
+function Titlebar(text: MaybeAccessor<string>) {
   const bar = new UINode("Titlebar");
   Object.assign(bar.style, {
     direction: "row", align: "center", height: theme.window.titlebarHeight, padding: [0, 10], gap: 8,

@@ -48,7 +48,7 @@ const STYLE_KEYS: (keyof Style)[] = [
   "fontWeight", "italic", "letterSpacing", "fontFamily", "fontFeatures", "fontVariations", "minColumnWidth",
 ];
 const HANDLER_KEYS: (keyof Handlers)[] = [
-  "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onFocus", "onBlur", "onResize",
+  "onClick", "onPointerDown", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerMove", "onScroll", "onKeyDown", "onKeyUp", "onContextMenu", "onFocus", "onBlur", "onResize",
 ];
 
 /**

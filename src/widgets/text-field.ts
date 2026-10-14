@@ -149,7 +149,6 @@ export function TextField(
         if (at > 0) edit([...cs.slice(0, at - 1), ...cs.slice(at)], at - 1);
         break;
       case "Delete":
-      case "KP_Delete":
         if (at < cs.length) edit([...cs.slice(0, at), ...cs.slice(at + 1)], at);
         break;
       case "Left":
@@ -167,7 +166,6 @@ export function TextField(
         setCaret(cs.length);
         break;
       case "Return":
-      case "KP_Enter":
         props.onSubmit?.();
         break;
       default: {

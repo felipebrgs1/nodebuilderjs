@@ -276,6 +276,25 @@ test("scrollTo() called while the Scroll is created starts it there", () => {
 });
 
 describe("scrollIntoView", () => {
+  test("a region of the element (a caret in an editor) scrolls just enough to show that region", () => {
+    let editor!: ElementRef;
+    const { root, relayout } = mount(() => (
+      <Scroll height={100} width={200}>
+        <Box height={2000} ref={(e) => (editor = e)} />
+      </Scroll>
+    ));
+    const scroller = root.children[0]!;
+    editor.scrollIntoView({ x: 0, y: 500, width: 2, height: 20 });
+    relayout();
+    expect(scroller.scrollY).toBe(420); // 500..520 at the bottom
+    editor.scrollIntoView({ x: 0, y: 450, width: 2, height: 20 }); // visible already
+    relayout();
+    expect(scroller.scrollY).toBe(420);
+    editor.scrollIntoView({ y: 100, height: 20 });
+    relayout();
+    expect(scroller.scrollY).toBe(100);
+  });
+
   // 100 rows of 20 px in a 100 px tall Scroll.
   const rows = (refs: ElementRef[]) => () => (
     <Scroll height={100}>

@@ -20,6 +20,18 @@ From a second report of the Discord clone (with 0.4.0).
   file's default export (as with `--props '{}'`), and says how to pick one when there is none.
 
 ### New
+- From the Obsidian clone report (with 0.2.5): pointer and wheel events carry `ctrl`, `shift`,
+  `alt` and `meta` (keys get `meta` too), `onKeyUp`, `onContextMenu` (right press, Menu key,
+  Shift+F10) and `<Overlay at={{ x, y }}>` that flips to fit, `measureText` exported,
+  `scrollIntoView({ x, y, width, height })` for a region of an element, `createThemeTokens`
+  for app colors that follow `setTheme`, a reactive `<Window title>`, `mount(view, { paint })`
+  and `interact()` `click`/`contextMenu`/`keyUp` with modifiers.
+- Key names are normalized: Shift+Tab is `"Tab"` with `shift`, `Prior`/`Next` are
+  `"Page_Up"`/`"Page_Down"`, keypad keys have the plain names, and with Ctrl or Alt a letter
+  is lowercase. **Breaking** for apps that compared `"ISO_Left_Tab"`, `"Prior"`, `"Next"` or
+  `"KP_*"` names.
+- An anchored overlay too wide to start at its anchor now ends where the anchor does (it was
+  pushed against the window's edge).
 - Window icon: `<Window icon>` (SVG markup or an `.svg`/PNG/JPEG/WebP file) through
   `xdg-toplevel-icon-v1` on Wayland and `_NET_WM_ICON` on X11. Without one, the window shows the
   nodebuilder icon instead of the compositor's generic one (in development there is no

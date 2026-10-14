@@ -413,3 +413,10 @@ test("letterSpacing moves the selection edges of selectable Text", () => {
   const [highlight] = commandsOf(text, "rect");
   expect([highlight!.x - text.x, highlight!.w]).toEqual([0, 24]);
 });
+
+test("measureText is public and uses the same metrics as layout (before anything is painted)", async () => {
+  const { measureText } = await import("@nodebuilderjs/core");
+  setTextMeasurer((text, size, font) => ({ width: text.length * size * (font.italic ? 0.6 : 0.5), ascent: size, descent: size / 4 }));
+  expect(measureText("abcd", 10)).toEqual({ width: 20, ascent: 10, descent: 2.5 });
+  expect(measureText("abcd", 10, { italic: true, family: "monospace" }).width).toBe(24);
+});

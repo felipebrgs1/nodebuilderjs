@@ -38,7 +38,7 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 | `<For each={list}>{(item, i) => ...}</For>` | list keyed by reference; `i` is an accessor | `fallback` |
 | `<Index each={list}>{(item, i) => ...}</Index>` | list by position (primitives); `item` is an accessor, `i` a number | `fallback` |
 | `<Show when={() => ...} fallback={...}>` | conditional; a `{(v) => ...}` child gets the value as an accessor | |
-| `<Switch fallback={...}><Match when={...}>...</Match></Switch>` | several cases: the first true `Match` | `Match` accepts `{(v) => ...}` |
+| `<Switch fallback={...}><Match when={...}>...</Match></Switch>` | several cases: the first true `Match`; the content is recreated only when a different `Match` wins, not when the value of `when` changes (read it with `{(v) => ...}`) | `Match` accepts `{(v) => ...}` |
 | `<ErrorBoundary fallback={(error, reset) => ...}>` | replaces children that threw with the `fallback` | `reset()` tries again |
 
 ```tsx
@@ -141,14 +141,20 @@ color). On a control, an `onKeyDown` runs first and `e.stop()` keeps the key fro
   the `Window`, so `<Window onKeyDown={(e) => e.key === "Escape" && close()}>` is a window-wide
   shortcut (Ctrl+K too: a text field lets keys with Ctrl through). A page or a menu that
   should hold the focus without being a control: `<Column focusable onKeyDown={...}>` (a click
-  focuses it; no focus ring; `tabStop` adds it to the Tab order). It gets `key`
-  (xkb names: `"Return"`, `"Escape"`, `"Tab"`, `"BackSpace"`, `"space"`, `"Up"`, `"Left"`, `"a"`),
-  `text`, `ctrl`, `shift`, `alt`, `repeat`. `onScroll` gets `dx`/`dy`. `onClick` is the left button only
-  (context menu: `onPointerDown` with `e.button === 2`) and runs only on the innermost node that
-  has one (a button inside a clickable card clicks only the button); the other events go up
-  through the parents until a handler calls `e.stop()`, also past nodes with `onClick` (a
-  list's `onPointerDown` with `e.button === 2` sees a right press on any of its clickable
-  rows; on keys and the wheel, `stop()` also keeps the surrounding `Scroll` still).
+  focuses it; no focus ring; `tabStop` adds it to the Tab order). A press focuses the nearest
+  focusable ancestor of what was pressed (empty space: nothing). Key events (`onKeyDown`,
+  `onKeyUp`) get `key` (xkb names, normalized: `"Return"`, `"Escape"`, `"Tab"` (Shift+Tab too,
+  with `shift`), `"BackSpace"`, `"Delete"`, `"space"`, `"Up"`, `"Left"`, `"Home"`, `"End"`,
+  `"Page_Up"`, `"Page_Down"`, `"F2"`, `"Menu"`, `"a"`; keypad keys have the plain names; with
+  Ctrl or Alt a letter is always lowercase), `text` (what it types; `""` with Ctrl), `ctrl`,
+  `shift`, `alt`, `meta`, `repeat`. Pointer and wheel events carry `ctrl`/`shift`/`alt`/`meta`
+  too (Ctrl+click, Shift+click, Ctrl+wheel); `onScroll` gets `dx`/`dy`. `onClick` is the left
+  button only and runs only on the innermost node that has one (a button inside a clickable
+  card clicks only the button); `onContextMenu` (right press, Menu key, Shift+F10) also runs
+  only on the innermost one; the other events go up through the parents until a handler
+  calls `e.stop()`, also past nodes with `onClick` (on keys and the wheel, `stop()` also keeps
+  the surrounding `Scroll` still). A context menu at the pointer: `onContextMenu={(e) =>
+  setMenu({ x: e.x, y: e.y })}` and `<Overlay at={menu} onDismiss={...}>` (it flips to fit).
 - Any prop accepts a fixed value or a function: `background={() => (sel() ? a : b)}`.
 - `onResize={(s) => ...}`: the node's size (`s.width`, `s.height`) after layout, the first
   time and whenever it changes. Use it to adapt the screen to the available width; what it
@@ -359,7 +365,9 @@ const rows: ElementRef[] = [];
   buttons touch it (like the `padding={[0, 0, 14, 0]}` above).
 - `el.scrollIntoView()` (on any element, via `ref`) scrolls the surrounding `Scroll`s the minimum
   needed for it to show; it takes effect on the next frame, even for a just-created or off-screen
-  element. `el.scrollTo({ x, y })` accepts just one of the axes.
+  element. `el.scrollIntoView({ x, y, width, height })` shows only that region of it, from its
+  top-left corner (a caret in an editor drawn on a `Canvas`). `el.scrollTo({ x, y })` accepts just
+  one of the axes.
 - An open `<Overlay modal>` blocks the wheel, keys and scrollbars of what is behind it.
 
 ## Dialogs, menus and hints: `<Overlay>`
@@ -404,6 +412,8 @@ let button: ElementRef | undefined;
 - `anchor={() => el}` (always as a function): sits next to the element, `placement`
   `"bottom"` (default), `"top"`, `"right"` or `"left"`, flips side if it does not fit, never leaves the
   window; `offset` (4) and `matchWidth` (same width, for menus).
+- `at={{ x, y }}` (or an accessor) instead of `anchor`: opens at a point in window coordinates
+  (context menu at `e.x`/`e.y` of `onContextMenu`), to its left or above when it does not fit.
 - Without `anchor`: covers the window; position it with `align`/`justify`/`padding` or with
   `position="absolute"` + `left`/`top`. Empty space lets clicks through (toasts, hints).
 - `modal`: blocks clicks and Tab on what is behind; `background` dims the backdrop. With
@@ -538,6 +548,11 @@ too: the edges count from inside the parent's `padding`.
   `{ ...darkTheme, accent: {...} }`), at any time; `colorScheme()` tells which one is active.
 - **Theme colors always inside a function** (`color={() => theme.text.secondary}`): that way they
   follow theme changes. `color={theme.text.secondary}` keeps the color of that moment.
+- `title` may be an accessor (`title={() => \`${note()} - Notes\`}`): the title bar and the
+  window list follow it.
+- Colors of the app's own (sidebar, links, code background) that follow `setTheme`:
+  `const colors = createThemeTokens({ light: { sidebar: "#f3f3f3" }, dark: { sidebar: "#202020" } })`,
+  then `background={() => colors.sidebar}`.
 - `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`, `.hide()`/`.show()`
   (off the screen and the taskbar, the app keeps running); `windowState.width()`, `.height()`,
   `.maximized()`, `.activated()`, `.visible()` are accessors.

@@ -77,3 +77,23 @@ test("an open Dialog follows a theme switch: backdrop and card", () => {
   expect(layer.style.background).toBe(darkTheme.backdrop);
   expect(layer.children[0]!.style.background).toBe(darkTheme.card.background);
 });
+
+test("createThemeTokens: an app's own colors, one set per scheme, following setTheme like the built-in ones", async () => {
+  const { createThemeTokens } = await import("@nodebuilderjs/core");
+  const colors = createThemeTokens({
+    light: { sidebar: "#f3f3f3", code: { background: "#eeeeee" } },
+    dark: { sidebar: "#202020", code: { background: "#1a1a1a" } },
+  });
+  expect(colors.sidebar).toBe("#f3f3f3");
+  const { root } = mount(() => <Column background={() => colors.sidebar}><Text>x</Text></Column>);
+  const column = root.children[0]!;
+  expect(column.style.background).toBe("#f3f3f3");
+  // A theme of the app's own takes the set of its scheme.
+  setTheme({ ...darkTheme, accent: { ...darkTheme.accent, base: "#ff00ff" } });
+  expect(column.style.background).toBe("#202020");
+  expect(colors.code.background).toBe("#1a1a1a");
+  const seen: string[] = [];
+  createRoot(() => createEffect(() => seen.push(colors.code.background)));
+  setTheme("light");
+  expect(seen).toEqual(["#1a1a1a", "#eeeeee"]);
+});

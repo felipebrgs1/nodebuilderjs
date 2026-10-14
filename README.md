@@ -239,10 +239,42 @@ before or after the spread; nothing is replaced, and several interactions can sh
 
 ### Events
 
-Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onScroll`,
-`onKeyDown`, `onFocus` and `onBlur` (controls too: they are added to the control's own
-handlers, never replace them). Pointer events carry `x`/`y` (window), `localX`/`localY`
-(node), `button` (0 left, 1 middle, 2 right) and `clicks` (2 = double click).
+Any widget takes `onClick`, `onPointerDown`/`Up`/`Enter`/`Leave`/`Move`, `onContextMenu`,
+`onScroll`, `onKeyDown`, `onKeyUp`, `onFocus` and `onBlur` (controls too: they are added to the
+control's own handlers, never replace them). Pointer events carry `x`/`y` (window),
+`localX`/`localY` (node), `button` (0 left, 1 middle, 2 right) and `clicks` (2 = double click).
+Pointer, wheel and key events carry the modifiers `ctrl`, `shift`, `alt` and `meta` (Super):
+Ctrl+click, Shift+click to extend a selection, Ctrl+wheel to zoom.
+
+```tsx
+import { Column, Overlay, Show, Text, createSignal, type Point } from "@nodebuilderjs/core";
+
+const [menu, setMenu] = createSignal<Point | null>(null);
+<Column onContextMenu={(e) => setMenu({ x: e.x, y: e.y })}>
+  <Text onClick={(e) => (e.ctrl ? console.log("open link") : console.log("edit"))}>[[note]]</Text>
+  <Show when={menu}>
+    {(at) => (
+      <Overlay at={at} onDismiss={() => setMenu(null)}>
+        <Text>Rename</Text>
+      </Overlay>
+    )}
+  </Show>
+</Column>;
+```
+
+- `onContextMenu` runs on a right press (after `onPointerDown`, unless it called `e.stop()`) and
+  on the Menu key or Shift+F10 over the focused node (at its bottom-left corner, `button` -1);
+  only the innermost handler runs. `<Overlay at={{ x, y }}>` opens the menu there and moves it
+  to the other side of the point when it does not fit.
+- Key names are xkb's (`"Return"`, `"Escape"`, `"Tab"`, `"BackSpace"`, `"Delete"`, `"space"`,
+  `"Up"`/`"Down"`/`"Left"`/`"Right"`, `"Home"`, `"End"`, `"Page_Up"`, `"Page_Down"`, `"Insert"`,
+  `"F1"`…`"F12"`, `"Menu"`, letters and digits as typed), normalized: Shift+Tab is `"Tab"` with
+  `shift`, keypad keys have the plain names (`"KP_Enter"` is `"Return"`), and with Ctrl or Alt a
+  letter is always lowercase, so `e.ctrl && e.key === "o"` works with Shift or Caps Lock too.
+  `text` is what the key types (`""` for control keys and with Ctrl); modifier keys alone come
+  as `"Control_L"`, `"Shift_R"`, `"Alt_L"`, `"Super_L"`…
+- A press focuses the nearest focusable ancestor of what was pressed (or nothing: pressing empty
+  space blurs).
 
 - `onClick` is the left button only and runs on the innermost node that has one (pressed and
   released on it): a button inside a clickable card clicks the button, not the card.
@@ -522,6 +554,8 @@ const rows: ElementRef[] = [];
   `e.stop()`. `TextField` keeps Home/End and ←/→ for the cursor.
 - `scrollIntoView()` scrolls each `Scroll` around the element by the minimum needed, on the
   next frame (also for an element that was just created or that is far away, off screen).
+  `scrollIntoView({ x, y, width, height })` shows only that region of the element (from its
+  top-left corner): the caret of an editor drawn in a `Canvas`.
 - The content of a `Scroll` doesn't hold up the size of its container: a column with a
   `Scroll grow={1}` inside shrinks without `minHeight={0}`.
 - An open `<Overlay modal>` blocks the wheel, keys and scrollbars of what is behind it.
@@ -609,6 +643,10 @@ const panel = createPresence(open, { enter: 180, exit: 120 });
 
 - `setTheme("dark" | "light")` or a custom theme (`{ ...darkTheme, accent: { ...darkTheme.accent,
   base: "#9141ac" } }`); `colorScheme()` tells which one is in use. `theme.x = ...` also updates.
+- `createThemeTokens({ light: {...}, dark: {...} })` gives the app's own colors (sidebar, links,
+  code background) one value per scheme, switching with `setTheme` like `theme` does:
+  `const colors = createThemeTokens({ light: { sidebar: "#f3f3f3" }, dark: { sidebar: "#202020" } })`,
+  then `background={() => colors.sidebar}`. A custom theme takes the set of its `scheme`.
 - **Theme colors inside functions:** `color={() => theme.text.secondary}` follows the switch;
   `color={theme.text.secondary}` keeps the color from that moment. The built-in widgets
   already follow it.
@@ -735,7 +773,11 @@ let button: ElementRef | undefined;
   through, unless it is `modal`.
 - With `anchor`: `placement` (`"bottom"`, `"top"`, `"right"`, `"left"`), `offset` (4) and
   `matchWidth`. Pass the anchor as a function (`() => button`), because `ref` is only filled
-  in when the button is created.
+  in when the button is created. Too wide to start at the anchor, it ends where the anchor
+  does.
+- `at={{ x, y }}` (or an accessor) instead of an anchor: a point in window coordinates (a context
+  menu at the pointer), placed like a zero-size anchor (`offset` 0) and flipped to the left or
+  above when it does not fit.
 - `onDismiss` is called on a click outside (for a modal, on the backdrop; never on the anchor)
   and on Esc.
 - An overlay opened later stays on top of the earlier ones.
@@ -894,9 +936,12 @@ test("play and pause", () => {
   `interact(root).key(...)` right after `mount` reaches it. Nodes built by an `onResize`
   handler are placed by the same `relayout()`.
 - `click(node)` calls the nearest `onClick` directly; `interact(root)` delivers pointer and
-  keyboard input like a window does (`hover`, `press`, `release`, `drag`, `scroll`, `key`,
-  `type`, plus `down`/`up`/`move` at window positions). `frames()` controls time for
-  animations.
+  keyboard input like a window does (`hover`, `press`, `release`, `click`, `contextMenu`,
+  `drag`, `scroll`, `key`, `keyUp`, `type`, plus `down`/`up`/`move` at window positions;
+  modifiers as `{ ctrl: true }`). `frames()` controls time for animations.
+- `mount(view, { width, height, paint })`: with `paint: true` every layout also paints, so
+  `Canvas` draw callbacks run as in the app. To find a custom widget, give it an `ariaLabel`
+  (`<Canvas ariaLabel="Editor">`) and use `findByLabel`.
 - `click` and the node helpers of `interact` throw when a user could not reach the node: it
   is culled (outside the visible area in the last layout, e.g. overflowing a `clip` panel or
   a `Scroll`) or its center is clipped by an ancestor or the window. The error names the node

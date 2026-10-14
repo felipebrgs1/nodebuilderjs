@@ -82,6 +82,13 @@ static void set_str(napi_env env, napi_value obj, const char *k, const char *v) 
   napi_set_named_property(env, obj, k, s);
 }
 
+static void set_mods(napi_env env, napi_value o, int mods) {
+  set_bool(env, o, "ctrl", mods & NB_MOD_CTRL);
+  set_bool(env, o, "shift", mods & NB_MOD_SHIFT);
+  set_bool(env, o, "alt", mods & NB_MOD_ALT);
+  set_bool(env, o, "super", mods & NB_MOD_SUPER);
+}
+
 static napi_value event_to_js(napi_env env, const nb_event *e) {
   napi_value o;
   napi_create_object(env, &o);
@@ -101,23 +108,21 @@ static napi_value event_to_js(napi_env env, const nb_event *e) {
       set_num(env, o, "x", e->x);
       set_num(env, o, "y", e->y);
       set_num(env, o, "button", e->button);
+      set_mods(env, o, e->mods);
       break;
     case NB_EV_SCROLL:
       set_num(env, o, "x", e->x);
       set_num(env, o, "y", e->y);
       set_num(env, o, "dx", e->dx);
       set_num(env, o, "dy", e->dy);
-      set_bool(env, o, "shift", e->mods & NB_MOD_SHIFT);
+      set_mods(env, o, e->mods);
       break;
     case NB_EV_KEY_DOWN:
     case NB_EV_KEY_UP:
       set_str(env, o, "key", e->key);
       set_str(env, o, "text", e->text);
       set_bool(env, o, "repeat", e->repeat);
-      set_bool(env, o, "ctrl", e->mods & NB_MOD_CTRL);
-      set_bool(env, o, "shift", e->mods & NB_MOD_SHIFT);
-      set_bool(env, o, "alt", e->mods & NB_MOD_ALT);
-      set_bool(env, o, "super", e->mods & NB_MOD_SUPER);
+      set_mods(env, o, e->mods);
       break;
     case NB_EV_FOCUS:
       set_bool(env, o, "focused", e->focused);

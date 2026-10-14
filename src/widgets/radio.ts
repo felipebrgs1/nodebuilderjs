@@ -57,7 +57,7 @@ export function RadioGroup<T>(
 
   for (const item of items) {
     item.row.handlers.onKeyDown = (e) => {
-      if (e.key !== "space" && e.key !== "Return" && e.key !== "KP_Enter") return;
+      if (e.key !== "space" && e.key !== "Return") return;
       item.pick();
       e.stop();
     };

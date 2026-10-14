@@ -7,10 +7,11 @@ import { writeFileSync } from "node:fs";
 import { type Child, insert } from "./jsx-runtime.js";
 import { layout } from "./render/layout.js";
 import { overflowWarnings } from "./render/overflow.js";
-import { type TextMeasurer, UINode, setTextMeasurer } from "./render/node.js";
+import { CommandBuffer, paintTree } from "./render/paint.js";
+import { type Modifiers, type TextMeasurer, UINode, setTextMeasurer } from "./render/node.js";
 import { createRoot, untrack } from "./reactive/signals.js";
 import { runFrameCallbacks, setAnimating, setFrameClock } from "./runtime/frames.js";
-import { createInput } from "./runtime/input.js";
+import { NO_MODIFIERS, createInput } from "./runtime/input.js";
 import { windowOf } from "./runtime/app.js";
 import { loadNative, nativeTextMeasurer } from "./runtime/native.js";
 import { type Screenshot, type ScreenshotOptions, captureTree } from "./runtime/screenshot.js";
@@ -76,11 +77,20 @@ export function useRealTextMetrics(): () => void {
   };
 }
 
+export interface MountOptions {
+  /** Window size (default: the `<Window>`'s, else 800x600); either one may be given alone. */
+  width?: number;
+  height?: number;
+  /** Also paint after every layout (into a buffer nobody draws), so `Canvas` draw callbacks run as in the app. */
+  paint?: boolean;
+}
+
 /**
  * Renders `view` into a detached root and lays it out at `width`x`height`: by default a
- * `<Window>`'s own size (which it fills, as in run()), else 800x600.
+ * `<Window>`'s own size (which it fills, as in run()), else 800x600. With `paint`, every
+ * layout (and `relayout()`) also paints.
  */
-export function mount(view: () => Child, size?: { width: number; height: number }) {
+export function mount(view: () => Child, options: MountOptions = {}) {
   setTextMeasurer(metrics);
   setAnimating(false); // animations finish at once unless the test calls frames()
   setFrameClock(null);
@@ -91,11 +101,16 @@ export function mount(view: () => Child, size?: { width: number; height: number 
     return d;
   });
   // A <Window> fills the root as in run(); other content keeps its own size.
-  const { node, options } = windowOf(root);
-  if (node && options) node.style.grow = 1;
-  const { width, height } = size ?? { width: options?.width ?? 800, height: options?.height ?? 600 };
-  layout(root, width, height);
-  return { root, dispose, relayout: () => layout(root, width, height), layoutWarnings: () => layoutWarnings(root) };
+  const { node, options: windowOptions } = windowOf(root);
+  if (node && windowOptions) node.style.grow = 1;
+  const width = options.width ?? windowOptions?.width ?? 800;
+  const height = options.height ?? windowOptions?.height ?? 600;
+  const relayout = () => {
+    layout(root, width, height);
+    if (options.paint) paintTree(root, new CommandBuffer());
+  };
+  relayout();
+  return { root, dispose, relayout, layoutWarnings: () => layoutWarnings(root) };
 }
 
 /**
@@ -243,7 +258,7 @@ export function click(node: UINode) {
   assertReachable(node, x, y);
   for (let n: UINode | null = node; n; n = n.parent) {
     if (n.handlers.onClick) {
-      n.handlers.onClick({ x, y, localX: x - n.x, localY: y - n.y, button: 0, clicks: 1, stop() {} });
+      n.handlers.onClick({ x, y, localX: x - n.x, localY: y - n.y, button: 0, clicks: 1, ...NO_MODIFIERS, stop() {} });
       return;
     }
   }
@@ -266,16 +281,29 @@ export function interact(root: UINode) {
     assertReachable(n, ...point);
     return point;
   };
-  const key = (name: string, text: string, options: { shift?: boolean; ctrl?: boolean } = {}) =>
-    input.keyDown({ key: name, text, shift: !!options.shift, ctrl: !!options.ctrl, alt: false, repeat: false });
+  const mods = (o: Partial<Modifiers> = {}): Modifiers => ({ ctrl: !!o.ctrl, shift: !!o.shift, alt: !!o.alt, meta: !!o.meta });
+  const keyInput = (name: string, text: string, o: Partial<Modifiers> = {}) => ({ key: name, text, ...mods(o), repeat: false });
   return {
-    move: (x: number, y: number) => input.pointerMove(x, y),
+    move: (x: number, y: number, modifiers?: Partial<Modifiers>) => input.pointerMove(x, y, mods(modifiers)),
     /** Presses the left button at a window position (e.g. on a scrollbar). */
-    down: (x: number, y: number) => input.pointerDown(x, y, 0),
-    up: (x: number, y: number) => input.pointerUp(x, y, 0),
+    down: (x: number, y: number, modifiers?: Partial<Modifiers>) => input.pointerDown(x, y, 0, mods(modifiers)),
+    up: (x: number, y: number, modifiers?: Partial<Modifiers>) => input.pointerUp(x, y, 0, mods(modifiers)),
     hover: (node: UINode) => input.pointerMove(...at(node)),
-    press: (node: UINode) => input.pointerDown(...at(node), 0),
-    release: (node: UINode) => input.pointerUp(...at(node), 0),
+    press: (node: UINode, modifiers?: Partial<Modifiers>) => input.pointerDown(...at(node), 0, mods(modifiers)),
+    release: (node: UINode, modifiers?: Partial<Modifiers>) => input.pointerUp(...at(node), 0, mods(modifiers)),
+    /** Presses and releases the left button on the node's center (Ctrl+click: `{ ctrl: true }`). */
+    click(node: UINode, modifiers?: Partial<Modifiers>) {
+      const [x, y] = at(node);
+      input.pointerMove(x, y, mods(modifiers));
+      input.pointerDown(x, y, 0, mods(modifiers));
+      input.pointerUp(x, y, 0, mods(modifiers));
+    },
+    /** A right press and release on the node's center (opens its onContextMenu). */
+    contextMenu(node: UINode, modifiers?: Partial<Modifiers>) {
+      const [x, y] = at(node);
+      input.pointerDown(x, y, 2, mods(modifiers));
+      input.pointerUp(x, y, 2, mods(modifiers));
+    },
     /** Presses at the node's center, moves by (dx, dy) in steps, releases there. */
     drag(node: UINode, dx: number, dy: number, steps = 5) {
       const [x, y] = at(node);
@@ -285,13 +313,15 @@ export function interact(root: UINode) {
       input.pointerUp(x + dx, y + dy, 0);
     },
     /** Turns the wheel over the node's center: `dy` down, `dx` right; with `shift`, a vertical turn scrolls sideways. */
-    scroll: (node: UINode, dy: number, options: { dx?: number; shift?: boolean } = {}) =>
-      input.scroll(...at(node), options.dx ?? 0, dy, !!options.shift),
-    /** A key by its name ("Return", "BackSpace", "Tab", "a"...), producing no text. */
-    key: (name: string, options?: { shift?: boolean; ctrl?: boolean }) => key(name, "", options),
+    scroll: (node: UINode, dy: number, options: { dx?: number } & Partial<Modifiers> = {}) =>
+      input.scroll(...at(node), options.dx ?? 0, dy, mods(options)),
+    /** A key press by its name ("Return", "BackSpace", "Tab", "a"...), producing no text. */
+    key: (name: string, modifiers?: Partial<Modifiers>) => input.keyDown(keyInput(name, "", modifiers)),
+    /** A key release (onKeyUp). */
+    keyUp: (name: string, modifiers?: Partial<Modifiers>) => input.keyUp(keyInput(name, "", modifiers)),
     /** Types text into the focused node, one key per character. */
     type: (text: string) => {
-      for (const ch of text) key(ch, ch);
+      for (const ch of text) input.keyDown(keyInput(ch, ch));
     },
     get focused() {
       return input.focused;

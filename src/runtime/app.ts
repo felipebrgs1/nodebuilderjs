@@ -12,15 +12,16 @@ import { overflowWarnings } from "../render/overflow.js";
 import { nativeClipboard, setClipboardBackend } from "./clipboard.js";
 import { createInput } from "./input.js";
 import { frameNow, hasFrameCallbacks, runFrameCallbacks, setAnimating, setFrameClock } from "./frames.js";
-import { type Native, type NativeEvent, loadNative, nativeImageBackend, nativeTextMeasurer } from "./native.js";
-import { UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer } from "../render/node.js";
+import { type Native, type NativeEvent, type NativeModifiers, loadNative, nativeImageBackend, nativeTextMeasurer } from "./native.js";
+import { type Modifiers, UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer } from "../render/node.js";
 import { CommandBuffer, paintTree } from "../render/paint.js";
-import { batch, createRoot, createSignal, untrack } from "../reactive/signals.js";
+import { type MaybeAccessor, batch, createRoot, createSignal, read, untrack } from "../reactive/signals.js";
 import { setTheme } from "../theme.js";
 import { type Screenshot, captureTree } from "./screenshot.js";
 
 export interface WindowOptions {
-  title: string;
+  /** An accessor follows changes (e.g. the open document's name). */
+  title: MaybeAccessor<string>;
   appId?: string;
   /** Taskbar and switcher icon: SVG markup, or an .svg/PNG/JPEG/WebP file (`import icon from "./icon.svg" with { type: "file" }`). Default: the framework's. */
   icon?: IconInput;
@@ -142,6 +143,8 @@ export function run(app: () => Child, runOptions: RunOptions = {}) {
   setTrayBus(sessionBusAddress());
   runWith(loadNative(), app, runOptions);
 }
+
+const modifiers = (ev: NativeModifiers): Modifiers => ({ ctrl: !!ev.ctrl, shift: !!ev.shift, alt: !!ev.alt, meta: !!ev.super });
 
 /** Frames simulated (16 ms each) waiting for animations to finish, unless NB_SCREENSHOT_FRAMES says how many. */
 const SETTLE_FRAMES = 120;
@@ -427,22 +430,25 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
         closeRequest();
         break;
       case "pointermove":
-        input.pointerMove(ev.x, ev.y);
+        input.pointerMove(ev.x, ev.y, modifiers(ev));
         break;
       case "pointerleave":
         input.pointerLeave();
         break;
       case "pointerdown":
-        input.pointerDown(ev.x, ev.y, ev.button);
+        input.pointerDown(ev.x, ev.y, ev.button, modifiers(ev));
         break;
       case "pointerup":
-        input.pointerUp(ev.x, ev.y, ev.button);
+        input.pointerUp(ev.x, ev.y, ev.button, modifiers(ev));
         break;
       case "scroll":
-        input.scroll(ev.x, ev.y, ev.dx, ev.dy, ev.shift);
+        input.scroll(ev.x, ev.y, ev.dx, ev.dy, modifiers(ev));
         break;
       case "keydown":
-        input.keyDown(ev);
+        input.keyDown({ ...ev, meta: ev.super });
+        break;
+      case "keyup":
+        input.keyUp({ ...ev, meta: ev.super });
         break;
       case "clipboard":
         clip.received(ev.text);
@@ -475,7 +481,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
   };
 
   nat.open(
-    { title: options.title, appId: options.appId ?? process.env.NB_APP_ID ?? "dev.nodebuilder.app", width: options.width ?? 800, height: options.height ?? 600 },
+    { title: untrack(() => read(options.title)), appId: options.appId ?? process.env.NB_APP_ID ?? "dev.nodebuilder.app", width: options.width ?? 800, height: options.height ?? 600 },
     (events) => batch(() => events.forEach(handle)),
   );
   setClipboardBackend(clip);

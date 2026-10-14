@@ -359,7 +359,8 @@ static void handle_event(XEvent *ev) {
     case MotionNotify: {
       int x = ev->type == MotionNotify ? ev->xmotion.x : ev->xcrossing.x;
       int y = ev->type == MotionNotify ? ev->xmotion.y : ev->xcrossing.y;
-      nb_event e = {.type = NB_EV_POINTER_MOVE, .x = (double)x / X.scale, .y = (double)y / X.scale};
+      unsigned state = ev->type == MotionNotify ? ev->xmotion.state : ev->xcrossing.state;
+      nb_event e = {.type = NB_EV_POINTER_MOVE, .x = (double)x / X.scale, .y = (double)y / X.scale, .mods = mods_of(state)};
       nb_push_event(&e);
       break;
     }
@@ -390,7 +391,7 @@ static void handle_event(XEvent *ev) {
       }
       int button = b->button == Button1 ? 0 : b->button == Button2 ? 1 : b->button == Button3 ? 2 : 3;
       nb_event e = {.type = ev->type == ButtonPress ? NB_EV_POINTER_DOWN : NB_EV_POINTER_UP,
-                    .x = (double)b->x / X.scale, .y = (double)b->y / X.scale, .button = button};
+                    .x = (double)b->x / X.scale, .y = (double)b->y / X.scale, .button = button, .mods = mods_of(b->state)};
       nb_push_event(&e);
       break;
     }

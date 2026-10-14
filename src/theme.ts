@@ -97,3 +97,33 @@ export function setTheme(next: Theme | "light" | "dark") {
 
 /** "light" or "dark", following setTheme(). */
 export const colorScheme = () => theme.scheme;
+
+/**
+ * Colors (or any values) of the app's own that follow setTheme like `theme` does: one set per
+ * scheme, read through getters, so `background={() => colors.sidebar}` switches with the theme.
+ * A custom theme passed to setTheme takes the set of its `scheme`.
+ */
+export function createThemeTokens<T extends object>(sets: { light: T; dark: T }): T {
+  const view = (path: string[]): any => {
+    const out: Record<string, unknown> = {};
+    let sample: any = sets.light;
+    for (const k of path) sample = sample[k];
+    for (const key of Object.keys(sample)) {
+      if (typeof sample[key] === "object" && sample[key] !== null) {
+        const nested = view([...path, key]);
+        Object.defineProperty(out, key, { enumerable: true, get: () => nested });
+        continue;
+      }
+      Object.defineProperty(out, key, {
+        enumerable: true,
+        get: () => {
+          let o: any = sets[colorScheme()];
+          for (const k of path) o = o[k];
+          return o[key];
+        },
+      });
+    }
+    return out;
+  };
+  return view([]);
+}

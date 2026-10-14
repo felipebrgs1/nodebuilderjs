@@ -10,14 +10,18 @@ import { runWith, windowControls, windowState } from "../src/runtime/app.js";
 import { setFrameClock } from "../src/runtime/frames.js";
 import type { Native, NativeEvent } from "../src/runtime/native.js";
 
+const NO_KEYS = { ctrl: false, shift: false, alt: false, super: false };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 function fakeNative() {
   let emitEvents: (events: NativeEvent[]) => void = () => {};
   let images = 0;
-  const calls = { render: 0, requestFrame: 0, close: 0, icons: [] as { size: number; rgba: Uint8Array }[][], visible: [] as boolean[] };
+  const calls = { render: 0, requestFrame: 0, close: 0, icons: [] as { size: number; rgba: Uint8Array }[][], visible: [] as boolean[], titles: [] as string[] };
   const native: Native = {
-    open: (_options, onEvents) => void (emitEvents = onEvents),
+    open: (options, onEvents) => {
+      calls.titles.push(options.title);
+      emitEvents = onEvents;
+    },
     close: () => void calls.close++,
     render: () => void calls.render++,
     measureText: (text) => [text.length * 8, 15, 5],
@@ -30,7 +34,7 @@ function fakeNative() {
       throw new Error("not in tests");
     },
     setCursor: () => {},
-    setTitle: () => {},
+    setTitle: (title) => void calls.titles.push(title),
     setIcon: (images) => void calls.icons.push(images),
     setVisible: (visible) => void calls.visible.push(visible),
     move: () => {},
@@ -78,7 +82,7 @@ async function start(app: () => Child, options: StartOptions = {}) {
         await send({ type: "frame" });
       }
     },
-    pointer: (x: number, y: number) => send({ type: "pointermove", x, y, button: 0 }),
+    pointer: (x: number, y: number) => send({ type: "pointermove", x, y, button: 0, ...NO_KEYS }),
   };
 }
 
@@ -109,6 +113,33 @@ describe("window icon", () => {
     const app = await start(() => <Window title="x" icon="/nonexistent/icon.png" />);
     expect(app.warnings.some((w) => w.includes("/nonexistent/icon.png"))).toBe(true);
     expect(app.calls.icons[0]!.at(-1)!.rgba).toEqual(iconImages().at(-1)!.rgba);
+  });
+});
+
+describe("native input events", () => {
+  test("modifiers (super is meta) reach pointer, wheel and key handlers; keyup reaches onKeyUp", async () => {
+    const seen: string[] = [];
+    const app = await start(() => (
+      <Window title="x" onKeyDown={(e) => seen.push(`down ${e.key} meta=${e.meta}`)} onKeyUp={(e) => seen.push(`up ${e.key}`)}>
+        <Box grow={1} onPointerDown={(e) => seen.push(`press ctrl=${e.ctrl}`)} onScroll={(e) => seen.push(`wheel alt=${e.alt}`)} />
+      </Window>
+    ));
+    await app.send({ type: "pointerdown", x: 100, y: 100, button: 0, ...NO_KEYS, ctrl: true });
+    await app.send({ type: "scroll", x: 100, y: 100, dx: 0, dy: 3, ...NO_KEYS, alt: true });
+    await app.send({ type: "keydown", key: "s", text: "", repeat: false, ...NO_KEYS, super: true });
+    await app.send({ type: "keyup", key: "s", text: "", repeat: false, ...NO_KEYS });
+    expect(seen).toEqual(["press ctrl=true", "wheel alt=true", "down s meta=true", "up s"]);
+  });
+});
+
+describe("window title", () => {
+  test("a title accessor opens the window with its value and follows it (title bar and window list)", async () => {
+    const [unsaved, setUnsaved] = createSignal(false);
+    const app = await start(() => <Window title={() => (unsaved() ? "notes.md •" : "notes.md")} />);
+    expect(app.calls.titles).toEqual(["notes.md"]);
+    setUnsaved(true);
+    await tick();
+    expect(app.calls.titles).toEqual(["notes.md", "notes.md •"]);
   });
 });
 

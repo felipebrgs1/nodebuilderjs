@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Box, Button, Column, Dialog, For, Overlay, Row, Scroll, Text, TextField, Tooltip, Window, createSignal } from "@nodebuilderjs/core";
+import { Box, Button, Canvas, Column, Dialog, For, Overlay, Row, Scroll, Text, TextField, Tooltip, Window, createSignal } from "@nodebuilderjs/core";
 import type { PointerEvent } from "@nodebuilderjs/core";
 import {
   canUseRealTextMetrics, click, findAllByLabel, findAllByText, findAllByValue, findByLabel, findByPlaceholder, findByText, findByValue, interact, mount,
@@ -378,4 +378,21 @@ test("findByText with { in: widget }: the same text in a menu, a dialog title an
   expect(open()).toBe(false);
   expect(findAllByText(root, "Sair", { in: "Button" })).toHaveLength(1);
   expect(findByText(root, "Sair", { in: "Checkbox" })).toBeUndefined();
+});
+
+test("mount({ paint: true }) paints after every layout, so Canvas draw callbacks run", () => {
+  const draws: number[] = [];
+  const [width, setWidth] = createSignal(100);
+  const view = () => <Canvas width={width} height={50} draw={(g) => draws.push(g.width)} />;
+  mount(view);
+  expect(draws).toEqual([]); // layout only, by default
+  const { relayout } = mount(view, { paint: true });
+  expect(draws).toEqual([100]);
+  setWidth(120);
+  relayout();
+  expect(draws).toEqual([100, 120]);
+});
+
+test("mount takes just a width and height, either one, or neither", () => {
+  expect(mount(() => <Box grow={1} />, { width: 320 }).root.children[0]!.width).toBe(320);
 });

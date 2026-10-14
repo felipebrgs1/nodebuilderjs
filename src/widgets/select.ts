@@ -82,7 +82,7 @@ export function Select<T>(
   ownHandler(trigger, "onClick", () => (untrack(open) ? close() : show()));
   ownHandler(trigger, "onKeyDown", (e) => {
     if (!untrack(open)) {
-      if (["Down", "Up", "space", "Return", "KP_Enter"].includes(e.key)) {
+      if (["Down", "Up", "space", "Return"].includes(e.key)) {
         show();
         e.stop();
       }
@@ -94,7 +94,7 @@ export function Select<T>(
       case "Up": setHighlight(toward(h, -1)); break;
       case "Home": setHighlight(toward(-1, 1)); break;
       case "End": setHighlight(toward(options.length, -1)); break;
-      case "Return": case "KP_Enter": case "space": pick(h); break;
+      case "Return": case "space": pick(h); break;
       case "Escape": close(); break;
       case "Tab": close(); return; // and let the focus move on
       default: return;

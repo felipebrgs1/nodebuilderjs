@@ -350,6 +350,9 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   blocks the window move: `onPointerDown` keeps bubbling to every ancestor until `stop()`,
   past clickable nodes too (a parent's `pressStyle` shows like CSS `:active`); only `onClick`
   stops at the innermost node that has one.
+- Key names reach handlers normalized (`normalizeKey` in `runtime/input.ts`): compare only the
+  plain names (`"Tab"`, `"Return"`, `"Page_Up"`, `"Delete"`), never `ISO_Left_Tab`, `Prior` or
+  `KP_*`.
 - Handlers are **chained, never replaced**: `applyProps` adds the app's handlers (and the
   ones from spread `createInteraction().props`, carried under a unique symbol key so a later
   `onPointerEnter={...}` cannot drop them) after the node's; a widget sets its own handlers

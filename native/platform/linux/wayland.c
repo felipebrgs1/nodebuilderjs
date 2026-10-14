@@ -165,13 +165,15 @@ static void wl_set_cursor(const char *name) {
 
 // ---- pointer ----------------------------------------------------------------
 
+static int current_mods(void);
+
 static void pointer_enter(void *d, struct wl_pointer *p, uint32_t serial, struct wl_surface *s,
                           wl_fixed_t x, wl_fixed_t y) {
   S.pointer_serial = serial;
   S.px = wl_fixed_to_double(x);
   S.py = wl_fixed_to_double(y);
   apply_cursor();
-  nb_event e = {.type = NB_EV_POINTER_MOVE, .x = S.px, .y = S.py};
+  nb_event e = {.type = NB_EV_POINTER_MOVE, .x = S.px, .y = S.py, .mods = current_mods()};
   nb_push_event(&e);
 }
 
@@ -183,7 +185,7 @@ static void pointer_leave(void *d, struct wl_pointer *p, uint32_t serial, struct
 static void pointer_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed_t x, wl_fixed_t y) {
   S.px = wl_fixed_to_double(x);
   S.py = wl_fixed_to_double(y);
-  nb_event e = {.type = NB_EV_POINTER_MOVE, .x = S.px, .y = S.py};
+  nb_event e = {.type = NB_EV_POINTER_MOVE, .x = S.px, .y = S.py, .mods = current_mods()};
   nb_push_event(&e);
 }
 
@@ -193,11 +195,9 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t serial, uint3
   if (state == WL_POINTER_BUTTON_STATE_PRESSED) S.input_serial = serial;
   int b = button == BTN_LEFT ? 0 : button == BTN_MIDDLE ? 1 : button == BTN_RIGHT ? 2 : 3;
   nb_event e = {.type = state == WL_POINTER_BUTTON_STATE_PRESSED ? NB_EV_POINTER_DOWN : NB_EV_POINTER_UP,
-                .x = S.px, .y = S.py, .button = b};
+                .x = S.px, .y = S.py, .button = b, .mods = current_mods()};
   nb_push_event(&e);
 }
-
-static int current_mods(void);
 
 static void pointer_axis(void *d, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t value) {
   // Modifiers too: Shift turns a vertical wheel into horizontal scrolling.

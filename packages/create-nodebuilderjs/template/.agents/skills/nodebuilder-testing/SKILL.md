@@ -28,9 +28,12 @@ test("adds a task", () => {
 
 ## API (`@nodebuilderjs/core/testing`)
 
-- `mount(view, size?)` → `{ root, relayout, dispose, layoutWarnings }`. Layout runs once in
-  `mount`; call `relayout()` before checking `x`, `y`, `width`, `height` after changing state.
-  Without `size`: a `<Window>`'s `width`/`height` (the window fills it, as in the app), else 800x600.
+- `mount(view, { width?, height?, paint? })` → `{ root, relayout, dispose, layoutWarnings }`.
+  Layout runs once in `mount`; call `relayout()` before checking `x`, `y`, `width`, `height` after
+  changing state. Without a size: a `<Window>`'s `width`/`height` (the window fills it, as in the
+  app), else 800x600. `paint: true` also paints after every layout, so `Canvas` draw callbacks run.
+- A custom widget (a `Canvas` editor) is found by `ariaLabel`: `<Canvas ariaLabel="Editor">`
+  and `findByLabel(root, "Editor")`.
 - `layoutWarnings()` (from `mount`, or `layoutWarnings(root)`): overflow warnings of the last
   layout, e.g. `layout: Row > Text("Artists") overflows Box(panel) by 42px (children need
   342px, 300px available)`: children that need more room than they get, cut off by a `clip`
@@ -54,10 +57,12 @@ test("adds a task", () => {
 - `click(node)`: fires the `onClick` of the node or of its nearest ancestor (quick shortcut),
   at the node's center.
 - `interact(root)`: mouse and keyboard delivered as in the real app (hover, focus, capture
-  while dragging, Tab): `hover(n)`, `press(n)`, `release(n)`, `drag(n, dx, dy)`, `move(x, y)`,
+  while dragging, Tab): `hover(n)`, `press(n)`, `release(n)`, `click(n, { ctrl: true })`,
+  `contextMenu(n)` (right press), `drag(n, dx, dy)`, `move(x, y)`,
   `down(x, y)`/`up(x, y)` (button at a window position, e.g. on the scrollbar),
-  `scroll(n, dy, { dx, shift })`, `key("Return")`, `key("c", { ctrl: true })`,
-  `type("text")`, `focused` and `cursor` (the cursor the window would show). Every
+  `scroll(n, dy, { dx, shift, ctrl })`, `key("Return")`, `key("c", { ctrl: true })`,
+  `keyUp("Control_L")`, `type("text")`, `focused` and `cursor` (the cursor the window would
+  show). Modifiers are `{ ctrl, shift, alt, meta }`. Every
   `interact(root)` on the same root shares one pointer and one focus, like the real window:
   a `press` from one call and a `release` from another still click.
 

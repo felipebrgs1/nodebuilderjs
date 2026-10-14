@@ -6,7 +6,7 @@
 // two steps: the natural (max-content) size of every node, cached per layout, and
 // `heightAt(node, width)`, which only does real work in subtrees that contain them.
 
-import { type Edges, type Size, type UINode, invalidationCount, overlayLayers, revealRequests, scrolls } from "./node.js";
+import { type Edges, type Region, type Size, type UINode, invalidationCount, overlayLayers, revealRequests, scrolls } from "./node.js";
 import { scrollRange } from "./scrollbar.js";
 import { checkOverflow, reportResizeLoop, resetOverflow } from "./overflow.js";
 import { batch } from "../reactive/signals.js";
@@ -69,7 +69,7 @@ function* containers(node: UINode) {
 /** Handles this root's scrollIntoView() requests; true if anything moved. */
 function reveal(root: UINode): boolean {
   let moved = false;
-  for (const target of revealRequests) {
+  for (const [target, region] of revealRequests) {
     const top = rootOf(target);
     if (top !== root) {
       if (!top.isRoot) revealRequests.delete(target); // removed from the tree
@@ -77,7 +77,7 @@ function reveal(root: UINode): boolean {
     }
     revealRequests.delete(target);
     moved = freshen(target) || moved;
-    moved = scrollToShow(target) || moved;
+    moved = scrollToShow(target, region) || moved;
   }
   return moved;
 }
@@ -107,21 +107,24 @@ function revealDelta(start: number, end: number, viewStart: number, viewEnd: num
   return 0;
 }
 
-/** Scrolls each Scroll around `node`, innermost first, as little as needed to show it. */
-function scrollToShow(node: UINode): boolean {
-  let { x, y } = node;
+/** Scrolls each Scroll around `node`, innermost first, as little as needed to show it (or `region` of it). */
+function scrollToShow(node: UINode, region?: Region): boolean {
+  let x = node.x + (region?.x ?? 0);
+  let y = node.y + (region?.y ?? 0);
+  const width = region ? (region.width ?? 0) : node.width;
+  const height = region ? (region.height ?? 0) : node.height;
   let moved = false;
   for (const n of containers(node)) {
     const b = n.style.borderWidth ?? 0;
     if (n.scrollable) {
       const before = n.scrollY;
-      n.scrollY = clamp(before + revealDelta(y, y + node.height, n.y + b, n.y + n.height - b), 0, scrollRange(n, "y"));
+      n.scrollY = clamp(before + revealDelta(y, y + height, n.y + b, n.y + n.height - b), 0, scrollRange(n, "y"));
       y -= n.scrollY - before;
       moved ||= n.scrollY !== before;
     }
     if (n.scrollableX) {
       const before = n.scrollX;
-      n.scrollX = clamp(before + revealDelta(x, x + node.width, n.x + b, n.x + n.width - b), 0, scrollRange(n, "x"));
+      n.scrollX = clamp(before + revealDelta(x, x + width, n.x + b, n.x + n.width - b), 0, scrollRange(n, "x"));
       x -= n.scrollX - before;
       moved ||= n.scrollX !== before;
     }
@@ -138,22 +141,23 @@ function rootOf(node: UINode): UINode {
 /** False when an anchored layer has nowhere to go (anchor gone, or its box is stale from culling). */
 function placeLayer(layer: UINode, width: number, height: number, view: Rect): boolean {
   const o = layer.overlay!;
-  if (!o.anchor || o.modal) {
+  if ((!o.anchor && !o.at) || o.modal) {
     const [t, r, b, l] = edges(o.inset);
     place(layer, l, t, Math.max(0, width - l - r), Math.max(0, height - t - b), view);
     return true;
   }
-  const a = o.anchor() as UINode | undefined;
-  if (!a || rootOf(a) !== rootOf(layer)) return false;
-  for (let n: UINode | null = a; n; n = n.parent) if (n.culled) return false;
+  const a = anchorBox(layer);
+  if (!a) return false;
 
   const w = o.matchWidth ? a.width : intrinsic(layer).width;
   const h = heightAt(layer, w);
   const gap = o.offset;
   const below = a.y + a.height + gap, above = a.y - gap - h;
   const after = a.x + a.width + gap, before = a.x - gap - w;
-  let x = a.x;
-  let y = a.y;
+  // Along the anchor: aligned with its start, or with its end when only that fits (a menu at
+  // the pointer near the right edge opens to its left).
+  let x = a.x + w > width && a.x + a.width - w >= 0 ? a.x + a.width - w : a.x;
+  let y = a.y + h > height && a.y + a.height - h >= 0 ? a.y + a.height - h : a.y;
   // Preferred side, or the opposite one when only that fits.
   switch (o.placement) {
     case "bottom": y = below + h > height && above >= 0 ? above : below; break;
@@ -163,6 +167,19 @@ function placeLayer(layer: UINode, width: number, height: number, view: Rect): b
   }
   place(layer, clamp(x, 0, Math.max(0, width - w)), clamp(y, 0, Math.max(0, height - h)), w, h, view);
   return true;
+}
+
+/** The box an anchored layer is placed next to: its anchor's, or a zero-size box at its point. Null when the anchor is gone or culled. */
+function anchorBox(layer: UINode): { x: number; y: number; width: number; height: number } | null {
+  const o = layer.overlay!;
+  if (o.at) {
+    const p = o.at();
+    return p ? { x: p.x, y: p.y, width: 0, height: 0 } : null;
+  }
+  const a = o.anchor!() as UINode | undefined;
+  if (!a || rootOf(a) !== rootOf(layer)) return null;
+  for (let n: UINode | null = a; n; n = n.parent) if (n.culled) return null;
+  return a;
 }
 
 /** How far a node's own drawing reaches outside its box (shadows). */

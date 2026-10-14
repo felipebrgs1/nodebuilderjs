@@ -77,7 +77,51 @@ test("an anchored overlay can match the anchor width and stays inside the window
     </Column>
   ), { width: 800, height: 600 });
   expect(root.layers[0]!.width).toBe(40);
-  expect(root.layers[1]!.x).toBe(700);
+  expect(root.layers[1]!.x).toBe(690); // too wide to start at the anchor: it ends where the anchor does
+});
+
+test("an overlay at a point (a context menu): below and right of it, flipping to fit near the window's edges", () => {
+  const [point, setPoint] = createSignal({ x: 100, y: 50 });
+  const { root, relayout } = mount(() => (
+    <Column>
+      <Overlay at={point}>
+        <Box width={160} height={120} />
+      </Overlay>
+    </Column>
+  ), { width: 800, height: 600 });
+  const layer = root.layers[0]!;
+  expect([layer.x, layer.y, layer.width, layer.height]).toEqual([100, 50, 160, 120]);
+  setPoint({ x: 700, y: 550 }); // bottom-right corner: opens up and to the left of the pointer
+  relayout();
+  expect([layer.x, layer.y]).toEqual([540, 430]);
+  setPoint({ x: 100, y: 590 }); // only the vertical side flips
+  relayout();
+  expect([layer.x, layer.y]).toEqual([100, 470]);
+});
+
+test("a context menu from onContextMenu + <Overlay at>, dismissed by a press outside", () => {
+  const [menu, setMenu] = createSignal<{ x: number; y: number } | null>(null);
+  const { root, relayout } = mount(() => (
+    <Column width={400} height={300} onContextMenu={(e) => setMenu({ x: e.x, y: e.y })}>
+      <Show when={menu}>
+        {(at) => (
+          <Overlay at={at} onDismiss={() => setMenu(null)}>
+            <Text>Rename</Text>
+          </Overlay>
+        )}
+      </Show>
+    </Column>
+  ), { width: 800, height: 600 });
+  const ui = interact(root);
+  ui.down(30, 40);
+  ui.up(30, 40);
+  expect(root.layers).toHaveLength(0);
+  ui.contextMenu(root.children[0]!); // its center
+  relayout();
+  expect([root.layers[0]!.x, root.layers[0]!.y]).toEqual([200, 150]);
+  ui.down(300, 250);
+  relayout();
+  expect(root.layers).toHaveLength(0);
 });
 
 test("the pointer reaches overlay content first; empty space of a full overlay lets it through", () => {
