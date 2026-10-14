@@ -30,14 +30,15 @@ jobs:
         with:
           bun-version: 1.4.3
 
-      - name: System libraries (build + offscreen EGL + fonts)
+      - name: System libraries (build + offscreen EGL + fonts + libheif)
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             gcc libc6-dev pkg-config libwayland-dev libwayland-bin libegl-dev libgles-dev \
             libxkbcommon-dev libfreetype-dev libharfbuzz-dev libfontconfig-dev libx11-dev \
             libxcursor-dev libxrandr-dev libegl-mesa0 libgl1-mesa-dri fontconfig \
-            fonts-dejavu-core fonts-noto-core fonts-noto-color-emoji
+            fonts-dejavu-core fonts-noto-core fonts-noto-color-emoji \
+            libheif1 libheif-plugin-dav1d libheif-plugin-libde265
 
       - run: bun install --frozen-lockfile
       - run: bun run build:native
