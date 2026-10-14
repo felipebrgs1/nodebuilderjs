@@ -413,6 +413,8 @@ export class UINode implements ElementRef {
   measure?: (maxWidth: number) => Size;
   /** Content that wraps: the narrowest width it can take (its longest word). Its height then depends on the width given to measure(). */
   minContentWidth?: () => number;
+  /** With `minContentWidth`: the height keeps changing with the width at any width (measure has no natural width past which nothing wraps). */
+  fluidMeasure = false;
   /** Optional custom drawing, called after background and before children. */
   paint?: (p: Painter, node: UINode) => void;
   /** Debug label shown by `debugTree`. */

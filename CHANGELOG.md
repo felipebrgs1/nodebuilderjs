@@ -26,6 +26,8 @@ From a second report of the Discord clone (with 0.4.0).
   `scrollIntoView({ x, y, width, height })` for a region of an element, `createThemeTokens`
   for app colors that follow `setTheme`, a reactive `<Window title>`, `mount(view, { paint })`
   and `interact()` `click`/`contextMenu`/`keyUp` with modifiers.
+- `<Canvas measure={(width) => height}>` (a canvas that sizes itself, e.g. a wrapped document
+  in a `Scroll`) and `g.visibleRect` (the part on screen; reading it redraws on scroll).
 - Key names are normalized: Shift+Tab is `"Tab"` with `shift`, `Prior`/`Next` are
   `"Page_Up"`/`"Page_Down"`, keypad keys have the plain names, and with Ctrl or Alt a letter
   is lowercase. **Breaking** for apps that compared `"ISO_Left_Tab"`, `"Prior"`, `"Next"` or

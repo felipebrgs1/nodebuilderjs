@@ -266,6 +266,7 @@ export function intrinsic(node: UINode): Natural {
     width = m.width + pl + pr;
     height = m.height + pt + pb;
     wraps = node.minContentWidth !== undefined;
+    fluid = wraps && node.fluidMeasure;
   } else if (s.direction === "grid") {
     const kids = node.children.filter(inFlow);
     let cell = s.minColumnWidth ?? 0;

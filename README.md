@@ -391,6 +391,30 @@ to 1 at the second, in canvas coordinates) that every shape takes in place of a 
 Limits: a self-intersecting polygon is not drawn, and lines with a translucent color get darker
 at the joins.
 
+A canvas that draws a long document can size itself and draw only what shows:
+
+```tsx
+import { Canvas, Scroll, createSignal } from "@nodebuilderjs/core";
+
+const [lines, setLines] = createSignal<string[]>([]);
+<Scroll grow={1}>
+  <Canvas
+    measure={(width) => lines().length * 20} // height for the width it gets (wrap here with measureText)
+    draw={(g) => {
+      const { y, height } = g.visibleRect; // the part on screen; reading it redraws on scroll
+      for (let i = Math.floor(y / 20); i < Math.min(lines().length, Math.ceil((y + height) / 20)); i++)
+        g.text(lines()[i]!, 0, i * 20, "#222");
+    }}
+  />
+</Scroll>;
+```
+
+- `measure={(width) => height}`: the height of the content for the width the canvas gets (inside
+  its padding), as wrapping text does; the signals it reads lay it out again when they change.
+  `measureText` (exported) measures with the same metrics outside `draw`.
+- `g.visibleRect` (`{ x, y, width, height }`, local): the part on screen, cut by every `Scroll`
+  and `clip` around the canvas and by the window. Only a `draw` that reads it runs again on scroll.
+
 ### Charts
 
 ```tsx

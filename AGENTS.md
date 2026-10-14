@@ -509,6 +509,8 @@ the stop lines and colors their vertices: exact for linear gradients, any shape.
   or the content if taller; measured nodes take the ratio as is). A fixed `height` gives the
   width (`ratioWidth`); a child stretched in a row of known inner height gets
   `height * ratio` as its flex basis (`rowBasis`).
+- A measured node with `fluidMeasure` (`<Canvas measure>`) is "height depends on width" at any
+  width: `wraps` and `fluid`, so `heightAt` always asks `measure(inner)`.
 - **Grid** (`direction: "grid"` + `columns` or `minColumnWidth`, `rowGap`; the `Grid` widget;
   `columnsOf(node, inner)` gives the column count, auto-fill with `minColumnWidth`): equal cells
   (`cellWidth`), rows as tall as their tallest cell (`gridRows`, shared by `intrinsic`,

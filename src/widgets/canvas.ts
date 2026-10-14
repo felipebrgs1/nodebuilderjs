@@ -5,12 +5,12 @@
 // painting, so `draw` never sees a canvas that was not laid out yet. Painting replays the
 // recording, offset to where the canvas is.
 
-import { edges } from "../render/layout.js";
+import { clipView, edges } from "../render/layout.js";
 import { type CanvasGradient, type GradientStop, isGradient, offsetGradient } from "../render/gradient.js";
-import { type Color, type FontStyle, type Handlers, type LineCap, type Paint, type Painter, type Radius, UINode, fontStyle, invalidate, measureText } from "../render/node.js";
+import { type Color, type FontStyle, type Handlers, type LineCap, type Paint, type Painter, type Radius, UINode, fontStyle, invalidate, measureText, scrolls } from "../render/node.js";
 import { type PolylineOptions, fillPolygon, polyline } from "../render/shapes.js";
 import { truncate } from "../render/text-wrap.js";
-import { createEffect, createSignal } from "../reactive/signals.js";
+import { batch, createEffect, createSignal, untrack } from "../reactive/signals.js";
 import { displayScale } from "../render/node.js";
 import { theme } from "../theme.js";
 import { type StyleProps, applyProps, inherited } from "./props.js";
@@ -22,6 +22,12 @@ import { type StyleProps, applyProps, inherited } from "./props.js";
 export interface DrawContext {
   readonly width: number;
   readonly height: number;
+  /**
+   * The part of the canvas on screen (inside its padding, local coordinates), cut by every
+   * `Scroll` and `clip` around it and the window. Reading it makes `draw` run again when it
+   * changes (scrolling), so a long document can draw only its visible lines.
+   */
+  readonly visibleRect: { x: number; y: number; width: number; height: number };
   /** `radius`: one for all corners or `[topLeft, topRight, bottomRight, bottomLeft]` (a bar rounded on top: `[4, 4, 0, 0]`). */
   rect(x: number, y: number, w: number, h: number, color: Paint, radius?: Radius): void;
   /** `dash`: dash and gap lengths, like SVG's stroke-dasharray. */
@@ -106,10 +112,13 @@ function geometry(build: (p: Pick<Painter, "line" | "triangles">) => void): Op {
   };
 }
 
-function record(width: number, height: number, scale: number, base: InheritedFont, ops: Op[]): DrawContext {
+function record(width: number, height: number, scale: number, base: InheritedFont, ops: Op[], visible: () => Rect): DrawContext {
   return {
     width,
     height,
+    get visibleRect() {
+      return visible();
+    },
     rect: (x, y, w, h, color, radius = 0) => ops.push((p, ox, oy) => p.rect(x + ox, y + oy, w, h, at(color, ox, oy), radius)),
     line: (x0, y0, x1, y1, color, width = 1, cap, dash) =>
       ops.push(geometry((p) => polyline(p, [x0, y0, x1, y1], width, color, { cap: cap ?? (dash ? "butt" : "round"), dash }))),
@@ -130,13 +139,25 @@ function record(width: number, height: number, scale: number, base: InheritedFon
   };
 }
 
-export function Canvas(props: StyleProps & Handlers & { draw: (g: DrawContext) => void }) {
+export function Canvas(
+  props: StyleProps & Handlers & {
+    draw: (g: DrawContext) => void;
+    /**
+     * Height of the content for the width it gets (inside the padding), when the canvas sizes
+     * itself (a wrapped document): `measure={(width) => lines(width) * 20}`. Signals it reads
+     * lay the canvas out again when they change.
+     */
+    measure?: (width: number) => number;
+  },
+) {
   const node = new UINode("Canvas");
   applyProps(node, props);
+  if (props.measure) measured(node, props.measure);
   let ops: Op[] = [];
   let painting = false;
   // The scale is part of it: polygon edges are antialiased over one device pixel; so is the
   // inherited font, read when painting (style is not reactive), so text follows the app's font.
+  const [visible, setVisible] = createSignal<Rect>({ x: 0, y: 0, width: 0, height: 0 }, { equals: sameRect });
   const [size, setSize] = createSignal(
     { width: 0, height: 0, scale: 1, family: "", features: "", variations: "" },
     { equals: (a, b) => a.width === b.width && a.height === b.height && a.scale === b.scale && a.family === b.family && a.features === b.features && a.variations === b.variations },
@@ -144,19 +165,61 @@ export function Canvas(props: StyleProps & Handlers & { draw: (g: DrawContext) =
   createEffect(() => {
     const { width, height, scale, ...base } = size();
     const next: Op[] = [];
-    if (width > 0 && height > 0) props.draw(record(width, height, scale, base, next));
+    if (width > 0 && height > 0) props.draw(record(width, height, scale, base, next, visible));
     ops = next;
     if (!painting) invalidate(); // a resize during paint is drawn in this same frame
   });
   node.paint = (p, n) => {
     const [pt, pr, pb, pl] = edges(n.style.padding);
     painting = true;
-    setSize({
-      width: Math.max(0, n.width - pl - pr), height: Math.max(0, n.height - pt - pb), scale: displayScale(),
-      family: inherited(n, "fontFamily") ?? "", features: inherited(n, "fontFeatures") ?? "", variations: inherited(n, "fontVariations") ?? "",
+    // One redraw for both: the size and the visible part change together on a resize.
+    batch(() => {
+      setSize({
+        width: Math.max(0, n.width - pl - pr), height: Math.max(0, n.height - pt - pb), scale: displayScale(),
+        family: inherited(n, "fontFamily") ?? "", features: inherited(n, "fontFeatures") ?? "", variations: inherited(n, "fontVariations") ?? "",
+      });
+      setVisible(visibleRect(n, n.x + pl, n.y + pt, n.width - pl - pr, n.height - pt - pb));
     });
     painting = false;
     for (const op of ops) op(p, n.x + pl, n.y + pt);
   };
   return node;
+}
+
+type Rect = { x: number; y: number; width: number; height: number };
+const sameRect = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+
+/** The content box (window coordinates x, y, w, h) cut by clipping ancestors and the window, relative to the box. */
+function visibleRect(n: UINode, x: number, y: number, w: number, h: number): Rect {
+  let view = { x0: x, y0: y, x1: x + w, y1: y + h };
+  let top = n;
+  let layered = n.overlay !== undefined;
+  for (let a = n.parent; a; a = a.parent) {
+    // Past an overlay layer only the window cuts it (the layer is drawn above the tree).
+    if (!layered && (scrolls(a) || a.style.clip)) view = clipView(a, view);
+    layered ||= a.overlay !== undefined;
+    top = a;
+  }
+  const x0 = Math.max(view.x0, 0), y0 = Math.max(view.y0, 0);
+  const x1 = Math.min(view.x1, top.width), y1 = Math.min(view.y1, top.height);
+  return x1 > x0 && y1 > y0 ? { x: x0 - x, y: y0 - y, width: x1 - x0, height: y1 - y0 } : { x: 0, y: 0, width: 0, height: 0 };
+}
+
+/** A canvas sized by `measure`: its height follows the width it gets, at any width. */
+function measured(node: UINode, measure: (width: number) => number) {
+  let lastWidth = 0;
+  node.measure = (maxWidth) => {
+    const width = maxWidth === Infinity ? 0 : maxWidth;
+    if (maxWidth !== Infinity) lastWidth = width;
+    return { width, height: untrack(() => measure(width)) };
+  };
+  node.minContentWidth = () => 0;
+  node.fluidMeasure = true;
+  // Layout calls measure untracked; this tracks what it reads and asks for a new layout.
+  let first = true;
+  createEffect(() => {
+    measure(lastWidth);
+    if (!first) invalidate();
+    first = false;
+  });
 }

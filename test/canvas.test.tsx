@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { Canvas, Column, UINode, createRoot, createSignal, layout, setTextMeasurer } from "@nodebuilderjs/core";
-import type { DrawContext } from "@nodebuilderjs/core";
+import { Canvas, Column, Row, Scroll, UINode, createRoot, createSignal, layout, setTextMeasurer } from "@nodebuilderjs/core";
+import type { DrawContext, ElementRef } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
 import { drawCommands } from "./helpers.js";
 
@@ -124,4 +124,85 @@ test("Canvas: a new size redraws at paint time", () => {
   layout(node, 400, 300);
   expect(drawCommands(node)[0]).toMatchObject({ w: 150 });
   expect(widths).toEqual([150]);
+});
+
+test("Canvas measure: the height for the content width it gets (inside its padding), like wrapping text", async () => {
+  const { mount: mountApp } = await import("@nodebuilderjs/core/testing");
+  const [words, setWords] = createSignal(400); // 400 px of "text", 20 px lines
+  const [width, setWidth] = createSignal(220);
+  const widths: number[] = [];
+  const { root, relayout } = mountApp(() => (
+    <Column width={width}>
+      <Canvas padding={10} measure={(w) => (widths.push(w), Math.ceil(words() / w) * 20)} draw={() => {}} />
+    </Column>
+  ));
+  const canvas = root.children[0]!.children[0]!;
+  expect(canvas.height).toBe(60); // 400 / 200 = 2 lines + padding
+  expect(widths).toContain(200);
+  setWidth(120);
+  relayout();
+  expect(canvas.height).toBe(100); // 4 lines
+  setWords(900);
+  relayout();
+  expect(canvas.height).toBe(200); // 9 lines + padding: what measure reads is tracked
+});
+
+test("Canvas measure in a Scroll: the content's height is what scrolls", async () => {
+  const { mount: mountApp } = await import("@nodebuilderjs/core/testing");
+  const { root } = mountApp(() => (
+    <Scroll height={100} width={200}>
+      <Canvas measure={() => 1000} draw={() => {}} />
+    </Scroll>
+  ));
+  expect(root.children[0]!.children[0]!.height).toBe(1000);
+});
+
+test("Canvas visibleRect: the part a Scroll shows, in local coordinates; read it to redraw on scroll", async () => {
+  const { mount: mountApp } = await import("@nodebuilderjs/core/testing");
+  const seen: string[] = [];
+  let plainDraws = 0;
+  let scroller!: ElementRef;
+  const { relayout } = mountApp(() => (
+    <Row>
+      <Scroll height={100} width={200} ref={(e) => (scroller = e)}>
+        <Canvas height={1000} draw={(g) => {
+          const r = g.visibleRect;
+          seen.push(`${r.x},${r.y} ${r.width}x${r.height}`);
+        }} />
+      </Scroll>
+      <Scroll height={100} width={200}>
+        <Canvas height={1000} draw={() => plainDraws++} />
+      </Scroll>
+    </Row>
+  ), { width: 400, height: 300, paint: true });
+  expect(seen).toEqual(["0,0 200x100"]);
+  scroller.scrollTo(300);
+  relayout();
+  expect(seen).toEqual(["0,0 200x100", "0,300 200x100"]);
+  expect(plainDraws).toBe(1); // it does not read visibleRect: no redraw on scroll
+});
+
+test("Canvas visibleRect is cut by the window too", async () => {
+  const { mount: mountApp } = await import("@nodebuilderjs/core/testing");
+  const seen: string[] = [];
+  mountApp(() => (
+    <Column padding={[50, 0, 0, 0]}>
+      <Canvas height={1000} draw={(g) => seen.push(`${g.visibleRect.y} ${g.visibleRect.height}`)} />
+    </Column>
+  ), { width: 300, height: 200, paint: true });
+  expect(seen).toEqual(["0 150"]);
+});
+
+test("Canvas visibleRect inside an Overlay: the Scroll it was declared in does not cut it", async () => {
+  const { mount: mountApp } = await import("@nodebuilderjs/core/testing");
+  const { Overlay } = await import("@nodebuilderjs/core");
+  const seen: string[] = [];
+  mountApp(() => (
+    <Scroll height={50} width={300}>
+      <Overlay>
+        <Canvas height={120} draw={(g) => seen.push(`${g.visibleRect.width}x${g.visibleRect.height}`)} />
+      </Overlay>
+    </Scroll>
+  ), { width: 300, height: 200, paint: true });
+  expect(seen).toEqual(["300x120"]);
 });
