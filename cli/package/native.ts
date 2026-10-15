@@ -8,7 +8,7 @@ import { join } from "node:path";
  */
 export async function buildNative(root: string, mode: "docker" | "local"): Promise<string> {
   if (mode === "docker") {
-    if ((await $`docker info`.quiet().nothrow()).exitCode !== 0) throw new Error("o build portável precisa do Docker rodando");
+    if ((await $`docker info`.quiet().nothrow()).exitCode !== 0) throw new Error("the portable build needs Docker running");
     const image = "nodebuilder-native-build:22.04";
     await $`docker build -q -t ${image} ${join(root, "cli/package")}`.quiet();
     const user = `${process.getuid!()}:${process.getgid!()}`;

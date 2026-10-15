@@ -405,13 +405,13 @@ export function screenshot(target: UINode | (() => Child), options: ScreenshotOp
     const { root, dispose } = mount(target);
     const width = options.width ?? root.width, height = options.height ?? root.height;
     try {
-      return captureTree(nat, root, width, height, scale, options.background);
+      return captureTree(nat, root, width, height, scale, options.background, options.colorSpace);
     } finally {
       dispose();
     }
   }
   const width = options.width ?? (target.width || 800), height = options.height ?? (target.height || 600);
-  return captureTree(nat, target, width, height, scale, options.background);
+  return captureTree(nat, target, width, height, scale, options.background, options.colorSpace);
 }
 
 /** Writes a screenshot to `path` as PNG (then look at it, e.g. with an image viewer or an agent's file reader). */

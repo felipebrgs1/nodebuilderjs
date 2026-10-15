@@ -183,6 +183,16 @@ parent's content box, as in CSS (`width="50%"`):
   (`background={() => ({ linear: [theme.accent.base, "transparent"] })}` follows the theme).
   Colors are interpolated in premultiplied space like CSS, so fading to `"transparent"` never
   turns gray. Borders, text and shadows stay solid colors.
+- **Colors** are CSS strings: hex (`"#3584e4"`, `"#00000010"` with alpha), `"transparent"`, and
+  the wide-gamut forms `color(display-p3 1 0.3 0)`, `color(srgb ...)`, `oklch(0.7 0.2 145)` and
+  `oklab(...)` (channels as numbers or percentages, alpha after a slash: `oklch(0.7 0.2 145 /
+  50%)`). Hex is sRGB, as in CSS. The window asks the compositor for a **Display P3 surface**
+  (Wayland color management, `wp_color_manager_v1`), so P3 and OKLCH colors show past sRGB on a
+  wide-gamut display while hex colors look exactly as before; where the compositor cannot (X11,
+  older compositors) those colors are clipped to sRGB. `outputColorSpace()` says which one the
+  window got (reactive); `run(app, { colorSpace: "srgb" })` or `NB_COLOR_SPACE=srgb` keeps sRGB.
+  `run(app, { deepColor: true })` (`NB_DEEP_COLOR=1`) asks for a 16-bit float window buffer:
+  smoother gradients in wide gamut, at twice the GPU memory for the window (off by default).
 - **Overflow warnings (development):** when children need more room than their container
   gives them (after wrapping text and `grow` children have shrunk) and the excess is hidden by
   a `clip` ancestor or the window, `run()` prints it once per node, e.g.
@@ -307,13 +317,19 @@ import photo from "./photo.jpg" with { type: "file" };
 or `fill` (stretches). Without `width`/`height`, the image uses its own size in pixels. The
 `with { type: "file" }` makes `nodebuilder package` embed the file in the executable; `src`
 also accepts a path, a `file:` `URL`, the file's bytes (`Uint8Array`) or already decoded
-pixels (`{ width, height, data }` in RGBA).
+pixels (`{ width, height, data }` in RGBA, plus `colorSpace: "display-p3"` when they are P3).
 
 Formats: **PNG, JPEG and WebP** are decoded in TypeScript (JPEG honors the EXIF
 orientation, and all of them produce the same result, byte for byte, as libpng, libjpeg-turbo
 and libwebp). **AVIF and HEIC** use the system `libheif`, loaded only when needed: without it,
 only those formats fail, and the generated packages suggest it without requiring it. SVG is
 drawn by `<Icon>` (below).
+
+**Color profiles** are honored: an image tagged Display P3 (iPhone photos, P3 PNGs, AVIF with
+P3 CICP) keeps its wide-gamut colors, and other RGB ICC profiles (Adobe RGB, ProPhoto...) are
+converted to Display P3 when decoding; `decodeImage()` says which in `colorSpace`. On a P3
+window the GPU draws sRGB and P3 images as they are; on an sRGB one, P3 images are clipped to
+sRGB. Untagged images are sRGB, as in browsers.
 
 ### Icons
 
@@ -701,20 +717,30 @@ const panel = createPresence(open, { enter: 180, exit: 120 });
 
 - `setTheme("dark" | "light")` or a custom theme (`{ ...darkTheme, accent: { ...darkTheme.accent,
   base: "#9141ac" } }`); `colorScheme()` tells which one is in use. `theme.x = ...` also updates.
-- `createThemeTokens({ light: {...}, dark: {...} })` gives the app's own colors (sidebar, links,
-  code background) one value per scheme, switching with `setTheme` like `theme` does:
-  `const colors = createThemeTokens({ light: { sidebar: "#f3f3f3" }, dark: { sidebar: "#202020" } })`,
-  then `background={() => colors.sidebar}`. A custom theme takes the set of its `scheme`.
-- **Theme colors inside functions:** `color={() => theme.text.secondary}` follows the switch;
-  `color={theme.text.secondary}` keeps the color from that moment. The built-in widgets
+- **Colors by name:** every color prop also takes a theme path, `color="text.secondary"`,
+  `background="accent.base"`, `borderColor="divider"`, like a CSS variable. It is resolved when
+  painting, so it follows `setTheme` with no accessor and no `theme` import.
+- `createThemeTokens({ light: {...}, dark: {...} })` adds the app's own colors (sidebar, links,
+  code background), one value per scheme, usable by name in the same way:
+  `createThemeTokens({ light: { sidebar: "#f3f3f3", graph: { node: "#b3a37c" } }, dark: {...} })`,
+  then `background="sidebar"` or `color="graph.node"` (an app name wins over a theme path of the
+  same name; a token may name another, `link: "accent.base"`). It also returns an object for
+  code (`colors.sidebar`, read inside a function). A custom theme takes the set of its `scheme`.
+  An unknown name paints magenta and warns once.
+- **Text variants:** `<Text variant="muted">` (secondary color), `"caption"` (12 px, secondary)
+  and `"title"` (20 px, bold); `defineTextVariants({ label: { fontSize: 12, bold: true, color:
+  "accent.base" } })` adds the app's own or replaces these. Props on the Text win.
+- **Theme values inside functions:** in code, `color={() => theme.text.secondary}` follows the
+  switch; `color={theme.text.secondary}` keeps the color from that moment. The built-in widgets
   already follow it.
 - `animate(from, to, onUpdate, { duration, easing, onDone })` returns a function that stops it;
   `createTween(source, { duration, easing })` follows a value; `createPresence(when, { enter,
   exit, easing })` gives `mounted` (stays `true` until the exit finishes, for use in `<Show>`)
   and `progress` (0 to 1). Durations in ms (default 200; presence 180 in, 120 out), default
   curve `easing.easeOut` (also `linear`, `easeIn`, `easeInOut`, or any `(t) => number`).
-- `mixColor(a, b, t)` blends two colors into `"#rrggbbaa"`, alpha included, in premultiplied
-  space like CSS: `mixColor("#ff0000", "transparent", 0.5)` is red at half alpha, not gray.
+- `mixColor(a, b, t)` blends two colors into `"#rrggbbaa"` (a `color(display-p3 ...)` when the
+  result is past sRGB), alpha included, in premultiplied space like CSS:
+  `mixColor("#ff0000", "transparent", 0.5)` is red at half alpha, not gray.
 - `Dialog`, `Select`, `Tooltip` and `Toggle` already animate. Without a window (in tests) every
   animation finishes immediately; `frames()` from `@nodebuilderjs/core/testing` controls time.
 
@@ -1064,6 +1090,7 @@ server** (EGL surfaceless: works in CI, containers and agent sandboxes):
 ```sh
 nodebuilder screenshot src/main.tsx shot.png                    # the app at its <Window> size
 nodebuilder screenshot src/main.tsx shot@2x.png --scale 2 --theme dark --width 1024 --height 700
+nodebuilder screenshot src/main.tsx shot-p3.png --color-space display-p3   # P3 pixels, a P3-tagged PNG
 ```
 
 The command runs the app with `NB_SCREENSHOT=<out.png>` set, so `run()` lays out, lets
@@ -1133,12 +1160,12 @@ is one full core, memory is the summed PSS of all processes.
 
 | Scene | Electron | Tauri | Flutter | egui | nodebuilder |
 |---|---|---|---|---|---|
-| **Dashboard** ([dashboard.tsx](examples/dashboard.tsx)): overview | 59 · 58% · 337 MB | 60 · 66% · 267 MB | 59 · 45% · 126 MB | 59 · 27% · 105 MB | 59 · 33% · 91 MB |
+| **Dashboard** ([dashboard.tsx](examples/bench/dashboard.tsx)): overview | 59 · 58% · 337 MB | 60 · 66% · 267 MB | 59 · 45% · 126 MB | 59 · 27% · 105 MB | 59 · 33% · 91 MB |
 | Dashboard: table with 500 rows | 59 · 64% · 383 MB | 59 · 62% · 292 MB | 59 · 41% · 133 MB¹ | 54 · 72% · 112 MB | 49 · 54% · 161 MB |
 | Dashboard: live logs | 59 · 94% · 408 MB | 59 · 142% · 298 MB | 59 · 47% · 135 MB¹ | 59 · 42% · 108 MB | 56 · 45% · 157 MB |
 | Dashboard: settings | 59 · 44% · 308 MB | 60 · 51% · 267 MB | 60 · 38% · 123 MB | 60 · 23% · 105 MB | 59 · 24% · 83 MB |
 | Dashboard: tab switch every 30 frames | 58 · 70% · 384 MB | 59 · 85% · 321 MB | 59 · 45% · 141 MB | 58 · 45% · 114 MB | 55 · 43% · 166 MB |
-| **Grid** ([bench.tsx](examples/bench.tsx)): 1000 static cells | 0% · 310 MB | 0% · 216 MB | 0% · 147 MB | 0% · 106 MB | 1% · 81 MB |
+| **Grid** ([bench.tsx](examples/bench/bench.tsx)): 1000 static cells | 0% · 310 MB | 0% · 216 MB | 0% · 147 MB | 0% · 106 MB | 1% · 81 MB |
 | Grid: 1000 cells, one text changes | 58 · 58% · 321 MB | 60 · 37% · 228 MB | 59 · 51% · 155 MB | 59 · 49% · 108 MB | 57 · 39% · 110 MB |
 | Grid: 1000 cells, all change | 59 · 128% · 413 MB | 29 · 147% · 277 MB | 21 · 96% · 173 MB | 59 · 68% · 113 MB | 58 · 44% · 139 MB |
 | Grid: 3000 cells, all change | 49 · 172% · 447 MB | 20 · 123% · 351 MB | 7 · 140% · 243 MB | 46 · 84% · 128 MB | 50 · 94% · 194 MB |
@@ -1236,6 +1263,9 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
   show through each other.
 - Linear gradients only (no radial or conic ones), as backgrounds and Canvas fills; borders,
   text and shadows are solid colors.
+- Wide gamut: Display P3 only (no Rec. 2020 or HDR); X11 windows are sRGB. Image profiles
+  that are not RGB matrix/TRC (LUT-based, CMYK, gray) are ignored, and the colors painted into
+  multicolor icons are sRGB (a one-color icon is tinted on the GPU, so it shows P3).
 - Scrolling without inertia or animation (the wheel and keys jump straight there), without
   auto-scroll when dragging a selection to the edge and without repeat when holding the click
   on the scrollbar track.

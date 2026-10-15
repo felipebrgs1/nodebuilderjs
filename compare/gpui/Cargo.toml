@@ -3,7 +3,7 @@ name = "nodebuilder-gpui-baseline"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Same scenes as examples/bench.tsx and examples/dashboard.tsx, in GPUI (Zed's framework), for comparison."
+description = "Same scenes as examples/bench/bench.tsx and examples/bench/dashboard.tsx, in GPUI (Zed's framework), for comparison."
 
 [dependencies]
 gpui = "0.2.2"

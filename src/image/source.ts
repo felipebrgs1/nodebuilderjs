@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodeImage } from "./decode.js";
 import type { Bitmap } from "./png.js";
+import type { ColorSpace } from "../render/color.js";
 
 export type { Bitmap } from "./png.js";
 
@@ -22,13 +23,15 @@ export interface ImageSource {
   /** The backend that made `handle`. */
   owner: ImageBackend | null;
   pixels: Uint8Array | null;
+  /** What the pixels mean (the decoded file's profile; sRGB by default). */
+  colorSpace: ColorSpace;
   refs: number;
   key: unknown;
 }
 
 /** Where pixels go: the native core in an app, a counter in headless tests. */
 export interface ImageBackend {
-  create(width: number, height: number, rgba: Uint8Array): number;
+  create(width: number, height: number, rgba: Uint8Array, colorSpace: ColorSpace): number;
   destroy(handle: number): void;
   /** Keep the decoded pixels after `create`, so another backend can upload them later. */
   keepsPixels?: boolean;
@@ -58,7 +61,7 @@ function cacheKey(input: ImageInput): unknown {
 }
 
 function load(input: ImageInput, key: unknown): ImageSource {
-  const source: ImageSource = { width: 0, height: 0, handle: 0, owner: null, pixels: null, refs: 0, key };
+  const source: ImageSource = { width: 0, height: 0, handle: 0, owner: null, pixels: null, colorSpace: "srgb", refs: 0, key };
   try {
     let bitmap: Bitmap;
     if (input instanceof Uint8Array) bitmap = decodeImage(input);
@@ -67,7 +70,7 @@ function load(input: ImageInput, key: unknown): ImageSource {
       bitmap = decodeImage(readFileSync(key));
     } else bitmap = input;
     if (bitmap.data.length < bitmap.width * bitmap.height * 4) throw new Error("bitmap data is smaller than width*height*4");
-    return Object.assign(source, { width: bitmap.width, height: bitmap.height, pixels: bitmap.data });
+    return Object.assign(source, { width: bitmap.width, height: bitmap.height, pixels: bitmap.data, colorSpace: bitmap.colorSpace ?? "srgb" });
   } catch (err) {
     const error = `${typeof key === "string" ? key : "image"}: ${(err as Error).message}`;
     console.warn(`nodebuilder: could not load ${error}`);
@@ -101,7 +104,7 @@ export function imageHandle(source: ImageSource): number {
     source.handle = 0;
   }
   if (!source.handle && source.pixels) {
-    source.handle = backend.create(source.width, source.height, source.pixels);
+    source.handle = backend.create(source.width, source.height, source.pixels, source.colorSpace);
     source.owner = backend;
     if (!backend.keepsPixels) source.pixels = null;
   }

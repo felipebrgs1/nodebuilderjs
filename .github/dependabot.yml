@@ -1,0 +1,11 @@
+# Keeps the actions pinned by SHA in .github/workflows up to date (PRs into developer).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: developer
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

@@ -96,6 +96,7 @@ void nb_platform_begin_frame(int *bw, int *bh, int *scale) { FORWARD(active->beg
 void nb_platform_end_frame(void) { FORWARD(active->end_frame()); }
 void nb_platform_request_frame(void) { FORWARD(active->request_frame()); }
 int nb_platform_scale(void) { return active ? active->scale() : 1; }
+int nb_platform_color_space(void) { return active ? active->color_space() : NB_COLOR_SRGB; }
 void nb_platform_set_cursor(const char *name) { FORWARD(active->set_cursor(name)); }
 void nb_platform_set_title(const char *title) { FORWARD(active->set_title(title)); }
 void nb_platform_set_icon(const nb_icon_image *images, int count) { FORWARD(active->set_icon(images, count)); }

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.5.0 (2026-10-14)
+
+Core 0.5.0 needs `@nodebuilderjs/linux-x64` 0.5.0, which it installs with it: the addon gained
+Wayland color management, per-image color spaces and image color profiles.
+
+### Added
+- **Colors by name:** any color prop takes a theme path (`color="text.secondary"`,
+  `background="accent.base"`) or a name from `createThemeTokens` (`background="sidebar"`),
+  like a CSS variable: resolved when painting, so it follows `setTheme` without an accessor
+  or a `theme` import. Tokens may name other tokens; an unknown name warns once.
+- **Text variants:** `<Text variant="muted" | "caption" | "title">`, and the app's own with
+  `defineTextVariants`; props on the Text win.
+- **Wide-gamut color (Display P3).** Colors accept `color(display-p3 ...)`, `color(srgb ...)`,
+  `oklch()` and `oklab()` besides hex. The window asks the compositor for a Display P3 surface
+  (Wayland `wp_color_manager_v1`), so those colors show past sRGB on wide-gamut displays; hex
+  colors look exactly as before, and without color management (X11, older compositors) P3
+  colors are clipped to sRGB. `outputColorSpace()` tells which one the window got;
+  `run(app, { colorSpace: "srgb" })` / `NB_COLOR_SPACE=srgb` opts out.
+- Images keep their color profile: Display P3 photos (iPhone HEIC, P3 PNG/JPEG/WebP, AVIF with
+  P3 CICP) stay P3, and other RGB ICC profiles (Adobe RGB, ProPhoto...) are converted to P3.
+  `decodeImage()` returns `colorSpace`.
+- `nodebuilder screenshot --color-space display-p3` and `screenshot(view, { colorSpace })`:
+  P3 pixels and a PNG tagged Display P3 (cICP + ICC).
+- `run(app, { deepColor: true })` / `NB_DEEP_COLOR=1`: a 16-bit float window buffer on
+  Wayland (smoother gradients, twice the window's GPU memory).
+
+### Changed
+- `mixColor()` returns `color(display-p3 ...)` when the mix is past sRGB (hex otherwise, as
+  before). An `ImageBackend.create` gets the image's color space as a fourth argument.
+
 ## 0.4.2 (2026-10-14)
 
 No API changes: core 0.4.2 works with `@nodebuilderjs/linux-x64` 0.4.2, which it installs

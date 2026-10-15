@@ -126,6 +126,16 @@ Widgets do not copy theme colors into the style at creation: they put them in an
 only when the app did not pass its own color. The cost is one function call per read; when
 painting 1000 texts, within the noise (measured on 2026-10-12).
 
+Apps can skip the effect altogether: a color prop may be a token name (`"text.secondary"`,
+`"sidebar"`). The style keeps the name; `parseColor` resolves it at paint time through
+`resolveColor` (`render/color.ts`), which asks the registered sources, app tokens from
+`createThemeTokens` first and then the theme (paths into the current theme object), and follows
+a token that names another. CSS colors (hex, functions, the named ones) are never looked up.
+`setTheme` already invalidates everything, so the next paint picks the new values. The check is
+a few string tests per color; `bun run bench` MODE=all N=2000 painted in 0.15–0.16 ms/frame
+before and after (2026-10-14). `<Text variant>` is a static merge of a named style set under
+the Text's own props.
+
 `runtime/frames.ts` is the frame clock: the `requestAnimationFrame` queue, run by `run()`
 before each layout, and `frameNow()`. `animation/` (`animate`, `createTween`,
 `createPresence`) uses this clock; an animation starts counting at the call, not at the first
@@ -165,7 +175,7 @@ changing and the app is stuck redrawing; outside production (`NODE_ENV`), `run()
 with the top of that stack.
 
 `run()` is `runWith(loadNative(), ...)`; `runWith` takes the native core and hooks (`env`,
-`now`, `log`, `warn`) so `test/app.test.tsx` drives the whole loop with a fake core: it
+`now`, `log`, `warn`) so `test/runtime/app.test.tsx` drives the whole loop with a fake core: it
 counts `render` calls while sending `configure`, `frame` and pointer events.
 
 ## Layout
@@ -463,6 +473,38 @@ border is drawn over the background, as in CSS. Blending in "straight" alpha pro
 artifacts at the corners. The vertex shader premultiplies each vertex color, so anything that
 varies across a shape (gradients, antialiasing coverage) is interpolated in premultiplied space.
 
+**Color spaces.** `run()` asks the addon for a Display P3 surface. On Wayland, `wayland.c` binds
+`wp_color_manager_v1`; when the compositor supports parametric descriptions, the `display_p3`
+primaries, the gamma 2.2 transfer function (sRGB's also works) and the perceptual intent, it builds
+that image description, waits for `ready` and sets it on the surface before the first commit.
+Gamma 2.2 is what compositors assume for untagged surfaces, so an sRGB color converted to P3 looks
+the same as in every other window. `open()` returns the space the surface took (X11: always
+sRGB) and `run()` hands it to `setOutputColorSpace` (`render/color.ts`). From there on
+`parseColor` encodes every command color for that space (hex is sRGB, converted through linear
+light; `color(display-p3 ...)`/`oklch()` past the target are clipped), so the renderer draws
+command colors as they come. Textures are the exception: each image carries its own space
+(`nb_image_create`), the color emoji atlas and SVG icon bitmaps are sRGB, and when a texture's
+space differs from the target's the fragment shader converts each texel (`texel()`: unpremultiply,
+decode, 3×3 matrix, encode, premultiply), told which way by the vertex's free `params.y`, so
+mixing spaces does not split the batch. One-color icons are white bitmaps tinted by the command
+color, so they get P3 tints for free. Blending stays in the encoded values, as browsers do.
+
+Images get their space from the file (`image/icc.ts`): PNG cICP/iCCP, JPEG APP2 (reassembled
+across segments), WebP ICCP, and libheif's nclx or ICC for AVIF/HEIC. CICP codes and ICC
+matrix/TRC profiles that are sRGB or Display P3 (colorants within 0.004 after s15Fixed16
+rounding, sRGB curve) tag the pixels as they are; any other RGB matrix/TRC profile is converted
+to Display P3 on the CPU while decoding (256-entry linearization per channel, one 3×3 matrix
+through XYZ D50, a 4096-entry encode table). Values checked against LittleCMS.
+
+Screenshots render to an sRGB target by default; `colorSpace: "display-p3"` paints and renders
+for P3 and `encodePng` tags the file with cICP and a v4 Display P3 ICC profile that `writeIcc`
+builds (ImageMagick and LittleCMS read it back as Display P3).
+
+`deepColor` asks `wayland.c` for a 16-bit float RGBA config (`EGL_EXT_pixel_format_float`). The
+10-10-10-2 configs are skipped: a 2-bit alpha would band the window's shadow and rounded corners.
+The buffers are GPU memory (process RSS/PSS did not move: dashboard bench, 2026-10-14, 8-bit
+170/111 MB vs float 169/109 MB, fps 107–110 both), twice the 8-bit size, so it is opt-in.
+
 **Gradients.** A `GRADIENT` op is a prefix: it fills the op right after it (RECT, LINE,
 TRIANGLES, ARC; paint.ts sends that op in white, which multiplies the gradient). While it is
 active, `push_vertex` collects each triangle and cuts it along the stop lines
@@ -668,7 +710,7 @@ under the pointer and hands any other click to the nearest ancestor with an `onC
 
 ### Text editing
 
-`TextField` and `TextArea` share `widgets/text-edit.ts`. The value belongs to the app (`value`
+`TextField` and `TextArea` share `widgets/text/text-edit.ts`. The value belongs to the app (`value`
 + `onInput`); an `EditSession` keeps what lives around it: the selection (`anchor`/`focus`, in
 code points), an undo stack of `{ value, anchor, focus }` snapshots (consecutive typing or
 deleting pushes one; a caret move, a space or a paste starts a new step) and the last value it
@@ -718,7 +760,7 @@ sends the configure. In JS, hiding clears `configured`, so nothing renders until
 the pump): `wire.ts` marshals values by signature and frames messages (writes little endian,
 reads both), `connection.ts` does the EXTERNAL auth, `Hello`, calls with replies, signal matches
 and exported objects (methods, read-only properties with `PropertiesChanged`, introspection).
-Tests run against `test/fake-bus.ts`, a bus in the test process on a temp unix socket.
+Tests run against `test/desktop/fake-bus.ts`, a bus in the test process on a temp unix socket.
 
 `src/tray/` serves a StatusNotifierItem at `/StatusNotifierItem` and its menu
 (`com.canonical.dbusmenu`) at `/MenuBar`, under the name `org.kde.StatusNotifierItem-<pid>-<n>`,
@@ -853,8 +895,8 @@ and never embedded: every Linux desktop already has them.
 ## Measuring performance
 
 ```sh
-NB_STATS=1 bun examples/bench.tsx        # N=1000 MODE=one|all|static
-NB_STATS=1 bun examples/dashboard.tsx    # TAB=overview|table|logs|settings ROWS=500 CYCLE=30
+NB_STATS=1 bun examples/bench/bench.tsx        # N=1000 MODE=one|all|static
+NB_STATS=1 bun examples/bench/dashboard.tsx    # TAB=overview|table|logs|settings ROWS=500 CYCLE=30
 ```
 
 `NB_STATS=1` prints every second: fps, time per frame (state, layout, paint, native), why the
@@ -875,7 +917,7 @@ The comparisons use the same scene built in plain HTML and JavaScript, running i
 3):
 
 ```sh
-scripts/compare.sh "nodebuilder" 3 5 -- bun examples/dashboard.tsx
+scripts/compare.sh "nodebuilder" 3 5 -- bun examples/bench/dashboard.tsx
 SCENE=dashboard scripts/compare.sh "electron" 3 5 -- \
   compare/electron/node_modules/.bin/electron --ozone-platform=wayland compare/electron
 (cd compare/tauri && cargo build --release)

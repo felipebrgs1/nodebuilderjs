@@ -12,6 +12,7 @@ export const SCREENSHOT_USAGE = `usage: nodebuilder screenshot <app.tsx> <out.pn
   --height <px>       logical height (default: the <Window>'s height, or 600)
   --scale <n>         device scale; 2 renders a HiDPI image twice the size (default 1)
   --theme <name>      light or dark (default: whatever the app sets)
+  --color-space <cs>  srgb or display-p3: P3 keeps colors past sRGB and tags the PNG (default srgb)
   --wait-frames <n>   frames (16 ms of simulated time each) to run before the shot
                       (default: until animations finish, at most 120)
   --props <json>      render the component the file exports (default export) with these
@@ -34,6 +35,7 @@ export function screenshotCommand(argv: string[]) {
       height: { type: "string" },
       scale: { type: "string" },
       theme: { type: "string" },
+      "color-space": { type: "string" },
       "wait-frames": { type: "string" },
       props: { type: "string" },
       export: { type: "string" },
@@ -61,7 +63,7 @@ export function screenshotCommand(argv: string[]) {
   const path = resolve(out);
   rmSync(path, { force: true }); // so a stale file is never taken for this run's output
   const env: Record<string, string | undefined> = { ...process.env, NB_SCREENSHOT: path };
-  const pass = { WIDTH: opts.width, HEIGHT: opts.height, SCALE: opts.scale, THEME: opts.theme, FRAMES: opts["wait-frames"] };
+  const pass = { WIDTH: opts.width, HEIGHT: opts.height, SCALE: opts.scale, THEME: opts.theme, FRAMES: opts["wait-frames"], COLOR_SPACE: opts["color-space"] };
   for (const [name, value] of Object.entries(pass)) if (value !== undefined) env[`NB_SCREENSHOT_${name}`] = value;
   // With --props/--export, a runner imports the file and renders the component it exports.
   const component = opts.props !== undefined || opts.export !== undefined;

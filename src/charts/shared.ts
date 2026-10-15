@@ -2,7 +2,7 @@
 
 import { type ElementDesc, isElement } from "../jsx-runtime.js";
 import { theme } from "../theme.js";
-import type { DrawContext } from "../widgets/canvas.js";
+import type { DrawContext } from "../widgets/media/canvas.js";
 import type { DataKey, Row } from "./components.js";
 
 /** Default series colors, in order. */

@@ -31,7 +31,23 @@ static struct {
   int (*image_height)(void *, int channel);
   const uint8_t *(*plane)(void *, int channel, int *stride);
   void (*image_release)(void *);
+  // Color profiles: optional (older libheif decodes without them).
+  int (*profile_type)(void *handle);
+  size_t (*raw_profile_size)(void *handle);
+  heif_error (*raw_profile)(void *handle, void *out);
+  heif_error (*nclx_profile)(void *handle, void **out);
+  void (*nclx_free)(void *);
 } heif;
+
+// The leading fields of struct heif_color_profile_nclx, unchanged since its first version
+// (newer versions only append); read through the pointer libheif allocates, never allocated here.
+typedef struct {
+  uint8_t version;
+  int color_primaries, transfer_characteristics, matrix_coefficients;
+  uint8_t full_range_flag;
+} heif_nclx_head;
+
+#define HEIF_FOURCC(a, b, c, d) ((int)((a) << 24 | (b) << 16 | (c) << 8 | (d)))
 
 static bool load_heif(void) {
   if (heif.tried) return heif.ok;
@@ -52,6 +68,11 @@ static bool load_heif(void) {
   SYM(plane, "heif_image_get_plane_readonly");
   SYM(image_release, "heif_image_release");
 #undef SYM
+  *(void **)&heif.profile_type = dlsym(lib, "heif_image_handle_get_color_profile_type");
+  *(void **)&heif.raw_profile_size = dlsym(lib, "heif_image_handle_get_raw_color_profile_size");
+  *(void **)&heif.raw_profile = dlsym(lib, "heif_image_handle_get_raw_color_profile");
+  *(void **)&heif.nclx_profile = dlsym(lib, "heif_image_handle_get_nclx_color_profile");
+  *(void **)&heif.nclx_free = dlsym(lib, "heif_nclx_color_profile_free");
   // Since 1.13 plugins (the AV1/HEVC decoders) are only registered by heif_init.
   *(void **)&heif.init = dlsym(lib, "heif_init");
   if (heif.init && heif.init(NULL).code != 0) return false;
@@ -59,9 +80,33 @@ static bool load_heif(void) {
   return true;
 }
 
-bool nb_platform_decode_image(const uint8_t *data, size_t size, int *width, int *height, uint8_t **rgba, char *error,
-                              size_t error_size) {
+static void read_profile(void *handle, nb_image_profile *profile) {
+  if (!heif.profile_type) return;
+  int type = heif.profile_type(handle);
+  if (type == HEIF_FOURCC('n', 'c', 'l', 'x') && heif.nclx_profile && heif.nclx_free) {
+    heif_nclx_head *nclx = NULL;
+    if (!heif.nclx_profile(handle, (void **)&nclx).code && nclx) {
+      profile->cicp_primaries = nclx->color_primaries;
+      profile->cicp_transfer = nclx->transfer_characteristics;
+    }
+    if (nclx) heif.nclx_free(nclx);
+  } else if ((type == HEIF_FOURCC('p', 'r', 'o', 'f') || type == HEIF_FOURCC('r', 'I', 'C', 'C')) && heif.raw_profile_size &&
+             heif.raw_profile) {
+    size_t n = heif.raw_profile_size(handle);
+    uint8_t *icc = n ? malloc(n) : NULL;
+    if (icc && !heif.raw_profile(handle, icc).code) {
+      profile->icc = icc;
+      profile->icc_size = n;
+    } else {
+      free(icc);
+    }
+  }
+}
+
+bool nb_platform_decode_image(const uint8_t *data, size_t size, int *width, int *height, uint8_t **rgba,
+                              nb_image_profile *profile, char *error, size_t error_size) {
   *rgba = NULL;
+  memset(profile, 0, sizeof *profile);
   if (!load_heif()) {
     snprintf(error, error_size, "AVIF/HEIC images need libheif (package libheif1 or libheif)");
     return false;
@@ -94,6 +139,7 @@ bool nb_platform_decode_image(const uint8_t *data, size_t size, int *width, int 
       *width = w;
       *height = h;
       *rgba = out;
+      read_profile(handle, profile);
     } else {
       ok = false;
       snprintf(error, error_size, "libheif returned no pixels");

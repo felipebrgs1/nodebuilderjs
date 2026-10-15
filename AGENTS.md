@@ -47,7 +47,7 @@ bun install                 # development deps
 bun run build:native        # builds native/build/<platform>-<arch>/nodebuilder.node
 bun run typecheck           # tsc 7 --noEmit (~0.1 s)
 bun test                    # all tests, no window (~0.1 s)
-bun test test/svg.test.tsx  # one file; -t "pattern" filters by test name
+bun test test/image/svg.test.tsx  # one file; -t "pattern" filters by test name
 bun run check:snippets      # typechecks the ts/tsx snippets of README.md and the template docs
 bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll | widgets | tray   # examples
 bun run dev                 # todo with --watch
@@ -55,7 +55,7 @@ bun run bench               # stress test with NB_STATS=1 (env: N=1000 MODE=one|
 bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settings ROWS=500
                             #   LIVE=0 CYCLE=<frames per tab switch>)
 bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]
-bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --wait-frames N
+bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --color-space display-p3 --wait-frames N
                             --props <json> --export <name>]
                             # PNG of the app without a window or display server (EGL offscreen)
 bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
@@ -85,7 +85,8 @@ Details in `CONTRIBUTING.md`. In short:
   no `feat:`/`fix:` prefix (`Add RichText: ...`, `Fix ...`, `Release 0.4.1`). Body: why.
 - Required checks: `test` (`.github/workflows/ci.yml`: build:native, typecheck, test,
   check:snippets on Ubuntu 24.04), `pr-title`, and on `main` `source-branch`
-  (`.github/workflows/pr-rules.yml`).
+  (`.github/workflows/pr-rules.yml`). CI uses the Bun of `.bun-version`; actions are pinned
+  by SHA (Dependabot updates them).
 
 ## Workflow (TDD)
 
@@ -109,10 +110,10 @@ from internal details, so that refactoring does not break tests for no reason.
 | Errors (`ErrorBoundary`, `catchError`) | a component or effect that throws; check the `fallback`, that the scope was disposed (the effect no longer runs, `onCleanup` ran) and that, without a boundary, the error reaches the caller and the queue keeps going |
 | Widgets and layout | mount with `mount` (`@nodebuilderjs/core/testing`) or `insert` into a root `UINode`, run `layout()` and check `x`/`y`/`width`/`height` or `debugTree()`. Fake metrics: 8 px per character, 20 px line (`useRealTextMetrics()` for the installed fonts, `skipIf(!canUseRealTextMetrics())`) |
 | Painting and command buffer | `drawCommands(node)` / `decode(buffer)` from `test/helpers.ts` return named commands (`{ op: "line", x0, ... }`). A new draw primitive starts here |
-| Frame loop (when frames render) | `runWith(fakeNative, app, { maxFps: 1000 }, hooks)` from `runtime/app.ts` (see `test/app.test.tsx`): the fake records `render`/`requestFrame` and the test sends `configure`/`frame`/pointer events through `open`'s callback, then awaits a `setImmediate` tick. `hooks` inject `env`, `now`, `log`, `warn`. Close with `windowControls.close()` and reset the globals `run()` sets (text measurer, image backend, frame clock) |
+| Frame loop (when frames render) | `runWith(fakeNative, app, { maxFps: 1000 }, hooks)` from `runtime/app.ts` (see `test/runtime/app.test.tsx`): the fake records `render`/`requestFrame` and the test sends `configure`/`frame`/pointer events through `open`'s callback, then awaits a `setImmediate` tick. `hooks` inject `env`, `now`, `log`, `warn`. Close with `windowControls.close()` and reset the globals `run()` sets (text measurer, image backend, frame clock) |
 | Events (mouse, keyboard, focus) | `interact(root)` from `@nodebuilderjs/core/testing`, or `createInput(root, host)` from `runtime/input.ts` with a fake host that records move/resize/cursor and controls the clock |
 | Images and textures | `setImageBackend({ create, destroy })` records texture creation and release |
-| Decoders and rasterizers | "golden" tests: the reference output (libjpeg-turbo, libwebp, librsvg, ImageMagick) lives in `test/fixtures/`, generated once; compare byte for byte or with an explicit tolerance. Then fuzzing with flipped bytes and truncated files: every error is a format message (never a TypeError), and absurd dimensions are rejected before allocating (2^28 pixel limit) |
+| Decoders and rasterizers | "golden" tests: the reference output (libjpeg-turbo, libwebp, librsvg, ImageMagick) lives in `test/fixtures/<format>/`, generated once; compare byte for byte or with an explicit tolerance. Then fuzzing with flipped bytes and truncated files: every error is a format message (never a TypeError), and absurd dimensions are rejected before allocating (2^28 pixel limit) |
 | Addon (what runs without a window) | call the native function through `loadNative()` in a test; use `test.skipIf` when it depends on something optional in the system (e.g. libheif) |
 | Pixels (the C drawing: shaders, corners, AA, text, images) | `renderOffscreen()` in the addon or `screenshot(root)` from testing, behind `test.skipIf(!canScreenshot())`; assert colors at chosen points (fonts and drivers vary), not whole images |
 
@@ -133,38 +134,55 @@ What cannot be tested automatically is documented when closing the task:
 
 ### Test organization
 
-- One file per subject: `core` (reactivity, tree, layout, culling), `grid` (`Grid`, `aspectRatio`), `wrap` (`wrap` rows/columns), `margin`, `app` (`run()` with a
-  fake native: idle renders nothing, frame reasons, `NB_TRACE`, frame loop and overflow
-  warnings), `overflow` (overflow detection, `layoutWarnings()`), `control-flow`
-  (`Show`, `Switch`/`Match`, `Index`, nesting without recreating components),
-  `error-boundary` (errors, effect queue), `context`, `ref`
-  (`ref`, programmatic focus and scrolling, `onResize`), `overlay`, `style` (`opacity`, `translate`),
-  `text` (line wrapping, alignment, `maxLines`, multi-line selection), `font-fallback`
-  (fallback fonts and color emoji with real fonts, `skipIf` they are missing), `font-style`
-  (weights, italics and letter spacing with real fonts and pixels), `fonts` (`registerFont`,
-  `fontFamily` lists, CSS weight/slant matching, synthetic bold/italic, features, variations,
-  with the box fonts of `fixtures/fonts/` whose advances are known), `controls`
-  (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `popups`
-  (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets following the switch),
-  `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
-  (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
-  `input` (events, keys with nothing focused, `focusable`), `text-field` (password, borders, focus
-  ring), `handlers` (event props on every widget, chained with the widget's own), `percent`
-  (percentage sizes), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
-  `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
-  `doctor` (each check on fake probes, the ELF and `ldd` readers, `diagnostics()` and one spawn),
-  `agents` (`agents update` on temp apps: stale, edited, renamed docs, AGENTS.md markers),
-  `text-area` (wrapping, caret across lines, scrolling to the caret), `rich-text` (spans: fonts,
-  wrapping across spans, baseline, links), `clipboard`, `window-icon` (`iconImages`: sizes, fitting, the default; `run()` covers the
-  prop and `hide`/`show` in `app`), `dbus` (wire format, connection against `fake-bus.ts`),
-  `tray` (`createTray` against `fake-bus.ts`), `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
-  pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
-  (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
+- One file per subject, grouped in one folder per area (`test/<area>/<subject>.test.ts[x]`;
+  shared helpers stay in `test/`):
+  - `reactive/`: `control-flow` (`Show`, `Switch`/`Match`, `Index`, nesting without
+    recreating components), `error-boundary` (errors, effect queue), `context`.
+  - `layout/`: `core` (reactivity, tree, layout, culling), `grid` (`Grid`, `aspectRatio`),
+    `wrap` (`wrap` rows/columns), `margin`, `percent` (percentage sizes), `overflow` (overflow
+    detection, `layoutWarnings()`).
+  - `paint/`: `draw` (primitives and `shapes.ts`), `geometry` (triangulation), `gradient`
+    (backgrounds, Canvas, pixels), `canvas`, `style` (`opacity`, `translate`), `color` (CSS
+    color forms, sRGB/P3 conversion, the output space in paint, `mixColor`).
+  - `text/`: `text` (line wrapping, alignment, `maxLines`, multi-line selection),
+    `font-fallback` (fallback fonts and color emoji with real fonts, `skipIf` they are missing),
+    `font-style` (weights, italics and letter spacing with real fonts and pixels), `fonts`
+    (`registerFont`, `fontFamily` lists, CSS weight/slant matching, synthetic bold/italic,
+    features, variations, with the box fonts of `fixtures/fonts/` whose advances are known),
+    `rich-text` (spans: fonts, wrapping across spans, baseline, links), `text-selection`,
+    `text-field` (password, borders, focus ring), `text-variants` (`<Text variant>`, `defineTextVariants`), `text-area` (wrapping, caret across lines,
+    scrolling to the caret).
+  - `widgets/`: `tokens` (colors by name: theme paths, `createThemeTokens`, resolved at paint),
+    `controls` (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`,
+    `Spinner`), `popups` (`Select`, `Tabs`, `Tooltip`, `Dialog`), `overlay`, `scroll`
+    (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
+    `handlers` (event props on every widget, chained with the widget's own), `ref` (`ref`,
+    programmatic focus and scrolling, `onResize`), `theme` (`setTheme`, widgets following the
+    switch), `animation` (`animate`, tween, presence, widget transitions with `frames()`).
+  - `runtime/`: `app` (`run()` with a fake native: idle renders nothing, frame reasons,
+    `NB_TRACE`, frame loop and overflow warnings), `input` (events, keys with nothing focused,
+    `focusable`), `clipboard`, `screenshot` (offscreen addon, PNG encoder, `screenshot()`,
+    `NB_SCREENSHOT`), `testing` (public helpers).
+  - `image/`: `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `icc` (color profiles of every format,
+    conversion to P3 against LittleCMS values, ICC writer), `window-icon` (`iconImages`: sizes,
+    fitting, the default; `run()` covers the prop and `hide`/`show` in `runtime/app`).
+  - `desktop/`: `dbus` (wire format, connection against `fake-bus.ts`), `tray` (`createTray`
+    against `fake-bus.ts`).
+  - `cli/`: `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake
+    `node_modules`), `doctor` (each check on fake probes, the ELF and `ldd` readers,
+    `diagnostics()` and one spawn), `agents` (`agents update` on temp apps: stale, edited,
+    renamed docs, AGENTS.md markers), `check-snippets`.
+  - `charts/`: scales and each chart type.
+
+  A new subject gets a new file in its area's folder; when `core` grows, split it.
+- Fixtures live in `test/fixtures/<format>/` (`png/` with the `.raw` expected pixels, `jpeg/`,
+  `webp/`, `svg/`, `heif/`, `fonts/`, `icc/`); a test reads them relative to its own folder
+  (`../fixtures/...`).
 - Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
   ~0.5 s (most of it: the EGL context of `screenshot` and the spawns of `cli`); a test that
   needs more than a few ms must have a reason.
 - Small fixtures (a few KB). Record where they came from (tool and version, as in
-  `svg-LICENSES.md`) and the license of third-party files.
+  `svg/svg-LICENSES.md`) and the license of third-party files.
 - Code snippets in skills, the template's AGENTS.md or the README are tested too:
   `bun run check:snippets` typechecks every fenced `ts`/`tsx` block that has an `import` (one
   tsc run, kept out of `bun test`; `check-snippets.test.ts` covers only the extraction). A
@@ -195,7 +213,7 @@ src/                   one module per folder; relative imports with `.js`
   jsx-runtime.ts       own JSX runtime; jsx() only creates descriptions (ElementDesc)
   testing.ts           @nodebuilderjs/core/testing: mount, findBy/AllByText, findBy/AllByLabel, click, interact,
                        layoutWarnings, screenshot/savePNG/canScreenshot, use{Fake,Real}TextMetrics
-  theme.ts             lightTheme/darkTheme, `theme` (reactive getters), setTheme, colorScheme
+  theme.ts             lightTheme/darkTheme, `theme` (reactive getters), setTheme, colorScheme, createThemeTokens, text variants
   animation/index.ts   animate, createTween, createPresence, easing, mixColor
   assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts references it with preserve="true")
   reactive/
@@ -209,6 +227,7 @@ src/                   one module per folder; relative imports with `.js`
     layout.ts          simplified flexbox (+ wrap) + grid (equal columns) + aspectRatio + culling
     overflow.ts        overflow warnings: children cut off by a clip or the window (layoutWarnings, run() in dev)
     paint.ts           tree -> CommandBuffer (Float32Array) + parseColor
+    color.ts           CSS colors (hex, color(display-p3|srgb), oklch, oklab) -> RGBA in the output space (sRGB or Display P3)
     shapes.ts          polyline (LINE segments) and fillPolygon (triangulation + AA fringe)
     gradient.ts        linear gradients: stop offsets (CSS rules), the CSS gradient line of a box
     scrollbar.ts       clamped scroll position and scrollbar geometry (painting and input)
@@ -221,25 +240,27 @@ src/                   one module per folder; relative imports with `.js`
     clipboard.ts       clipboard (text): in memory without a window, native with run(); read via event
     fonts.ts           registerFont (app font files -> addon), fontFamilies
     screenshot.ts      captureTree: real metrics + native images, layout, paint, renderOffscreen
-  widgets/             one file per widget; index.ts re-exports
+  widgets/             one file per widget, one folder per kind; index.ts re-exports
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps (+ hoverStyle/pressStyle), inherited, interaction, createInteraction
-    containers.ts      Box, Column, Row, Grid, Scroll, Spacer, Divider, Card
-    text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
-    toggle.ts radio.ts slider.ts progress.ts   controls (Toggle, RadioGroup, Slider, ProgressBar/Spinner)
-    select.ts tabs.ts tooltip.ts dialog.ts     on top of Overlay (Tabs opens nothing, but uses roving.ts)
     roving.ts          group with a single Tab stop and arrow keys (RadioGroup, Tabs)
-    overlay.ts         <Overlay>: layer above the window (marker in the tree + root.layers)
-    text-selection.ts  character positions, word under the click (Text selectable; TextField, TextArea)
-    text-edit.ts       EditSession (selection, undo/redo), editKey (keys every text input shares), editable (border, focus ring, caret blink, selection props)
-    rich-text.ts       RichText: spans with their own font/color/background/underline/onClick, wrapped across spans, shared baseline
-    text-area.ts       TextArea: multi-line (wrapText with breakWords), caret across lines, scrolls to the caret
+    layout/            containers.ts (Box, Column, Row, Grid, Scroll, Spacer, Divider, Card), window.ts
+    controls/          button.ts checkbox.ts toggle.ts radio.ts slider.ts progress.ts (ProgressBar/Spinner)
+    popups/            overlay.ts (<Overlay>: layer above the window, marker in the tree + root.layers);
+                       select.ts tabs.ts tooltip.ts dialog.ts on top of it (Tabs opens nothing, but uses roving.ts)
+    media/             image.ts icon.ts canvas.ts
+    text/              text.ts, text-field.ts
+      text-selection.ts  character positions, word under the click (Text selectable; TextField, TextArea)
+      text-edit.ts       EditSession (selection, undo/redo), editKey (keys every text input shares), editable (border, focus ring, caret blink, selection props)
+      rich-text.ts       RichText: spans with their own font/color/background/underline/onClick, wrapped across spans, shared baseline
+      text-area.ts       TextArea: multi-line (wrapText with breakWords), caret across lines, scrolls to the caret
   image/
     source.ts          image sources: cache by path, usage count, GPU handle
     decode.ts          decodeImage: picks the decoder by the file signature
     png.ts             PNG (all color types, tRNS, Adam7) via node:zlib
     jpeg.ts            baseline/progressive JPEG, CMYK/YCCK, EXIF; identical to libjpeg-turbo
     webp.ts            WebP VP8 (lossy), VP8L, alpha, first animation frame; identical to libwebp
-    png-encode.ts      PNG encoder (RGBA, Sub/Up filters, node:zlib) for screenshots
+    png-encode.ts      PNG encoder (RGBA, Sub/Up filters, node:zlib, P3 tagging) for screenshots
+    icc.ts             color profiles: ICC matrix/TRC and CICP -> sRGB/P3 tag or conversion to P3; ICC writer
     icon.ts            app icons: SVG/raster -> square sizes (window and tray icons; DEFAULT_ICON_SVG)
   dbus/                D-Bus client in TS over node:net (no libdbus)
     wire.ts            marshalling by signature, message framing (MessageReader)
@@ -278,13 +299,16 @@ native/
     codecs.c            AVIF/HEIC via libheif (dlopen; own declarations, no header)
     offscreen.c         EGL context with no display server (surfaceless/device) + FBO, for screenshots
     build.sh            backend build (called by scripts/build-native.sh)
-    protocols/          xdg-shell.xml, xdg-toplevel-icon-v1.xml (vendored; wayland-protocols is not installed)
+    protocols/          xdg-shell.xml, xdg-toplevel-icon-v1.xml, color-management-v1.xml (vendored; wayland-protocols is not installed)
   build/<platform>-<arch>/  output (names from process.platform/arch: linux-x64, ...)
-test/            one file per module (bun:test; bunfig.toml limits bun test to test/)
+test/            one folder per area, one file per subject (bun:test; bunfig.toml limits bun test to test/)
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> named commands
-  charts/        tests for src/charts (scales and each chart type)
-  fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
-examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, tray, bench, dashboard (.tsx) + assets/
+  reactive/ layout/ paint/ text/ widgets/ runtime/ image/ cli/ charts/
+  desktop/       dbus, tray + fake-bus.ts (a D-Bus daemon in the test process)
+  fixtures/      reference inputs and outputs by format: png/ (+ .raw), jpeg/ (.pnm from djpeg),
+                 webp/, svg/ (PNG from librsvg), heif/, fonts/
+examples/        apps/ (counter, todo), showcase/ (images, icons, drawing, charts, overlays, text,
+                 scroll, widgets, tray), bench/ (bench, dashboard) + assets/ (shared)
 cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
                  (+ screenshot-entry.ts: renders an exported component for `--props`/`--export`),
                  icons.ts (`icons add/list`: writes an app's icon imports), doctor.ts (checks
@@ -300,7 +324,7 @@ lib/             JS + .d.ts for Node (generated by scripts/npm.ts, not in git)
 compare/         the same scenes in Electron, Tauri, Flutter, egui and GPUI (benchmarks)
 scripts/         build-native.sh, measure.sh, compare.sh, npm.ts, check-snippets.ts
 .github/         workflows: ci.yml (test), pr-rules.yml (pr-title, source-branch), publish.yml (npm);
-                 pull_request_template.md, CODEOWNERS
+                 dependabot.yml (keeps the SHA-pinned actions current), pull_request_template.md, CODEOWNERS
 ```
 
 ## Mental model (flow of a frame)
@@ -347,7 +371,9 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   `./charts`. A new entry point also goes into the `paths` of `tsconfig.json`, before the
   wildcard.
 - Widgets are **functions** that create `UINode`s; there is no widget base class.
-- **New widget:** its own file in `src/widgets/`, exported from `widgets/index.ts`.
+- **New widget:** its own file in the folder of its kind under `src/widgets/` (`layout/`,
+  `controls/`, `popups/`, `media/`, `text/`), exported from `widgets/index.ts`; helpers
+  shared across kinds (`props.ts`, `roving.ts`) stay at the root.
   Code reusable by other modules (geometry, decoding) lives in the subject's module,
   outside `widgets/`.
 - Style props are flat (`padding`, `gap`, `background`...), typed as `StyleProps`
@@ -404,6 +430,11 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
 - Color/size defaults come from `theme.ts`, not hard-coded in widgets. Theme colors go
   in an effect (or in painting), never copied into the style at creation, otherwise they do
   not follow `setTheme`; respect the color the app passed (`if (props.background === undefined) ...`).
+- Color strings may be token names (`"text.secondary"`, app names from `createThemeTokens`):
+  `parseColor` resolves them (`resolveColor` in `render/color.ts`, sources added with
+  `addColorTokens`). Code that turns a color into something cached (an icon bitmap key) must
+  resolve it first, or a theme switch keeps the old value. `<Text variant>` merges the variant's
+  styles under the props (`textVariant` in `theme.ts`).
 - Transitions use `createPresence`/`createTween` (`animation/`): without a window they
   finish immediately.
 - Everything new is written in **English**: code comments, identifiers, docs (README,
@@ -477,6 +508,16 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   there is a compositor (`_NET_WM_CM_Sn`); without a compositor, `transparent=false` and the
   `Window` uses radius 0. X11 has no frame callback: pacing comes from a timerfd at the
   XRandR rate.
+- **Color spaces:** command colors arrive already encoded for the target (`parseColor` uses the
+  output space `run()` set from `open()`'s answer, `nb_platform_color_space()`); textures carry
+  their own space (`nb_image_create(..., space)`; color emoji and icon bitmaps are sRGB) and the
+  shader converts those that differ from the target (`nb_render_set_color_space`). A new texture
+  source must say its space; a new color that paint sends goes through `parseColor`. On Wayland
+  the surface gets a P3 image description (`wp_color_manager_v1`) only when the compositor
+  supports every piece; X11 is always sRGB and 8-bit. `deep_color` picks a 16-bit float EGL
+  config on Wayland, never 10-10-10-2 (2-bit alpha). `nb_platform_decode_image` also returns the
+  file's profile (`nb_image_profile`: ICC bytes or CICP); libheif's nclx struct is read only
+  through its stable leading fields.
 - Renderer in **premultiplied alpha** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`). The border is
   composited *over* the background (CSS semantics). Blending in "straight" alpha produces
   dark artifacts in the corners (bug already fixed; do not regress). Image textures are
@@ -716,6 +757,10 @@ packages, all with the version from the root `package.json`:
   time). An `Image` with different corner radii is drawn inside a rounded clip.
 - Gradients: linear only (backgrounds and Canvas fills); no radial/conic; borders, text and
   shadows are solid.
+- Wide gamut: Display P3 only (no Rec. 2020 or HDR); P3 colors are clipped to sRGB on X11,
+  without Wayland color management and in default (sRGB) screenshots; LUT-based, CMYK and gray
+  ICC profiles are ignored (the image stays sRGB); multicolor icon bitmaps are rasterized in sRGB;
+  `deepColor` is Wayland only.
 - `<ErrorBoundary>` does not cover the event handler's own code (only the effects its
   writes trigger); `<Switch>` does not accept a function child that returns `<Match>`
   (the `Match`es must be in the JSX, so they can be read without running anything).
@@ -724,7 +769,8 @@ packages, all with the version from the root `package.json`:
   Shift+wheel depends on the event's modifiers: on Wayland they only apply while the window
   has keyboard focus.
 - Dark theme does not follow the system (the XDG portal is reachable now with `src/dbus/`, not read yet); a theme color
-  copied as a fixed value (`color={theme.x}`) does not follow the switch. Animations without
+  copied as a fixed value (`color={theme.x}`) does not follow the switch (a name, `color="x"`, does);
+  color tokens are not typed (any string compiles; an unknown name warns once at runtime). Animations without
   `scale`/`rotate` or declarative `transition`.
 - Screenshots need EGL (Mesa surfaceless or an EGL device); a process that took one cannot
   open a window afterwards (and vice versa).
@@ -786,7 +832,9 @@ packages, all with the version from the root `package.json`:
   at the fps cap forever while idle (this happened with the scrollbar highlight). To find
   who asks for frames, run with `NB_TRACE=frames` (look for `[in frame]`); in dev, `run()`
   warns once after 30 frames in a row that request themselves with nothing else changing.
-  `test/app.test.tsx` pins "an idle window renders once".
+  `test/runtime/app.test.tsx` pins "an idle window renders once".
+- `run()` sets the output color space from `open()`; a test that changes it
+  (`setOutputColorSpace`) resets it to "srgb" afterwards, or every later color comes out in P3.
 
 ### Native
 - libwayland headers < 1.22 lack the v6 fields of `wl_surface_listener`, and an old

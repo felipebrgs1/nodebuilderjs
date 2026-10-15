@@ -2,6 +2,7 @@
 
 import { createRequire } from "node:module";
 import type { ImageBackend } from "../image/source.js";
+import type { ColorSpace } from "../render/color.js";
 import { type TextMeasurer, fontId, fontSpec, metricsGeneration } from "../render/node.js";
 
 export { fontId };
@@ -21,7 +22,14 @@ export type NativeEvent =
   | { type: "clipboard"; text: string };
 
 export interface Native {
-  open(options: { title: string; appId: string; width: number; height: number }, onEvents: (events: NativeEvent[]) => void): void;
+  /**
+   * Opens the window; returns the color space its surface took: `colorSpace` when the compositor can
+   * take it, "srgb" otherwise (undefined from an addon that predates color spaces: sRGB).
+   */
+  open(
+    options: { title: string; appId: string; width: number; height: number; colorSpace?: ColorSpace; deepColor?: boolean },
+    onEvents: (events: NativeEvent[]) => void,
+  ): ColorSpace | void;
   close(): void;
   render(commands: Float32Array, texts: string[]): void;
   /**
@@ -56,15 +64,22 @@ export interface Native {
   fontStats(): { faces: number; variations: number; specs: number; styles: number; sizes: number };
   /**
    * Draws `commands` without a window (no display needed) into a `width*scale` x `height*scale`
-   * target and returns its pixels: RGBA8, straight alpha, rows top to bottom. Throws
+   * target and returns its pixels: RGBA8, straight alpha, rows top to bottom. `colorSpace` (default
+   * "srgb") is the one the commands' colors are encoded in; textures are converted to it. Throws
    * "offscreen rendering is unavailable: ..." without a usable EGL driver, and while a window is open.
    */
-  renderOffscreen(width: number, height: number, scale: number, commands: Float32Array, texts: string[]): Uint8Array;
-  /** Copies straight-alpha RGBA pixels; returns an id (> 0) for draw commands. */
-  createImage(width: number, height: number, rgba: Uint8Array): number;
+  renderOffscreen(width: number, height: number, scale: number, commands: Float32Array, texts: string[], colorSpace?: ColorSpace): Uint8Array;
+  /**
+   * Copies straight-alpha RGBA pixels; returns an id (> 0) for draw commands. `colorSpace`: what
+   * the pixels mean (default "srgb"); the renderer converts them to the target's.
+   */
+  createImage(width: number, height: number, rgba: Uint8Array, colorSpace?: ColorSpace): number;
   destroyImage(id: number): void;
-  /** Decodes formats only the OS can (AVIF, HEIC); throws with the reason. Works without a window. */
-  decodeImage(bytes: Uint8Array): { width: number; height: number; data: Uint8Array };
+  /**
+   * Decodes formats only the OS can (AVIF, HEIC); throws with the reason. Works without a window.
+   * `icc`/`cicp`: the file's color profile (decodeImage applies it).
+   */
+  decodeImage(bytes: Uint8Array): { width: number; height: number; data: Uint8Array; icc?: Uint8Array; cicp?: [number, number] };
   setCursor(name: string): void;
   setTitle(title: string): void;
   /** Unmaps (false) or maps again (true) the window; a configure event follows a map. */
@@ -161,5 +176,5 @@ export function nativeTextMeasurer(nat: Native, scale: number): TextMeasurer {
 
 /** Images uploaded to the addon as textures. */
 export function nativeImageBackend(nat: Native): ImageBackend {
-  return { create: (w, h, rgba) => nat.createImage(w, h, rgba), destroy: (id) => nat.destroyImage(id) };
+  return { create: (w, h, rgba, space) => nat.createImage(w, h, rgba, space), destroy: (id) => nat.destroyImage(id) };
 }

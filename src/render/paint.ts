@@ -4,6 +4,7 @@
 import { type ImageSource, imageHandle } from "../image/source.js";
 import { boxGradient, isGradient, isLinearGradient, resolveStops } from "./gradient.js";
 import { type Color, type FontInput, type LineCap, type Paint, type Painter, type Radius, type UINode, corners, fontId, fontSpec, fontStyle, insetRadius, scrolls, stacked } from "./node.js";
+import { colorIn, resolveColor } from "./color.js";
 import { scrollbar } from "./scrollbar.js";
 import { theme } from "../theme.js";
 
@@ -20,20 +21,10 @@ const OP_GRADIENT = 10;
 
 const WHITE: readonly number[] = [1, 1, 1, 1];
 
-const colorCache = new Map<string, [number, number, number, number]>();
-const named: Record<string, string> = { transparent: "#0000", white: "#fff", black: "#000" };
-
+/** A CSS color or token name, encoded for the output space (sRGB, or Display P3 on a P3 surface). */
 export function parseColor(c: Color): [number, number, number, number] {
   if (typeof c !== "string") throw new TypeError(`expected a color string, got ${JSON.stringify(c)} (gradients only fill backgrounds and Canvas shapes)`);
-  let rgba = colorCache.get(c);
-  if (rgba) return rgba;
-  let hex = (named[c] ?? c).replace("#", "");
-  if (hex.length === 3 || hex.length === 4) hex = [...hex].map((h) => h + h).join("");
-  if (hex.length === 6) hex += "ff";
-  const n = parseInt(hex, 16);
-  rgba = Number.isNaN(n) || hex.length !== 8 ? [1, 0, 1, 1] : [((n >>> 24) & 255) / 255, ((n >>> 16) & 255) / 255, ((n >>> 8) & 255) / 255, (n & 255) / 255];
-  colorCache.set(c, rgba);
-  return rgba;
+  return colorIn(resolveColor(c));
 }
 
 /**

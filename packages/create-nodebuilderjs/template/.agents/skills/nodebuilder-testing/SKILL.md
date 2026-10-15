@@ -165,6 +165,7 @@ No window or display server is needed (it renders with the GPU through EGL):
 ```sh
 bun run screenshot                      # screenshot.png: src/main.tsx at the <Window>'s size
 nodebuilder screenshot src/main.tsx dark.png --theme dark --scale 2 --width 1024 --height 700
+nodebuilder screenshot src/main.tsx p3.png --color-space display-p3   # wide-gamut colors kept, PNG tagged P3
 ```
 
 Animations run to their end on a simulated clock (`--wait-frames <n>` stops earlier).
@@ -205,8 +206,10 @@ test.skipIf(!canScreenshot())("the banner is red", () => {
 });
 ```
 
-- `screenshot(root | () => view, { width, height, scale, background })` →
-  `{ width, height, scale, rgba, pixel(x, y), toPNG() }`; size in device pixels. A view
+- `screenshot(root | () => view, { width, height, scale, background, colorSpace })` →
+  `{ width, height, scale, colorSpace, rgba, pixel(x, y), toPNG() }`; size in device pixels.
+  `colorSpace: "display-p3"` gives P3 pixel values (sRGB `#ff0000` is `[234, 51, 35]`) and a
+  P3-tagged PNG; default sRGB, where colors past it are clipped. A view
   that is a `<Window>` is shot at the window's size, filled by it (as `nodebuilder screenshot`
   does). Uncovered areas stay transparent. The test's text metrics (fake by default) come back after the shot.
 - Pixels depend on the machine's fonts and GPU: assert colors at chosen points, not whole

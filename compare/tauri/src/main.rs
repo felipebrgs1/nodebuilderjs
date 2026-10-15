@@ -1,5 +1,5 @@
-// Tauri baseline: same window size and scene as examples/bench.tsx (SCENE=dashboard:
-// examples/dashboard.tsx), running the vanilla-DOM frontend shared with compare/electron
+// Tauri baseline: same window size and scene as examples/bench/bench.tsx (SCENE=dashboard:
+// examples/bench/dashboard.tsx), running the vanilla-DOM frontend shared with compare/electron
 // in the system WebKitGTK. Options come from the same env vars as the other two.
 use std::io::Write;
 use tauri::{WebviewUrl, WebviewWindowBuilder};

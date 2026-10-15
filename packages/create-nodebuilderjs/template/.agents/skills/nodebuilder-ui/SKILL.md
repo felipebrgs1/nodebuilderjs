@@ -18,7 +18,7 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 | `Grid` | children in rows of equal-width cells (cards, covers, galleries) | `columns`, `gap`, `rowGap` (default `gap`); see "Layout rules" |
 | `Scroll` | scrolling: vertical (default), `horizontal` or `horizontal vertical` (both) | needs `grow={1}` or a size; see "Scrolling" below |
 | `RichText` | one paragraph of styled spans (markdown, links inside a sentence) | `spans` (array or accessor) of strings or `{ text, color, size, bold, weight, italic, family, letterSpacing, underline, background, onClick }`, `lineHeight`, `textAlign`; a span with `onClick` is a link (pointer cursor; other clicks go to the parent) |
-| `Text` | text; wraps at spaces to fit the width | children (`{count}`, `"a"`) or `text={() => ...}`, `wrap` (default `true`), `maxLines` (truncates with "…"), `textAlign`, `lineHeight`, `underline`, `selectable` |
+| `Text` | text; wraps at spaces to fit the width | children (`{count}`, `"a"`) or `text={() => ...}`, `wrap` (default `true`), `maxLines` (truncates with "…"), `textAlign`, `lineHeight`, `underline`, `selectable`, `variant` (`muted`, `caption`, `title` or `defineTextVariants`) |
 | `Image` | PNG, JPEG, WebP, AVIF | see the `nodebuilder-images` skill |
 | `Icon` | SVG icon (Lucide, Phosphor), color inherited like text | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icons` |
 | `Canvas` | free drawing: lines, polygons, arcs, text | `draw={(g) => ...}` + size; skill `nodebuilder-drawing` |
@@ -132,7 +132,13 @@ color). On a control, an `onKeyDown` runs first and `e.stop()` keeps the key fro
     <Text fontFeatures="tnum">1,234.50</Text>
   </Column>;
   ```
-- Colors are hex strings (`"#3584e4"`, `"#00000010"` with alpha) or `"transparent"`.
+- Colors are CSS strings: hex (`"#3584e4"`, `"#00000010"` with alpha), `"transparent"`, or the
+  wide-gamut `color(display-p3 1 0.3 0)`, `oklch(0.7 0.2 145)` (alpha: `oklch(0.7 0.2 145 / 50%)`),
+  `oklab(...)`, `color(srgb ...)`. Hex is sRGB; on a Display P3 surface (Wayland with color
+  management) P3/OKLCH colors show past sRGB, elsewhere they are clipped to sRGB.
+  `outputColorSpace()` says which; `run(app, { colorSpace: "srgb" })` opts out. No `rgb()`/`hsl()`.
+  Images keep their color profile (P3 photos stay P3; Adobe RGB and other ICC profiles are
+  converted). `run(app, { deepColor: true })`: 16-bit window buffer, less banding, more GPU memory.
 - Events on any container: `onClick`, `onPointerDown/Up/Enter/Leave`,
   `onPointerMove`, `onScroll`, `onKeyDown`, `onFocus`, `onBlur`. Pointer events carry
   `x`/`y` (window), `localX`/`localY` (relative to the node), `button` (0 left, 1 middle,
@@ -442,7 +448,7 @@ let button: ElementRef | undefined;
 - Declare the `<Overlay>` **outside** a `Button` (next to it, as above): events inside
   the overlay bubble up through the parents of the place where it was declared.
 - Transition: animate `opacity` and `translateY` with a signal updated in
-  `requestAnimationFrame` (see `examples/overlays.tsx` in the nodebuilder repository).
+  `requestAnimationFrame` (see `examples/showcase/overlays.tsx` in the nodebuilder repository).
 
 ## Layout rules (simplified flexbox)
 
@@ -563,13 +569,23 @@ stripe at `left={0} top={0} bottom={0}` sits on the edge of a padded card.
 - Default colors and sizes in `theme` (`theme.text.secondary`, `theme.accent.base`,
   `theme.danger.base`, `theme.divider`...). Dark theme: `setTheme("dark")` (or `"light"`, or
   `{ ...darkTheme, accent: {...} }`), at any time; `colorScheme()` tells which one is active.
-- **Theme colors always inside a function** (`color={() => theme.text.secondary}`): that way they
-  follow theme changes. `color={theme.text.secondary}` keeps the color of that moment.
+- **Theme colors by name** (preferred): `color="text.secondary"`, `background="accent.base"`,
+  `borderColor="divider"`: any theme path, resolved when painting, so it follows `setTheme`
+  with no accessor and no import. In code, read `theme` inside a function
+  (`color={() => (on() ? theme.accent.base : theme.text.secondary)}`, or the names:
+  `color={() => (on() ? "accent.base" : "text.secondary")}`); `color={theme.text.secondary}`
+  keeps the color of that moment.
 - `title` may be an accessor (`title={() => \`${note()} - Notes\`}`): the title bar and the
   window list follow it.
-- Colors of the app's own (sidebar, links, code background) that follow `setTheme`:
-  `const colors = createThemeTokens({ light: { sidebar: "#f3f3f3" }, dark: { sidebar: "#202020" } })`,
-  then `background={() => colors.sidebar}`.
+- Colors of the app's own (sidebar, links, code background) that follow `setTheme`: call
+  `createThemeTokens({ light: { sidebar: "#f3f3f3" }, dark: { sidebar: "#202020" } })` once (e.g.
+  in `theme.ts`, imported by `main.tsx`), then use them by name anywhere: `background="sidebar"`
+  (nested: `"graph.node"`). The returned object reads them in code (`() => colors.sidebar`).
+  An unknown name paints magenta and warns once.
+- **Text variants** instead of repeating `fontSize` + `color`: `<Text variant="muted">`,
+  `"caption"` (12 px, secondary), `"title"` (20 px, bold); the app's own with
+  `defineTextVariants({ label: { fontSize: 12, bold: true, color: "accent.base" } })`. Props on
+  the Text win. `color`/`fontSize` set on a container are inherited by the texts inside.
 - `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`, `.hide()`/`.show()`
   (off the screen and the taskbar, the app keeps running); `windowState.width()`, `.height()`,
   `.maximized()`, `.activated()`, `.visible()` are accessors.
@@ -641,7 +657,8 @@ const stop = animate(0, 300, setX, { duration: 400, easing: easing.linear, onDon
   until the exit ends (use it in `<Show when={p.mounted}>`), `progress` goes 0→1→0 (for
   `opacity`, `translateY`).
 - `easing.linear`, `.easeIn`, `.easeOut`, `.easeInOut`, or any `(t: number) => number`.
-- `mixColor(a, b, t)`: `a` blended toward `b` (t 0..1), as `"#rrggbbaa"`; any hex form works.
+- `mixColor(a, b, t)`: `a` blended toward `b` (t 0..1), as `"#rrggbbaa"` (`color(display-p3 ...)`
+  past sRGB); any color form works.
   Premultiplied like CSS: `mixColor("#1db954", "transparent", 0.5)` is the same green at half alpha.
 - Animate numbers only (`opacity`, `translateX/Y`, `width`, colors via `mixColor`). For a
   custom loop, `requestAnimationFrame((time) => ...)` runs right before the next frame.
@@ -655,7 +672,7 @@ may want to copy (ids, links, paths, error messages, results) gets `selectable`:
 
 ```tsx
 <Text selectable>{order.id}</Text>
-<Text selectable color={theme.danger.base}>{error}</Text>
+<Text selectable color="danger.base">{error}</Text>
 ```
 
 With `selectable`: dragging selects, double-click takes the word, triple-click the line,

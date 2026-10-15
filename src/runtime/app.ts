@@ -15,6 +15,7 @@ import { frameNow, hasFrameCallbacks, runFrameCallbacks, setAnimating, setFrameC
 import { type Native, type NativeEvent, type NativeModifiers, loadNative, nativeImageBackend, nativeTextMeasurer } from "./native.js";
 import { type Modifiers, UINode, invalidate, setDisplayScale, setFrameScheduler, setTextMeasurer } from "../render/node.js";
 import { CommandBuffer, paintTree } from "../render/paint.js";
+import { type ColorSpace, setOutputColorSpace } from "../render/color.js";
 import { type MaybeAccessor, batch, createRoot, createSignal, read, untrack } from "../reactive/signals.js";
 import { setTheme } from "../theme.js";
 import { type Screenshot, captureTree } from "./screenshot.js";
@@ -34,6 +35,17 @@ export interface WindowOptions {
 export interface RunOptions {
   /** Frame rate cap; frames stay vsync-aligned (240 Hz display -> every other vblank). Default 120, env NB_MAX_FPS. */
   maxFps?: number;
+  /**
+   * The window surface's color space. "display-p3" (default) shows `color(display-p3 ...)` and
+   * `oklch()` colors past sRGB where the compositor supports it (Wayland color management) and
+   * falls back to sRGB elsewhere; hex colors look the same either way. Env NB_COLOR_SPACE.
+   */
+  colorSpace?: ColorSpace;
+  /**
+   * A 16-bit float window buffer (Wayland, when the driver has one): smoother gradients in wide
+   * gamut, at twice the memory for the window's buffers. Default false, env NB_DEEP_COLOR=1.
+   */
+  deepColor?: boolean;
 }
 
 /** Nodes created by <Window> carry their options here. */
@@ -161,7 +173,8 @@ const SETTLE_FRAMES = 120;
  * run() without a window: mounts `app` like run() does, at the window's size (or
  * NB_SCREENSHOT_WIDTH/HEIGHT), runs frames on a simulated clock until animations finish
  * (or NB_SCREENSHOT_FRAMES frames), renders offscreen at NB_SCREENSHOT_SCALE and writes the
- * PNG to NB_SCREENSHOT. NB_SCREENSHOT_THEME=light|dark switches the theme first. Internal.
+ * PNG to NB_SCREENSHOT. NB_SCREENSHOT_THEME=light|dark switches the theme first;
+ * NB_SCREENSHOT_COLOR_SPACE=display-p3 renders for P3. Internal.
  */
 export async function screenshotApp(nat: Native, app: () => Child, env: Record<string, string | undefined>): Promise<Screenshot> {
   const option = (name: string, valid: (n: number) => boolean) => {
@@ -178,6 +191,8 @@ export async function screenshotApp(nat: Native, app: () => Child, env: Record<s
   const scheme = env.NB_SCREENSHOT_THEME;
   if (scheme === "light" || scheme === "dark") setTheme(scheme);
   else if (scheme) throw new Error(`bad theme "${scheme}" (use light or dark)`);
+  const space = env.NB_SCREENSHOT_COLOR_SPACE || "srgb";
+  if (space !== "srgb" && space !== "display-p3") throw new Error(`bad color space "${space}" (use srgb or display-p3)`);
 
   native = nat;
   let time = 0;
@@ -210,7 +225,7 @@ export async function screenshotApp(nat: Native, app: () => Child, env: Record<s
       buffer.reset();
       paintTree(root, buffer);
     }
-    const shot = captureTree(nat, root, w, h, scale);
+    const shot = captureTree(nat, root, w, h, scale, undefined, space);
     writeFileSync(env.NB_SCREENSHOT!, shot.toPNG());
     return shot;
   } finally {
@@ -473,6 +488,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
     setFrameScheduler(() => {});
     setAnimating(false); // drops pending frame callbacks: nothing runs them any more
     setClipboardBackend(null);
+    setOutputColorSpace("srgb");
     clip.close();
     dispose();
   };
@@ -488,10 +504,20 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
     framePending = false;
   };
 
-  nat.open(
-    { title: untrack(() => read(options.title)), appId: options.appId ?? process.env.NB_APP_ID ?? "dev.nodebuilder.app", width: options.width ?? 800, height: options.height ?? 600 },
+  const colorSpace = env.NB_COLOR_SPACE === "srgb" || env.NB_COLOR_SPACE === "display-p3" ? env.NB_COLOR_SPACE : (runOptions.colorSpace ?? "display-p3");
+  const surface = nat.open(
+    {
+      title: untrack(() => read(options.title)),
+      appId: options.appId ?? process.env.NB_APP_ID ?? "dev.nodebuilder.app",
+      width: options.width ?? 800,
+      height: options.height ?? 600,
+      colorSpace,
+      deepColor: env.NB_DEEP_COLOR === "1" || !!runOptions.deepColor,
+    },
     (events) => batch(() => events.forEach(handle)),
   );
+  // Paint encodes colors for what the surface took (an older addon returns nothing: sRGB).
+  setOutputColorSpace(surface === "display-p3" ? "display-p3" : "srgb");
   setClipboardBackend(clip);
   nat.setIcon(windowIcon(options.icon, warn));
 }

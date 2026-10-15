@@ -51,6 +51,9 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   that show the app's frame, and the fixes from two user reports
 - 0.4.2 (2026-10-14): releases published by CI from `main` with npm provenance, branch and PR
   rules (`CONTRIBUTING.md`), the `<Show>` caveat up front in the template docs
+- 0.5.0 (2026-10-14): wide-gamut color (Display P3 surface, `color(display-p3)`/`oklch()`,
+  image color profiles, P3 screenshots, opt-in 16-bit buffer), theme colors by name
+  (`color="text.secondary"`, `createThemeTokens` names) and `<Text variant>`
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 - `nodebuilder doctor` (2026-10-14): checks the machine (runtime, native core and system
   libraries, display, keyboard, GL, fonts, libheif) and prints the command that fixes each
@@ -83,8 +86,8 @@ em TypeScript.
 
 ## 1. Desempenho
 
-Cada item tem uma meta medida com as mesmas cenas (`examples/bench.tsx` e
-`examples/dashboard.tsx`) e o mesmo método do README. Detalhes técnicos dos gargalos no
+Cada item tem uma meta medida com as mesmas cenas (`examples/bench/bench.tsx` e
+`examples/bench/dashboard.tsx`) e o mesmo método do README. Detalhes técnicos dos gargalos no
 [AGENTS.md](AGENTS.md#performance).
 
 1. ~~**Culling:**~~ **feito.** Layout, pintura e clique ignoram o que está fora da área
@@ -153,7 +156,7 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
   fonts (bugs, core, API, CLI, tests, order of work) is mapped in [FONTS.md](FONTS.md).
 - ~~Rich text (several styles in one paragraph)~~ **done** (2026-10-14: `RichText`). Missing:
   selecting it.
-- **0.5: styled editing** (asked for by the Dia report, a markdown editor): `TextArea
+- **0.6: styled editing** (asked for by the Dia report, a markdown editor): `TextArea
   decorations={(text, selection) => [{ from, to, style }]}` with per-range font, size, color,
   background, underline, `hidden` (markers concealed while the caret is elsewhere) and `onClick`,
   plus whole-line decorations (code block backgrounds); the RichText layout (mixed fonts, a
@@ -214,6 +217,14 @@ Depois:
   `createPresence`, `easing`, `mixColor`; `Dialog`, `Select`, `Tooltip` e `Toggle` animados.
   Falta `transition` declarativo nas props de estilo, molas e `scale`/`rotate` (com
   opacidade de grupo, pedem desenhar a subárvore numa textura)
+- ~~Wide-gamut colors~~ **done** (2026-10-14): `color(display-p3 ...)`, `oklch()`, `oklab()`, a
+  Display P3 surface through Wayland color management (`wp_color_manager_v1`) with sRGB
+  fallback, image color profiles (ICC and CICP in PNG, JPEG, WebP, AVIF, HEIC), P3 screenshots
+  (`--color-space display-p3`) and an opt-in 16-bit float buffer (`deepColor`). Left out: HDR
+  (Rec. 2020/PQ) until a use case shows up
+- ~~Theme colors by name and text variants~~ **done** (2026-10-14): `color="text.secondary"`,
+  `background="sidebar"` (app tokens from `createThemeTokens`), resolved when painting, and
+  `<Text variant="caption">` with `defineTextVariants`. Still to do: typed token names
 - ~~Tema escuro~~ **feito** (2026-10-12): `setTheme`, `darkTheme`, `colorScheme`. Falta
   seguir a preferência do sistema (portal XDG `org.freedesktop.appearance` por D-Bus, com a
   libdbus via `dlopen` e o fd no `poll()` da thread de bombeamento)
