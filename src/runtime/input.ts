@@ -19,6 +19,13 @@ export interface InputHost {
   /** Something changed that needs a new frame (e.g. scrolling). */
   invalidate(): void;
   now(): number;
+  /** The platform draws and drives scrollbars itself (the DOM renderer): no strip of ours along a Scroll's edge. */
+  platformScrollbars?: boolean;
+  /**
+   * The node under a point, found by the platform (the DOM renderer's elementFromPoint) instead of
+   * walking the tree's boxes; overlay layers included.
+   */
+  hitTest?(x: number, y: number): UINode | null;
 }
 
 export interface KeyInput {
@@ -75,6 +82,12 @@ for (const [names, key] of [
 
 export type Input = ReturnType<typeof createInput>;
 
+/** Whether a right press on `node` opens an app menu (an onContextMenu on it or above it). */
+export function hasContextMenu(node: UINode | null): boolean {
+  for (let n = node; n; n = n.parent) if (n.handlers.onContextMenu) return true;
+  return false;
+}
+
 export function createInput(root: UINode, host: InputHost) {
   let pointer: { x: number; y: number } | null = null;
   let hoverPath: UINode[] = [];
@@ -101,7 +114,7 @@ export function createInput(root: UINode, host: InputHost) {
     const inside = contains(node, x, y);
     if (!inside && (node.style.clip || scrolls(node))) return null;
     // A scrollbar is above the content it scrolls.
-    if (inside && scrolls(node) && scrollbarAt(node, x, y)) return node;
+    if (inside && !host.platformScrollbars && scrolls(node) && scrollbarAt(node, x, y)) return node;
     const kids = stacked(node);
     for (let i = kids.length - 1; i >= 0; i--) {
       const hit = hitTest(kids[i]!, x, y);
@@ -115,6 +128,7 @@ export function createInput(root: UINode, host: InputHost) {
    * (the pointer goes through its empty space), unless it is modal.
    */
   function hitTop(x: number, y: number): UINode | null {
+    if (host.hitTest) return host.hitTest(x, y);
     for (let i = root.layers.length - 1; i >= 0; i--) {
       const layer = root.layers[i]!;
       const hit = hitTest(layer, x, y);
@@ -161,8 +175,8 @@ export function createInput(root: UINode, host: InputHost) {
     return false;
   }
 
-  /** A scroll key: the nearest Scroll around the focus, or else under the pointer, that can move that way. */
-  function scrollByKey(key: ScrollKey) {
+  /** A scroll key: the nearest Scroll around the focus, or else under the pointer, that can move that way. True if it moved. */
+  function scrollByKey(key: ScrollKey): boolean {
     const starts = [focused && reachable(focused) ? focused : null, pointer ? hitTop(pointer.x, pointer.y) : null];
     const axes: Axis[] = key.step === "line" ? [key.axis] : [key.axis, "x"];
     for (const start of starts) {
@@ -172,10 +186,12 @@ export function createInput(root: UINode, host: InputHost) {
         if (!n) continue;
         const to = key.step === "edge" ? (key.dir < 0 ? 0 : scrollRange(n, axis))
           : scrollPosition(n, axis) + key.dir * (key.step === "page" ? pageStep(n, axis) : LINE_STEP);
-        if (scrollTo(n, axis, to)) host.invalidate();
-        return;
+        if (!scrollTo(n, axis, to)) return false;
+        host.invalidate();
+        return true;
       }
     }
+    return false;
   }
 
   function resizeEdges(x: number, y: number): number {
@@ -196,7 +212,7 @@ export function createInput(root: UINode, host: InputHost) {
   }
 
   function barUnder(node: UINode | undefined, x: number, y: number): Scrollbar | null {
-    return node && scrolls(node) ? scrollbarAt(node, x, y) : null;
+    return node && !host.platformScrollbars && scrolls(node) ? scrollbarAt(node, x, y) : null;
   }
 
   /** Highlights the scrollbar being pressed, or else the one under the pointer. */
@@ -440,28 +456,33 @@ export function createInput(root: UINode, host: InputHost) {
       }
     },
 
-    keyDown(ev: KeyInput) {
+    /** True when something took the key: a handler stopped it, or it dismissed, opened a menu, moved the focus or scrolled. */
+    keyDown(ev: KeyInput): boolean {
       let stopped = false;
       const e = keyEvent(ev, () => (stopped = true));
-      if (sendKey(e, () => stopped, "onKeyDown")) return;
+      if (sendKey(e, () => stopped, "onKeyDown")) return true;
       const layer = dismissible();
-      if (e.key === "Escape" && layer) return layer.overlay!.onDismiss!();
+      if (e.key === "Escape" && layer) {
+        layer.overlay!.onDismiss!();
+        return true;
+      }
       if ((e.key === "Menu" || (e.key === "F10" && e.shift)) && focused) {
         // Where a menu opened from the keyboard goes: under the focused node.
-        return contextMenu(pathTo(focused), pointerEvent(focused.x, focused.y + focused.height, -1, 0, e));
+        contextMenu(pathTo(focused), pointerEvent(focused.x, focused.y + focused.height, -1, 0, e));
+        return true;
       }
       if (e.key === "Tab") {
         const modal = root.layers.findLastIndex((l) => l.overlay!.modal);
         const scope = modal >= 0 ? root.layers.slice(modal) : [root, ...root.layers];
         const list = scope.flatMap((n) => focusables(n));
-        if (!list.length) return;
+        if (!list.length) return false;
         const i = focused ? list.indexOf(focused) : -1;
         const step = ev.shift ? -1 : 1;
         setFocus(list[(i + step + list.length) % list.length]!);
-        return;
+        return true;
       }
       const scroll = SCROLL_KEYS[e.key];
-      if (scroll && !ev.alt) scrollByKey(scroll);
+      return !!scroll && !ev.alt && scrollByKey(scroll);
     },
 
     keyUp(ev: KeyInput) {

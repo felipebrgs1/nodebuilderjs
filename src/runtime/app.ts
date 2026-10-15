@@ -77,6 +77,19 @@ let visibilityRequest: (visible: boolean) => void = () => {};
  */
 export const windowState = { width, height, maximized, activated, transparent, visible };
 
+let windowFrame = true;
+
+/**
+ * false where the app does not own a window frame: in a browser the page is the window (the tab
+ * shows the title, the browser closes it), so `<Window>` draws no title bar, border or corners and
+ * `<WindowControls>` no buttons. Set before the app is mounted (web boot()).
+ */
+export function setWindowFrame(framed: boolean) {
+  windowFrame = framed;
+}
+
+export const hasWindowFrame = () => windowFrame;
+
 export const windowControls = {
   close: () => closeRequest(),
   minimize: () => native?.minimize(),
@@ -364,14 +377,22 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
     phase = "building";
     dirty = false; // everything changed so far is in this frame
     const tState = now();
-    layout(root, width(), height());
-    if (dev) reportOverflow();
-    input.refreshHover();
-    const t1 = now();
-    buffer.reset();
-    paintTree(root, buffer);
-    const t2 = now();
-    nat.render(buffer.commands, buffer.texts);
+    let t1: number, t2: number;
+    if (nat.renderTree) {
+      // The core lays out and draws the tree itself (the DOM): "native" is all of it.
+      t1 = t2 = tState;
+      nat.renderTree(root);
+      input.refreshHover();
+    } else {
+      layout(root, width(), height());
+      if (dev) reportOverflow();
+      input.refreshHover();
+      t1 = now();
+      buffer.reset();
+      paintTree(root, buffer);
+      t2 = now();
+      nat.render(buffer.commands, buffer.texts);
+    }
     const t3 = now();
     phase = "idle";
     framePending = true;
@@ -417,6 +438,8 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
       request("ev", currentEvent ?? "input", inputChanged);
     },
     now: () => Date.now(),
+    platformScrollbars: !!nat.renderTree,
+    hitTest: nat.hitTest && ((x, y) => nat.hitTest!(x, y)),
   });
 
   // ---- native events -------------------------------------------------------
@@ -468,7 +491,7 @@ export function runWith(nat: Native, app: () => Child, runOptions: RunOptions = 
         input.scroll(ev.x, ev.y, ev.dx, ev.dy, modifiers(ev));
         break;
       case "keydown":
-        input.keyDown({ ...ev, meta: ev.super });
+        ev.handled = input.keyDown({ ...ev, meta: ev.super });
         break;
       case "keyup":
         input.keyUp({ ...ev, meta: ev.super });

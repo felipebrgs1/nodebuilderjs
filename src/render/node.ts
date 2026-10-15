@@ -202,6 +202,48 @@ export interface Handlers {
   onResize?: (size: Size) => void;
 }
 
+/** ARIA role names the widgets use. */
+export type Role =
+  | "button" | "checkbox" | "switch" | "radiogroup" | "radio" | "slider" | "progressbar" | "tablist" | "tab"
+  | "combobox" | "listbox" | "option" | "dialog" | "tooltip" | "link" | "img" | "heading";
+
+/** States of a role, as ARIA names them; only the ones that apply. */
+export interface AriaStates {
+  checked?: boolean;
+  selected?: boolean;
+  expanded?: boolean;
+  modal?: boolean;
+  /** A value in [min, max] (slider, progress bar; none: indeterminate). */
+  value?: number;
+  min?: number;
+  max?: number;
+}
+
+/** What a <Text> shows, for renderers that lay out and draw text themselves (the DOM renderer). */
+export interface TextContent {
+  value: string;
+  wrap: boolean;
+  maxLines: number | undefined;
+  align: "start" | "center" | "end";
+  /** A multiple of the font's line height. */
+  lineHeight: number;
+  selectable: boolean;
+}
+
+/** A text field's content (TextField, TextArea), read by tests and by renderers with their own text inputs. */
+export interface TextFieldContent {
+  value(): string;
+  /** What it draws: the value, or "•"s for a password. */
+  shown(): string;
+  placeholder(): string | undefined;
+  /** A TextArea: newlines are part of the value. */
+  multiline?: boolean;
+  /** Masked (a password); reactive. */
+  secret?(): boolean;
+  /** A new value typed into a platform text input (the DOM renderer's <input>): the app's onInput. */
+  input?(value: string): void;
+}
+
 export interface Size {
   width: number;
   height: number;
@@ -425,8 +467,16 @@ export class UINode implements ElementRef {
   label: string;
   /** Accessible name for nodes without text of their own (icon-only buttons); what `findByLabel` matches. */
   ariaLabel?: string;
+  /** What the node is to assistive technology (an ARIA role name), set by widgets. */
+  role?: Role;
+  /** Its states for assistive technology (checked, selected, expanded, a value in a range...); read every frame. */
+  states?: () => AriaStates;
+  /** A control that does not respond now (`disabled`). */
+  disabled = false;
   /** On a text field: its value, what it draws (masked for a password) and its placeholder; what `findByValue` reads. */
-  field?: { value(): string; shown(): string; placeholder(): string | undefined };
+  field?: TextFieldContent;
+  /** On a <Text>: what it shows and how, for a renderer that lays out text itself (the DOM). */
+  text?: () => TextContent;
 
   // Layout results (absolute, logical pixels).
   x = 0;

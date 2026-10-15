@@ -2,7 +2,7 @@
 // control when it opens and gives the focus back when it closes.
 
 import { type Child, jsx } from "../../jsx-runtime.js";
-import { type Edges, UINode, focusedElement } from "../../render/node.js";
+import { type Edges, type ElementRef, UINode, focusedElement } from "../../render/node.js";
 import { createPresence } from "../../animation/index.js";
 import { Show } from "../../reactive/control.js";
 import { type Accessor, type MaybeAccessor, onCleanup, untrack } from "../../reactive/signals.js";
@@ -68,6 +68,11 @@ export function Dialog(props: {
         justify: "center",
         padding: 24,
         onDismiss: props.dismissible === false ? undefined : props.onClose,
+        ref: (r: ElementRef) => {
+          const layer = r as UINode;
+          layer.role = "dialog";
+          layer.states = () => ({ modal: true });
+        },
         children: card,
       });
     });

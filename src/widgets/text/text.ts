@@ -4,6 +4,7 @@ import { type FontStyle, type Handlers, REGULAR, UINode, displayScale, invalidat
 import { type TextLine, minContentWidth, wrapText } from "../../render/text-wrap.js";
 import { type MaybeAccessor, createEffect, read } from "../../reactive/signals.js";
 import { clipboard } from "../../runtime/clipboard.js";
+import { hasNativeText } from "../../runtime/platform.js";
 import { textVariant, theme } from "../../theme.js";
 import { type StyleProps, applyProps, inherited, inheritedText } from "../props.js";
 import { boundaryAt, charAt, charEdges, wordAt } from "./text-selection.js";
@@ -192,7 +193,10 @@ export function Text(
     return { offset: ascent + descent / 3, thickness: Math.max(1, snap(size / 14)), snap };
   };
 
-  if (props.selectable) {
+  node.text = () => ({ value, wrap: options.wrap, maxLines: options.maxLines, align: options.align, lineHeight: options.lineHeight, selectable: !!props.selectable });
+
+  // With native text the platform selects it (and copies with its own keys).
+  if (props.selectable && !hasNativeText()) {
     node.focusable = true; // to receive Ctrl+C, but only by clicking: not a Tab stop
     node.tabStop = false;
     if (node.style.cursor === undefined) node.set("cursor", "text");

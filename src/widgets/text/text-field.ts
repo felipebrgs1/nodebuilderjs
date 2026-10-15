@@ -24,6 +24,8 @@ export function TextField(
     value: () => props.value(),
     shown: () => shownChars().join(""),
     placeholder: () => (props.placeholder === undefined ? undefined : read(props.placeholder)),
+    secret,
+    input: (value) => props.onInput(value),
   };
   let scrollX = 0;
   createEffect(() => {

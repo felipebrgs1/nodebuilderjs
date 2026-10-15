@@ -7,6 +7,7 @@
 
 import type { Bitmap } from "./png.js";
 import type { ColorProfile } from "./icc.js";
+import { concatBytes } from "./bytes.js";
 
 export function isJpeg(bytes: Uint8Array): boolean {
   return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
@@ -465,7 +466,7 @@ export function decodeJpeg(bytes: Uint8Array): Bitmap & { profile?: ColorProfile
   } else throw new Error(`unsupported JPEG with ${components.length} components`);
 
   let profile: ColorProfile | undefined;
-  if (iccTotal && iccParts.filter(Boolean).length === iccTotal) profile = { icc: Uint8Array.from(Buffer.concat(iccParts)) };
+  if (iccTotal && iccParts.filter(Boolean).length === iccTotal) profile = { icc: concatBytes(iccParts) };
   return { ...orient({ width, height, data: out }, orientation), profile };
 }
 

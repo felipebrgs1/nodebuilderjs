@@ -3,7 +3,7 @@
 
 import {
   Box, Button, Card, Checkbox, Column, Dialog, Match, ProgressBar, RadioGroup, Row, Select, Slider, Spinner, Switch, Tabs, Text,
-  TextArea, TextField, Toggle, Tooltip, Window, colorScheme, createSignal, run, setTheme, theme,
+  TextArea, TextField, Toggle, Tooltip, Window, Scroll, colorScheme, createSignal, run, setTheme, theme,
 } from "@nodebuilderjs/core";
 
 const initial = process.env.OPEN;
@@ -28,7 +28,8 @@ function Controls() {
   const [confirm, setConfirm] = createSignal(initial === "dialogo");
   return (
     <Window title="Widgets" width={680} height={720}>
-      <Column grow={1} padding={20} gap={16}>
+      <Scroll grow={1}>
+      <Column padding={20} gap={16}>
       <Tabs
         value={tab}
         onChange={setTab}
@@ -40,8 +41,9 @@ function Controls() {
       />
       <Switch>
       <Match when={() => tab() === "controles"}>
-      <Row grow={1} gap={16} align="start">
-        <Card grow={1} gap={14}>
+      {/* Side by side when they fit, one under the other on a narrow window (a phone). */}
+      <Row wrap gap={16} align="start">
+        <Card width={280} grow={1} gap={14}>
           <Text bold>Ajustes</Text>
           <Toggle checked={wifi} onChange={setWifi} label="Wi-Fi" />
           <Toggle checked={() => colorScheme() === "dark"} onChange={(on) => setTheme(on ? "dark" : "light")} label="Tema escuro" />
@@ -60,7 +62,7 @@ function Controls() {
           <Slider value={volume} onChange={setVolume} width={220} />
           <Slider value={() => 70} onChange={() => {}} width={220} disabled />
         </Card>
-        <Card grow={1} gap={14}>
+        <Card width={280} grow={1} gap={14}>
           <Text bold>Formulário</Text>
           <TextField value={name} onInput={setName} placeholder="Nome" />
           <TextField value={() => "somente leitura"} onInput={() => {}} disabled />
@@ -101,6 +103,7 @@ function Controls() {
       </Match>
       </Switch>
       </Column>
+      </Scroll>
       <Dialog
         open={confirm}
         onClose={() => setConfirm(false)}

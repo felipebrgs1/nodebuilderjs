@@ -30,6 +30,8 @@ export function TextArea(
     value: () => props.value(),
     shown: () => props.value(),
     placeholder: () => (props.placeholder === undefined ? undefined : read(props.placeholder)),
+    multiline: true,
+    input: (value) => props.onInput(value),
   };
   let scrollY = 0;
   /** x the caret keeps while moving up and down (null: its own x). */

@@ -5,7 +5,7 @@ import {
 import type { PointerEvent } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
 import { findByText, interact, mount } from "@nodebuilderjs/core/testing";
-import { createInput } from "../../src/runtime/input.js";
+import { createInput, hasContextMenu } from "../../src/runtime/input.js";
 
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
 
@@ -349,7 +349,7 @@ describe("custom title bar", () => {
         <Box width={40} onPointerDown={() => log.push("inner")} />
       </Row>
     ));
-    input.pointerDown(...center(root.children[0]!.children[0]!), 0);
+    input.pointerDown(10, 10, 0);
     expect(log).toEqual(["inner", "row"]);
     expect(host.calls).toEqual([]);
   });
@@ -804,4 +804,82 @@ test("the built-in title bar shows a reactive title", () => {
   setName("b.md");
   relayout();
   expect(findByText(root, "b.md")).toBeDefined();
+});
+
+describe("what the platform does with a key", () => {
+  const key = (name: string, o: { shift?: boolean } = {}) => ({ key: name, text: "", ctrl: false, shift: !!o.shift, alt: false, repeat: false });
+
+  test("keyDown says whether anything took the key (the browser skips its default only then)", () => {
+    const { input } = setup(() => (
+      <Column>
+        <Button label="a" onClick={() => {}} />
+        <Box focusable onKeyDown={(e) => e.key === "x" && e.stop()} />
+      </Column>
+    ));
+    expect(input.keyDown(key("q"))).toBe(false); // nothing listens, nothing scrolls
+    expect(input.keyDown(key("Tab"))).toBe(true); // moved the focus
+    expect(input.keyDown(key("Return"))).toBe(true); // the Button took it
+  });
+
+  test("a stopped key and a scroll key that scrolled are taken; one with nothing to scroll is not", () => {
+    const { input, root } = setup(() => (
+      <Scroll height={100}>
+        <Box height={400} focusable onKeyDown={(e) => e.key === "x" && e.stop()} />
+      </Scroll>
+    ));
+    input.pointerDown(10, 10, 0);
+    expect(input.keyDown(key("x"))).toBe(true);
+    expect(input.keyDown(key("Page_Down"))).toBe(true);
+    expect(input.keyDown(key("End"))).toBe(true);
+    expect(input.keyDown(key("End"))).toBe(false); // already at the end
+  });
+
+  test("with the platform's scrollbars, the strip along a Scroll's edge is its content", () => {
+    const root = new UINode("root");
+    root.isRoot = true;
+    const clicks: string[] = [];
+    createRoot(() => insert(root, () => (
+      <Scroll height={100}>
+        <Box height={400} onClick={() => clicks.push("row")} />
+      </Scroll>
+    )));
+    layout(root, 300, 200);
+    const input = createInput(root, {
+      size: () => ({ width: 300, height: 200 }), resizable: () => false, setCursor() {}, move() {}, toggleMaximize() {}, resize() {},
+      invalidate() {}, now: () => now, platformScrollbars: true,
+    });
+    input.pointerDown(296, 50, 0);
+    input.pointerUp(296, 50, 0);
+    expect(clicks).toEqual(["row"]);
+  });
+});
+
+test("a platform hit test (the DOM's elementFromPoint) is asked instead of walking the boxes", () => {
+  const root = new UINode("root");
+  root.isRoot = true;
+  const clicks: string[] = [];
+  createRoot(() => insert(root, () => <Column><Box onClick={() => clicks.push("a")} /><Box onClick={() => clicks.push("b")} /></Column>));
+  // No layout at all: every box is 0x0, only the platform knows what is where.
+  const [a, b] = root.children[0]!.children;
+  const asked: string[] = [];
+  const input = createInput(root, {
+    size: () => ({ width: 300, height: 200 }), resizable: () => false, setCursor() {}, move() {}, toggleMaximize() {}, resize() {},
+    invalidate() {}, now: () => now,
+    hitTest: (x, y) => (asked.push(`${x},${y}`), x < 100 ? a! : b!),
+  });
+  input.pointerDown(150, 10, 0);
+  input.pointerUp(150, 10, 0);
+  expect(clicks).toEqual(["b"]);
+  expect(asked).toContain("150,10");
+});
+
+test("hasContextMenu: whether a right press there opens the app's menu (else the platform's may show)", () => {
+  const root = new UINode("root");
+  root.isRoot = true;
+  createRoot(() => insert(root, () => <Column onContextMenu={() => {}}><Box /></Column>));
+  const column = root.children[0]!;
+  expect(hasContextMenu(column.children[0]!)).toBe(true); // an ancestor has one
+  const plain = new UINode();
+  expect(hasContextMenu(plain)).toBe(false);
+  expect(hasContextMenu(null)).toBe(false);
 });

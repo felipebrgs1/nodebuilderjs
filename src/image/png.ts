@@ -4,6 +4,7 @@
 // apply; gAMA/cHRM alone are ignored, as most UI toolkits do.
 
 import { inflateSync } from "node:zlib";
+import { concatBytes } from "./bytes.js";
 import type { ColorSpace } from "../render/color.js";
 import type { ColorProfile } from "./icc.js";
 
@@ -61,7 +62,7 @@ export function decodePng(bytes: Uint8Array): Bitmap & { profile?: ColorProfile 
   }
   if (colorType === 3 && !palette) throw new Error("PNG palette missing");
 
-  const raw = inflateSync(Buffer.concat(idat));
+  const raw = inflateSync(concatBytes(idat));
   const out = new Uint8Array(width * height * 4);
   const bitsPerPixel = channels * depth;
   const bpp = Math.max(1, bitsPerPixel >> 3); // filter distance in bytes

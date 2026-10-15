@@ -26,6 +26,7 @@ export function Button(
   },
 ) {
   const node = new UINode("Button");
+  node.role = "button";
   const variant = () => read(props.variant ?? "default");
   Object.assign(node.style, {
     direction: "row", align: "center", justify: "center", gap: 6, padding: [8, 16], radius: theme.radius, cursor: "pointer",

@@ -10,7 +10,7 @@ import { type RunOptions, runWith, windowControls, windowState } from "../../src
 import { outputColorSpace } from "../../src/render/color.js";
 import { decode } from "../helpers.js";
 import { setFrameClock } from "../../src/runtime/frames.js";
-import type { Native, NativeEvent } from "../../src/runtime/native.js";
+import type { Native, NativeEvent, NativeKeyEvent } from "../../src/runtime/native.js";
 
 const NO_KEYS = { ctrl: false, shift: false, alt: false, super: false };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -483,5 +483,39 @@ describe("overflow warnings", () => {
     const app = await start(() => <Panel label={() => "a"} />, { env: { NODE_ENV: "production" } });
     expect(app.calls.render).toBe(1);
     expect(app.warnings).toEqual([]);
+  });
+});
+
+describe("a native that renders the tree itself (the DOM renderer)", () => {
+  test("gets the tree instead of layout and draw commands; the boxes it writes are what input hits", async () => {
+    const fake = fakeNative();
+    const trees: UINode[] = [];
+    const clicks: string[] = [];
+    fake.native.renderTree = (root) => {
+      trees.push(root);
+      // Its own layout: the Box at (10, 10) 50x20.
+      const box = root.children[0]!.children[0]!;
+      Object.assign(box, { x: 10, y: 10, width: 50, height: 20 });
+      Object.assign(root.children[0]!, { x: 0, y: 0, width: 400, height: 300 });
+      Object.assign(root, { x: 0, y: 0, width: 400, height: 300 });
+    };
+    runWith(fake.native, () => <Column><Box onClick={() => clicks.push("box")} /></Column>, { maxFps: 1000 }, { env: {} });
+    const send = async (...events: NativeEvent[]) => (fake.emit(...events), await tick());
+    await send({ type: "configure", width: 400, height: 300, scale: 1, maximized: false, activated: true, transparent: false });
+    expect(trees).toHaveLength(1);
+    expect(fake.calls.render).toBe(0);
+    await send({ type: "pointerdown", x: 20, y: 15, button: 0, ...NO_KEYS }, { type: "pointerup", x: 20, y: 15, button: 0, ...NO_KEYS });
+    expect(clicks).toEqual(["box"]);
+  });
+
+  test("a key event says whether the app took it, for the platform's default action", async () => {
+    const fake = fakeNative();
+    fake.native.renderTree = () => {};
+    runWith(fake.native, () => <Box onKeyDown={(e) => e.key === "a" && e.stop()} />, { maxFps: 1000 }, { env: {} });
+    await (fake.emit({ type: "configure", width: 400, height: 300, scale: 1, maximized: false, activated: true, transparent: false }), tick());
+    const a: NativeKeyEvent = { type: "keydown", key: "a", text: "a", repeat: false, ...NO_KEYS };
+    const b: NativeKeyEvent = { ...a, key: "b", text: "b" };
+    fake.emit(a, b);
+    expect([a.handled, b.handled]).toEqual([true, false]);
   });
 });

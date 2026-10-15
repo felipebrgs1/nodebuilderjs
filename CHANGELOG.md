@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Web target (experimental):** `nodebuilder web <app.tsx> [--serve]` builds the same app as a
+  web page. The widget tree becomes elements styled with CSS and laid out by the browser:
+  screen readers see buttons, checkboxes, sliders and dialogs with their states, text fields
+  are `<input>`/`<textarea>` (IME, autofill, the mobile keyboard), text can be selected and
+  found, `Scroll` scrolls natively. Widgets that draw themselves (`Canvas`, charts, `Slider`,
+  `Icon`, `Image`) draw into a `<canvas>` of their size. What is left is in `WEB.md`.
+- Widgets carry platform-neutral `role` and `states` on their nodes (`node.role`,
+  `node.states()`, `node.disabled`).
+
 ## 0.5.0 (2026-10-14)
 
 Core 0.5.0 needs `@nodebuilderjs/linux-x64` 0.5.0, which it installs with it: the addon gained

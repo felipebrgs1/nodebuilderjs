@@ -9,6 +9,8 @@ export function Checkbox(
   props: StyleProps & Handlers & { checked: Accessor<boolean>; onChange: (checked: boolean) => void; label?: MaybeAccessor<string>; disabled?: MaybeAccessor<boolean> },
 ) {
   const row = new UINode("Checkbox");
+  row.role = "checkbox";
+  row.states = () => ({ checked: props.checked() });
   Object.assign(row.style, { direction: "row", align: "center", gap: 10, cursor: "pointer" } satisfies Style);
   applyProps(row, props);
   const disabled = disableable(row, props);

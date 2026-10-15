@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { decodeImage } from "./decode.js";
 import type { Bitmap } from "./png.js";
 import type { ColorSpace } from "../render/color.js";
+import { invalidate } from "../render/node.js";
 
 export type { Bitmap } from "./png.js";
 
@@ -62,6 +63,10 @@ function cacheKey(input: ImageInput): unknown {
 
 function load(input: ImageInput, key: unknown): ImageSource {
   const source: ImageSource = { width: 0, height: 0, handle: 0, owner: null, pixels: null, colorSpace: "srgb", refs: 0, key };
+  return decodeInto(source, input, key);
+}
+
+function decodeInto(source: ImageSource, input: ImageInput, key: unknown): ImageSource {
   try {
     let bitmap: Bitmap;
     if (input instanceof Uint8Array) bitmap = decodeImage(input);
@@ -70,10 +75,18 @@ function load(input: ImageInput, key: unknown): ImageSource {
       bitmap = decodeImage(readFileSync(key));
     } else bitmap = input;
     if (bitmap.data.length < bitmap.width * bitmap.height * 4) throw new Error("bitmap data is smaller than width*height*4");
-    return Object.assign(source, { width: bitmap.width, height: bitmap.height, pixels: bitmap.data, colorSpace: bitmap.colorSpace ?? "srgb" });
+    return Object.assign(source, { width: bitmap.width, height: bitmap.height, pixels: bitmap.data, colorSpace: bitmap.colorSpace ?? "srgb", error: undefined });
   } catch (err) {
     const error = `${typeof key === "string" ? key : "image"}: ${(err as Error).message}`;
-    console.warn(`nodebuilder: could not load ${error}`);
+    // A decoder still loading (the web's, fetched on demand): decode again when it is ready.
+    const retry = (err as { retry?: Promise<unknown> }).retry;
+    if (retry) {
+      retry.then(() => {
+        if (cache.get(key) !== source) return; // released meanwhile
+        decodeInto(source, input, key);
+        invalidate();
+      });
+    } else console.warn(`nodebuilder: could not load ${error}`);
     return Object.assign(source, { error });
   }
 }

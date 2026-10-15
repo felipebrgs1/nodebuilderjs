@@ -3,7 +3,7 @@
 // Enter picks, Escape closes.
 
 import { type Child, jsx } from "../../jsx-runtime.js";
-import { type Handlers, type Style, UINode } from "../../render/node.js";
+import { type ElementRef, type Handlers, type Style, UINode } from "../../render/node.js";
 import { createPresence } from "../../animation/index.js";
 import { Show } from "../../reactive/control.js";
 import { type Accessor, type MaybeAccessor, createEffect, createSignal, read, untrack } from "../../reactive/signals.js";
@@ -43,6 +43,8 @@ export function Select<T>(
   const state = interaction(trigger);
   const [open, setOpen] = createSignal(false);
   const [highlight, setHighlight] = createSignal(-1);
+  trigger.role = "combobox";
+  trigger.states = () => ({ expanded: open() });
 
   const options = props.options;
   const current = () => options.findIndex((o) => Object.is(o.value, props.value()));
@@ -113,6 +115,11 @@ export function Select<T>(
         background: () => (highlight() === i && enabled(i) ? theme.control.hover : "transparent"),
         onPointerEnter: () => enabled(i) && setHighlight(i),
         onClick: () => pick(i),
+        ref: (r) => {
+          const n = r as UINode;
+          n.role = "option";
+          n.states = () => ({ selected: i === current() });
+        },
         children: jsx(Text, { text: option.label, maxLines: 1, bold: () => i === current(), color: () => (i === current() ? theme.accent.pressed : theme.text.primary) }),
       });
       return row;
@@ -128,7 +135,7 @@ export function Select<T>(
         padding: 4,
         gap: 0,
         shadow: { color: "#00000030", blur: 16, y: 4 },
-        children: jsx(Scroll, { maxHeight: 240, children: rows }),
+        children: jsx(Scroll, { maxHeight: 240, children: rows, ref: (r: ElementRef) => ((r as UINode).role = "listbox") }),
       }),
     });
   };
