@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 (2026-10-14)
+
+Core 0.5.0 needs `@nodebuilderjs/linux-x64` 0.5.0, which it installs with it: the addon gained
+Wayland color management, per-image color spaces and image color profiles.
 
 ### Added
 - **Colors by name:** any color prop takes a theme path (`color="text.secondary"`,

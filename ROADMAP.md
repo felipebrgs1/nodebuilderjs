@@ -51,6 +51,9 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   that show the app's frame, and the fixes from two user reports
 - 0.4.2 (2026-10-14): releases published by CI from `main` with npm provenance, branch and PR
   rules (`CONTRIBUTING.md`), the `<Show>` caveat up front in the template docs
+- 0.5.0 (2026-10-14): wide-gamut color (Display P3 surface, `color(display-p3)`/`oklch()`,
+  image color profiles, P3 screenshots, opt-in 16-bit buffer), theme colors by name
+  (`color="text.secondary"`, `createThemeTokens` names) and `<Text variant>`
 - Benchmarks contra Electron, Tauri, Flutter e egui com as mesmas cenas
 - `nodebuilder doctor` (2026-10-14): checks the machine (runtime, native core and system
   libraries, display, keyboard, GL, fonts, libheif) and prints the command that fixes each
@@ -153,7 +156,7 @@ O que garante que as melhorias acima não regridam e que o projeto aguente mais 
   fonts (bugs, core, API, CLI, tests, order of work) is mapped in [FONTS.md](FONTS.md).
 - ~~Rich text (several styles in one paragraph)~~ **done** (2026-10-14: `RichText`). Missing:
   selecting it.
-- **0.5: styled editing** (asked for by the Dia report, a markdown editor): `TextArea
+- **0.6: styled editing** (asked for by the Dia report, a markdown editor): `TextArea
   decorations={(text, selection) => [{ from, to, style }]}` with per-range font, size, color,
   background, underline, `hidden` (markers concealed while the caret is elsewhere) and `onClick`,
   plus whole-line decorations (code block backgrounds); the RichText layout (mixed fonts, a
