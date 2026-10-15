@@ -1,11 +1,11 @@
-import { type Child, setTextFactory } from "../jsx-runtime.js";
-import { edges } from "../render/layout.js";
-import { type FontStyle, type Handlers, REGULAR, UINode, displayScale, invalidate, invalidationCount, measureText, metricsGeneration } from "../render/node.js";
-import { type TextLine, minContentWidth, wrapText } from "../render/text-wrap.js";
-import { type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
-import { clipboard } from "../runtime/clipboard.js";
-import { theme } from "../theme.js";
-import { type StyleProps, applyProps, inherited, inheritedText } from "./props.js";
+import { type Child, setTextFactory } from "../../jsx-runtime.js";
+import { edges } from "../../render/layout.js";
+import { type FontStyle, type Handlers, REGULAR, UINode, displayScale, invalidate, invalidationCount, measureText, metricsGeneration } from "../../render/node.js";
+import { type TextLine, minContentWidth, wrapText } from "../../render/text-wrap.js";
+import { type MaybeAccessor, createEffect, read } from "../../reactive/signals.js";
+import { clipboard } from "../../runtime/clipboard.js";
+import { theme } from "../../theme.js";
+import { type StyleProps, applyProps, inherited, inheritedText } from "../props.js";
 import { boundaryAt, charAt, charEdges, wordAt } from "./text-selection.js";
 
 function textOf(child: Child): string {

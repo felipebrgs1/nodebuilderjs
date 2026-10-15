@@ -1,15 +1,15 @@
 // <Tooltip>: a short hint shown next to its child after the pointer rests on it.
 
-import { type Child, insert, jsx } from "../jsx-runtime.js";
-import { type Handlers, type Placement, UINode } from "../render/node.js";
-import { createPresence } from "../animation/index.js";
-import { Show } from "../reactive/control.js";
-import { type MaybeAccessor, createEffect, createSignal, onCleanup, read } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { Box } from "./containers.js";
+import { type Child, insert, jsx } from "../../jsx-runtime.js";
+import { type Handlers, type Placement, UINode } from "../../render/node.js";
+import { createPresence } from "../../animation/index.js";
+import { Show } from "../../reactive/control.js";
+import { type MaybeAccessor, createEffect, createSignal, onCleanup, read } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { Box } from "../layout/containers.js";
 import { Overlay } from "./overlay.js";
-import { type StyleProps, applyProps } from "./props.js";
-import { Text } from "./text.js";
+import { type StyleProps, applyProps } from "../props.js";
+import { Text } from "../text/text.js";
 
 export function Tooltip(
   props: StyleProps & Handlers & {

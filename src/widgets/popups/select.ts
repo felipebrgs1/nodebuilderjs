@@ -2,17 +2,17 @@
 // The field keeps the keyboard focus while the list is open: the arrows move the highlight,
 // Enter picks, Escape closes.
 
-import { type Child, jsx } from "../jsx-runtime.js";
-import { type Handlers, type Style, UINode } from "../render/node.js";
-import { createPresence } from "../animation/index.js";
-import { Show } from "../reactive/control.js";
-import { type Accessor, type MaybeAccessor, createEffect, createSignal, read, untrack } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { Box, Card, Scroll } from "./containers.js";
+import { type Child, jsx } from "../../jsx-runtime.js";
+import { type Handlers, type Style, UINode } from "../../render/node.js";
+import { createPresence } from "../../animation/index.js";
+import { Show } from "../../reactive/control.js";
+import { type Accessor, type MaybeAccessor, createEffect, createSignal, read, untrack } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { Box, Card, Scroll } from "../layout/containers.js";
 import { Overlay } from "./overlay.js";
-import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "./props.js";
-import type { Choice } from "./radio.js";
-import { Text } from "./text.js";
+import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "../props.js";
+import type { Choice } from "../controls/radio.js";
+import { Text } from "../text/text.js";
 
 function chevron(color: () => string) {
   const node = new UINode("SelectChevron");

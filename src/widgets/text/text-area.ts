@@ -3,12 +3,12 @@
 // follows (scrollIntoView of the caret's region), and with a height that cuts its content it
 // scrolls by itself (wheel, caret). Editing, selection and undo come from text-edit.ts.
 
-import { edges, visibleRegion } from "../render/layout.js";
-import { type FontStyle, UINode, invalidate, measureText, metricsGeneration } from "../render/node.js";
-import { type TextLine, wrapText } from "../render/text-wrap.js";
-import { type MaybeAccessor, createEffect, read, untrack } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { inherited, inheritedFont, ownHandler } from "./props.js";
+import { edges, visibleRegion } from "../../render/layout.js";
+import { type FontStyle, UINode, invalidate, measureText, metricsGeneration } from "../../render/node.js";
+import { type TextLine, wrapText } from "../../render/text-wrap.js";
+import { type MaybeAccessor, createEffect, read, untrack } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { inherited, inheritedFont, ownHandler } from "../props.js";
 import { type EditableProps, editKey, editable } from "./text-edit.js";
 import { boundaryAt, charAt, charEdges } from "./text-selection.js";
 

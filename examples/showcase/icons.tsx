@@ -1,24 +1,24 @@
 // <Icon>: SVG icons from Lucide and Phosphor, colored like text (and tinted on the GPU).
 // The .svg files are imported as text so `nodebuilder package` embeds them.
 import { Box, Button, Card, Column, For, Icon, Row, Scroll, Text, Window, createSignal, run, theme } from "@nodebuilderjs/core";
-import lucideBell from "./assets/icons/lucide-bell.svg" with { type: "text" };
-import lucideCamera from "./assets/icons/lucide-camera.svg" with { type: "text" };
-import lucideDownload from "./assets/icons/lucide-download.svg" with { type: "text" };
-import lucideHeart from "./assets/icons/lucide-heart.svg" with { type: "text" };
-import lucideHouse from "./assets/icons/lucide-house.svg" with { type: "text" };
-import lucideSearch from "./assets/icons/lucide-search.svg" with { type: "text" };
-import lucideSettings from "./assets/icons/lucide-settings.svg" with { type: "text" };
-import lucideStar from "./assets/icons/lucide-star.svg" with { type: "text" };
-import lucideTrash from "./assets/icons/lucide-trash-2.svg" with { type: "text" };
-import lucideUser from "./assets/icons/lucide-user.svg" with { type: "text" };
-import phBell from "./assets/icons/phosphor-bell-duotone.svg" with { type: "text" };
-import phCamera from "./assets/icons/phosphor-camera-duotone.svg" with { type: "text" };
-import phGear from "./assets/icons/phosphor-gear-duotone.svg" with { type: "text" };
-import phHeart from "./assets/icons/phosphor-heart-duotone.svg" with { type: "text" };
-import phHouse from "./assets/icons/phosphor-house-duotone.svg" with { type: "text" };
-import phSearch from "./assets/icons/phosphor-magnifying-glass-duotone.svg" with { type: "text" };
-import phStar from "./assets/icons/phosphor-star-duotone.svg" with { type: "text" };
-import phUser from "./assets/icons/phosphor-user-duotone.svg" with { type: "text" };
+import lucideBell from "../assets/icons/lucide-bell.svg" with { type: "text" };
+import lucideCamera from "../assets/icons/lucide-camera.svg" with { type: "text" };
+import lucideDownload from "../assets/icons/lucide-download.svg" with { type: "text" };
+import lucideHeart from "../assets/icons/lucide-heart.svg" with { type: "text" };
+import lucideHouse from "../assets/icons/lucide-house.svg" with { type: "text" };
+import lucideSearch from "../assets/icons/lucide-search.svg" with { type: "text" };
+import lucideSettings from "../assets/icons/lucide-settings.svg" with { type: "text" };
+import lucideStar from "../assets/icons/lucide-star.svg" with { type: "text" };
+import lucideTrash from "../assets/icons/lucide-trash-2.svg" with { type: "text" };
+import lucideUser from "../assets/icons/lucide-user.svg" with { type: "text" };
+import phBell from "../assets/icons/phosphor-bell-duotone.svg" with { type: "text" };
+import phCamera from "../assets/icons/phosphor-camera-duotone.svg" with { type: "text" };
+import phGear from "../assets/icons/phosphor-gear-duotone.svg" with { type: "text" };
+import phHeart from "../assets/icons/phosphor-heart-duotone.svg" with { type: "text" };
+import phHouse from "../assets/icons/phosphor-house-duotone.svg" with { type: "text" };
+import phSearch from "../assets/icons/phosphor-magnifying-glass-duotone.svg" with { type: "text" };
+import phStar from "../assets/icons/phosphor-star-duotone.svg" with { type: "text" };
+import phUser from "../assets/icons/phosphor-user-duotone.svg" with { type: "text" };
 
 const LUCIDE = [lucideHouse, lucideSearch, lucideSettings, lucideBell, lucideUser, lucideCamera, lucideHeart, lucideStar, lucideDownload, lucideTrash];
 const PHOSPHOR = [phHouse, phSearch, phGear, phBell, phUser, phCamera, phHeart, phStar];

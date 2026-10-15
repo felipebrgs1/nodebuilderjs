@@ -1,9 +1,9 @@
-import { insert, jsx } from "../jsx-runtime.js";
-import { type Handlers, type Style, UINode } from "../render/node.js";
-import { type Accessor, type MaybeAccessor, createEffect, untrack } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "./props.js";
-import { Text } from "./text.js";
+import { insert, jsx } from "../../jsx-runtime.js";
+import { type Handlers, type Style, UINode } from "../../render/node.js";
+import { type Accessor, type MaybeAccessor, createEffect, untrack } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "../props.js";
+import { Text } from "../text/text.js";
 
 export function Checkbox(
   props: StyleProps & Handlers & { checked: Accessor<boolean>; onChange: (checked: boolean) => void; label?: MaybeAccessor<string>; disabled?: MaybeAccessor<boolean> },

@@ -6,10 +6,10 @@
 // ownership and inherited text style from that spot, while layout, paint and hit testing
 // treat it as a separate layer of the root (root.layers).
 
-import { type Child, insert } from "../jsx-runtime.js";
-import { type Edges, type ElementRef, type Handlers, type Placement, type Point, UINode, invalidate, overlayLayers } from "../render/node.js";
-import { type MaybeAccessor, onCleanup, read } from "../reactive/signals.js";
-import { type StyleProps, applyProps } from "./props.js";
+import { type Child, insert } from "../../jsx-runtime.js";
+import { type Edges, type ElementRef, type Handlers, type Placement, type Point, UINode, invalidate, overlayLayers } from "../../render/node.js";
+import { type MaybeAccessor, onCleanup, read } from "../../reactive/signals.js";
+import { type StyleProps, applyProps } from "../props.js";
 
 export function Overlay(
   props: StyleProps & Handlers & {

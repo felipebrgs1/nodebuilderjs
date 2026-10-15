@@ -5,7 +5,7 @@ import type { Child } from "../jsx-runtime.js";
 import { edges } from "../render/layout.js";
 import { createSignal } from "../reactive/signals.js";
 import { theme } from "../theme.js";
-import { Canvas } from "../widgets/canvas.js";
+import { Canvas } from "../widgets/media/canvas.js";
 import type { StyleProps } from "../widgets/props.js";
 import { Cell, type CellProps, Legend, Pie, type PieProps, Tooltip, type TooltipProps } from "./components.js";
 import { legend } from "./cartesian.js";

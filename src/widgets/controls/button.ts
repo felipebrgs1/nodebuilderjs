@@ -1,9 +1,9 @@
-import { type Child, insert, jsx } from "../jsx-runtime.js";
-import { type Handlers, type Style, UINode } from "../render/node.js";
-import { type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "./props.js";
-import { Text } from "./text.js";
+import { type Child, insert, jsx } from "../../jsx-runtime.js";
+import { type Handlers, type Style, UINode } from "../../render/node.js";
+import { type MaybeAccessor, createEffect, read } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "../props.js";
+import { Text } from "../text/text.js";
 
 export type ButtonVariant = "default" | "primary" | "danger" | "flat";
 

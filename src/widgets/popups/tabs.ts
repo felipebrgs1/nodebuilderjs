@@ -1,13 +1,13 @@
 // <Tabs>: the bar of tabs; the app shows the content of the selected one (e.g. with <Switch>).
 // One Tab stop; Left/Right move the selection, skipping disabled tabs.
 
-import { type Handlers, type Style, UINode } from "../render/node.js";
-import { type Accessor, type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
-import type { Choice } from "./radio.js";
-import { rovingFocus } from "./roving.js";
-import { Text } from "./text.js";
+import { type Handlers, type Style, UINode } from "../../render/node.js";
+import { type Accessor, type MaybeAccessor, createEffect, read } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { type StyleProps, applyProps, disableable, interaction } from "../props.js";
+import type { Choice } from "../controls/radio.js";
+import { rovingFocus } from "../roving.js";
+import { Text } from "../text/text.js";
 
 const UNDERLINE = 2;
 

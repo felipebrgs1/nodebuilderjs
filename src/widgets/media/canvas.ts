@@ -5,15 +5,15 @@
 // painting, so `draw` never sees a canvas that was not laid out yet. Painting replays the
 // recording, offset to where the canvas is.
 
-import { edges, visibleRegion } from "../render/layout.js";
-import { type CanvasGradient, type GradientStop, isGradient, offsetGradient } from "../render/gradient.js";
-import { type Color, type FontStyle, type Handlers, type LineCap, type Paint, type Painter, type Radius, UINode, fontStyle, invalidate, measureText } from "../render/node.js";
-import { type PolylineOptions, fillPolygon, polyline } from "../render/shapes.js";
-import { truncate } from "../render/text-wrap.js";
-import { batch, createEffect, createSignal, untrack } from "../reactive/signals.js";
-import { displayScale } from "../render/node.js";
-import { theme } from "../theme.js";
-import { type StyleProps, applyProps, inherited } from "./props.js";
+import { edges, visibleRegion } from "../../render/layout.js";
+import { type CanvasGradient, type GradientStop, isGradient, offsetGradient } from "../../render/gradient.js";
+import { type Color, type FontStyle, type Handlers, type LineCap, type Paint, type Painter, type Radius, UINode, fontStyle, invalidate, measureText } from "../../render/node.js";
+import { type PolylineOptions, fillPolygon, polyline } from "../../render/shapes.js";
+import { truncate } from "../../render/text-wrap.js";
+import { batch, createEffect, createSignal, untrack } from "../../reactive/signals.js";
+import { displayScale } from "../../render/node.js";
+import { theme } from "../../theme.js";
+import { type StyleProps, applyProps, inherited } from "../props.js";
 
 /**
  * What `<Canvas draw>` draws with. Coordinates are local to the canvas (inside its padding).

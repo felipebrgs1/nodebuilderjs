@@ -1,6 +1,6 @@
 // Realistic app-shaped benchmark: sidebar, tabs, stat cards, a bar chart, a sortable/filterable
 // table, a streaming log and a settings form. Mirrored in compare/electron (SCENE=dashboard).
-//   NB_STATS=1 TAB=table ROWS=1000 bun examples/dashboard.tsx
+//   NB_STATS=1 TAB=table ROWS=1000 bun examples/bench/dashboard.tsx
 // Env: TAB=overview|table|logs|settings (initial tab), LIVE=0 (no data updates),
 //      CYCLE=n (switch tab every n frames: measures mount/unmount), ROWS=n (table size).
 import {

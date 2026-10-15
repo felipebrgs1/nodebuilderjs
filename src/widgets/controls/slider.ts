@@ -1,9 +1,9 @@
 // <Slider>: a number in [min, max] picked by dragging a thumb along a track, or with the keys.
 
-import { type Handlers, type Style, UINode, invalidate } from "../render/node.js";
-import { type Accessor, type MaybeAccessor, createEffect, untrack } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, interaction, ownColors, ownHandler } from "./props.js";
+import { type Handlers, type Style, UINode, invalidate } from "../../render/node.js";
+import { type Accessor, type MaybeAccessor, createEffect, untrack } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { type StyleProps, applyProps, disableable, interaction, ownColors, ownHandler } from "../props.js";
 
 const THUMB = 16;
 const TRACK = 4;

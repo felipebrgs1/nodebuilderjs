@@ -1133,12 +1133,12 @@ is one full core, memory is the summed PSS of all processes.
 
 | Scene | Electron | Tauri | Flutter | egui | nodebuilder |
 |---|---|---|---|---|---|
-| **Dashboard** ([dashboard.tsx](examples/dashboard.tsx)): overview | 59 · 58% · 337 MB | 60 · 66% · 267 MB | 59 · 45% · 126 MB | 59 · 27% · 105 MB | 59 · 33% · 91 MB |
+| **Dashboard** ([dashboard.tsx](examples/bench/dashboard.tsx)): overview | 59 · 58% · 337 MB | 60 · 66% · 267 MB | 59 · 45% · 126 MB | 59 · 27% · 105 MB | 59 · 33% · 91 MB |
 | Dashboard: table with 500 rows | 59 · 64% · 383 MB | 59 · 62% · 292 MB | 59 · 41% · 133 MB¹ | 54 · 72% · 112 MB | 49 · 54% · 161 MB |
 | Dashboard: live logs | 59 · 94% · 408 MB | 59 · 142% · 298 MB | 59 · 47% · 135 MB¹ | 59 · 42% · 108 MB | 56 · 45% · 157 MB |
 | Dashboard: settings | 59 · 44% · 308 MB | 60 · 51% · 267 MB | 60 · 38% · 123 MB | 60 · 23% · 105 MB | 59 · 24% · 83 MB |
 | Dashboard: tab switch every 30 frames | 58 · 70% · 384 MB | 59 · 85% · 321 MB | 59 · 45% · 141 MB | 58 · 45% · 114 MB | 55 · 43% · 166 MB |
-| **Grid** ([bench.tsx](examples/bench.tsx)): 1000 static cells | 0% · 310 MB | 0% · 216 MB | 0% · 147 MB | 0% · 106 MB | 1% · 81 MB |
+| **Grid** ([bench.tsx](examples/bench/bench.tsx)): 1000 static cells | 0% · 310 MB | 0% · 216 MB | 0% · 147 MB | 0% · 106 MB | 1% · 81 MB |
 | Grid: 1000 cells, one text changes | 58 · 58% · 321 MB | 60 · 37% · 228 MB | 59 · 51% · 155 MB | 59 · 49% · 108 MB | 57 · 39% · 110 MB |
 | Grid: 1000 cells, all change | 59 · 128% · 413 MB | 29 · 147% · 277 MB | 21 · 96% · 173 MB | 59 · 68% · 113 MB | 58 · 44% · 139 MB |
 | Grid: 3000 cells, all change | 49 · 172% · 447 MB | 20 · 123% · 351 MB | 7 · 140% · 243 MB | 46 · 84% · 128 MB | 50 · 94% · 194 MB |

@@ -3,11 +3,11 @@
 // (`value` + `onInput`); this keeps what the widget needs around it. Each widget supplies how
 // the caret moves between lines (TextArea) or not at all (TextField).
 
-import { type Color, type Handlers, type KeyEvent, type Style, type UINode } from "../render/node.js";
-import { type Accessor, type MaybeAccessor, createEffect, createSignal, onCleanup, read, untrack } from "../reactive/signals.js";
-import { clipboard } from "../runtime/clipboard.js";
-import { theme } from "../theme.js";
-import { type InteractionState, type StyleProps, applyProps, disableable, interaction } from "./props.js";
+import { type Color, type Handlers, type KeyEvent, type Style, type UINode } from "../../render/node.js";
+import { type Accessor, type MaybeAccessor, createEffect, createSignal, onCleanup, read, untrack } from "../../reactive/signals.js";
+import { clipboard } from "../../runtime/clipboard.js";
+import { theme } from "../../theme.js";
+import { type InteractionState, type StyleProps, applyProps, disableable, interaction } from "../props.js";
 import { wordAt } from "./text-selection.js";
 
 /** A selection in code points: `focus` is where the caret is, `anchor` the other end (equal: just a caret). */

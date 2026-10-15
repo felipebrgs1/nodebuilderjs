@@ -1,8 +1,8 @@
-import { edges } from "../render/layout.js";
-import { type FontStyle, UINode, invalidate, measureText } from "../render/node.js";
-import { type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { inherited, inheritedFont, ownHandler } from "./props.js";
+import { edges } from "../../render/layout.js";
+import { type FontStyle, UINode, invalidate, measureText } from "../../render/node.js";
+import { type MaybeAccessor, createEffect, read } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { inherited, inheritedFont, ownHandler } from "../props.js";
 import { type EditableProps, editKey, editable } from "./text-edit.js";
 import { boundaryAt, charAt, charEdges } from "./text-selection.js";
 

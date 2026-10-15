@@ -1,12 +1,12 @@
-import type { IconInput } from "../image/icon.js";
-import { type Child, insert } from "../jsx-runtime.js";
-import { windowControls, windowOptionsKey, windowState } from "../runtime/app.js";
-import { type Handlers, type Style, UINode, measureText } from "../render/node.js";
-import { type MaybeAccessor, createEffect } from "../reactive/signals.js";
-import { theme } from "../theme.js";
+import type { IconInput } from "../../image/icon.js";
+import { type Child, insert } from "../../jsx-runtime.js";
+import { windowControls, windowOptionsKey, windowState } from "../../runtime/app.js";
+import { type Handlers, type Style, UINode, measureText } from "../../render/node.js";
+import { type MaybeAccessor, createEffect } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
 import { Column, Divider, Row, Spacer } from "./containers.js";
-import { type StyleProps, applyProps, interaction } from "./props.js";
-import { Text } from "./text.js";
+import { type StyleProps, applyProps, interaction } from "../props.js";
+import { Text } from "../text/text.js";
 
 function WindowButton(props: { kind: "minimize" | "maximize" | "close"; onClick: () => void }) {
   const node = new UINode(`WindowButton(${props.kind})`);

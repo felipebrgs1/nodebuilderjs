@@ -3,12 +3,12 @@
 // Spans of different sizes share a baseline. Positions and widths come from the same
 // measureText as <Text>, per word, so a line's runs line up with what layout measured.
 
-import { edges } from "../render/layout.js";
-import { type Color, type FontStyle, type PointerEvent, REGULAR, UINode, displayScale, invalidate, measureText, metricsGeneration } from "../render/node.js";
-import { type MaybeAccessor, createEffect, read } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { type StyleProps, applyProps, inherited, inheritedText, ownHandler } from "./props.js";
-import type { Handlers } from "../render/node.js";
+import { edges } from "../../render/layout.js";
+import { type Color, type FontStyle, type PointerEvent, REGULAR, UINode, displayScale, invalidate, measureText, metricsGeneration } from "../../render/node.js";
+import { type MaybeAccessor, createEffect, read } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { type StyleProps, applyProps, inherited, inheritedText, ownHandler } from "../props.js";
+import type { Handlers } from "../../render/node.js";
 import type { TextAlign } from "./text.js";
 
 export interface TextSpan {

@@ -5,7 +5,7 @@ import type { Child, ElementDesc } from "../jsx-runtime.js";
 import { edges } from "../render/layout.js";
 import { type MaybeAccessor, createSignal, read } from "../reactive/signals.js";
 import { theme } from "../theme.js";
-import { Canvas, type DrawContext } from "../widgets/canvas.js";
+import { Canvas, type DrawContext } from "../widgets/media/canvas.js";
 import type { StyleProps } from "../widgets/props.js";
 import {
   Area, type AreaProps, Bar, type BarProps, CartesianGrid, type CartesianGridProps, type Curve, Legend, Line, type LineProps, type Row,

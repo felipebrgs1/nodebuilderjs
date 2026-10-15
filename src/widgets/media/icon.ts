@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { type Bitmap, type ImageSource, acquireImage, releaseImage } from "../image/source.js";
-import { edges } from "../render/layout.js";
-import { type Color, type Handlers, UINode, displayScale, invalidate } from "../render/node.js";
-import { parseColor } from "../render/paint.js";
-import { type MaybeAccessor, createEffect, onCleanup, read } from "../reactive/signals.js";
-import { type IconNode, type Rgba, type Svg, parseSvg, renderSvg } from "../svg/index.js";
-import { theme } from "../theme.js";
+import { type Bitmap, type ImageSource, acquireImage, releaseImage } from "../../image/source.js";
+import { edges } from "../../render/layout.js";
+import { type Color, type Handlers, UINode, displayScale, invalidate } from "../../render/node.js";
+import { parseColor } from "../../render/paint.js";
+import { type MaybeAccessor, createEffect, onCleanup, read } from "../../reactive/signals.js";
+import { type IconNode, type Rgba, type Svg, parseSvg, renderSvg } from "../../svg/index.js";
+import { theme } from "../../theme.js";
 import { FULL_UV } from "./image.js";
-import { type StyleProps, applyProps, inherited } from "./props.js";
+import { type StyleProps, applyProps, inherited } from "../props.js";
 
 /** SVG markup, a path to an .svg file, or Lucide's icon data. */
 export type IconInput = string | IconNode;

@@ -1,15 +1,15 @@
 // <Dialog>: a modal card over the window (title, body, actions). It focuses its first
 // control when it opens and gives the focus back when it closes.
 
-import { type Child, jsx } from "../jsx-runtime.js";
-import { type Edges, UINode, focusedElement } from "../render/node.js";
-import { createPresence } from "../animation/index.js";
-import { Show } from "../reactive/control.js";
-import { type Accessor, type MaybeAccessor, onCleanup, untrack } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { Card, Row } from "./containers.js";
+import { type Child, jsx } from "../../jsx-runtime.js";
+import { type Edges, UINode, focusedElement } from "../../render/node.js";
+import { createPresence } from "../../animation/index.js";
+import { Show } from "../../reactive/control.js";
+import { type Accessor, type MaybeAccessor, onCleanup, untrack } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { Card, Row } from "../layout/containers.js";
 import { Overlay } from "./overlay.js";
-import { Text } from "./text.js";
+import { Text } from "../text/text.js";
 
 function firstFocusable(node: UINode): UINode | null {
   if (node.focusable && node.tabStop) return node;

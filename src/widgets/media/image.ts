@@ -1,8 +1,8 @@
-import { type ImageInput, type ImageSource, acquireImage, releaseImage } from "../image/source.js";
-import { edges } from "../render/layout.js";
-import { type Handlers, UINode, insetRadius, invalidate } from "../render/node.js";
-import { type MaybeAccessor, createEffect, onCleanup, read } from "../reactive/signals.js";
-import { type StyleProps, applyProps } from "./props.js";
+import { type ImageInput, type ImageSource, acquireImage, releaseImage } from "../../image/source.js";
+import { edges } from "../../render/layout.js";
+import { type Handlers, UINode, insetRadius, invalidate } from "../../render/node.js";
+import { type MaybeAccessor, createEffect, onCleanup, read } from "../../reactive/signals.js";
+import { type StyleProps, applyProps } from "../props.js";
 
 /** How the image fills its box: whole and centered, cropped to fill, or stretched. */
 export type ImageFit = "contain" | "cover" | "fill";

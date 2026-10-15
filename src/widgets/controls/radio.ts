@@ -1,13 +1,13 @@
 // <RadioGroup>: pick one of several options. The group is one Tab stop (the selected
 // option); the arrow keys move the choice, skipping disabled options, like native radios.
 
-import { insert, jsx } from "../jsx-runtime.js";
-import { type Handlers, type Style, UINode } from "../render/node.js";
-import { type Accessor, type MaybeAccessor, createEffect, read, untrack } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, interaction } from "./props.js";
-import { rovingFocus } from "./roving.js";
-import { Text } from "./text.js";
+import { insert, jsx } from "../../jsx-runtime.js";
+import { type Handlers, type Style, UINode } from "../../render/node.js";
+import { type Accessor, type MaybeAccessor, createEffect, read, untrack } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { type StyleProps, applyProps, disableable, interaction } from "../props.js";
+import { rovingFocus } from "../roving.js";
+import { Text } from "../text/text.js";
 
 export interface Choice<T> {
   value: T;

@@ -2,11 +2,11 @@
 // `with { type: "file" }` makes `bun build --compile` (and so `nodebuilder package`) embed the
 // file; the import is its path, which works both in development and in the executable.
 import { Button, Card, Column, Grid, Image, Row, Scroll, Text, Window, createSignal, run, theme } from "@nodebuilderjs/core";
-import logo from "./assets/logo.png" with { type: "file" };
-import photo from "./assets/plasma.png" with { type: "file" };
-import photoJpeg from "./assets/photo.jpg" with { type: "file" };
-import photoWebp from "./assets/photo.webp" with { type: "file" };
-import photoAvif from "./assets/photo.avif" with { type: "file" };
+import logo from "../assets/logo.png" with { type: "file" };
+import photo from "../assets/plasma.png" with { type: "file" };
+import photoJpeg from "../assets/photo.jpg" with { type: "file" };
+import photoWebp from "../assets/photo.webp" with { type: "file" };
+import photoAvif from "../assets/photo.avif" with { type: "file" };
 
 // PNG, JPEG and WebP are decoded in TypeScript; AVIF (and HEIC) by the system's libheif.
 const FORMATS = [

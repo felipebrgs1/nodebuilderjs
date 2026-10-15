@@ -1,5 +1,5 @@
-// Flutter mirror of the benchmark scenes: SCENE=dashboard is examples/dashboard.tsx /
-// compare/electron/dashboard.js, anything else is the cell grid of examples/bench.tsx /
+// Flutter mirror of the benchmark scenes: SCENE=dashboard is examples/bench/dashboard.tsx /
+// compare/electron/dashboard.js, anything else is the cell grid of examples/bench/bench.tsx /
 // compare/electron/renderer.js. Same env vars, same seeded data, same fps cap and log format.
 import 'dart:io';
 import 'dart:math' as math;

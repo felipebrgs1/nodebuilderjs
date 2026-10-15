@@ -442,7 +442,7 @@ let button: ElementRef | undefined;
 - Declare the `<Overlay>` **outside** a `Button` (next to it, as above): events inside
   the overlay bubble up through the parents of the place where it was declared.
 - Transition: animate `opacity` and `translateY` with a signal updated in
-  `requestAnimationFrame` (see `examples/overlays.tsx` in the nodebuilder repository).
+  `requestAnimationFrame` (see `examples/showcase/overlays.tsx` in the nodebuilder repository).
 
 ## Layout rules (simplified flexbox)
 

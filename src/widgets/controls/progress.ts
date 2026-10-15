@@ -1,10 +1,10 @@
 // <ProgressBar> (a share done, or indeterminate) and <Spinner> (busy, no measure).
 
-import { type Handlers, type Style, UINode, invalidate } from "../render/node.js";
-import { type MaybeAccessor, createEffect, onCleanup, read } from "../reactive/signals.js";
-import { requestAnimationFrame } from "../runtime/frames.js";
-import { theme } from "../theme.js";
-import { type StyleProps, applyProps, ownColors } from "./props.js";
+import { type Handlers, type Style, UINode, invalidate } from "../../render/node.js";
+import { type MaybeAccessor, createEffect, onCleanup, read } from "../../reactive/signals.js";
+import { requestAnimationFrame } from "../../runtime/frames.js";
+import { theme } from "../../theme.js";
+import { type StyleProps, applyProps, ownColors } from "../props.js";
 
 /** Calls `frame(time)` every frame while the component is mounted. */
 function everyFrame(frame: (time: number) => void) {

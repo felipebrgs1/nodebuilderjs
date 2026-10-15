@@ -1,12 +1,12 @@
 // <Toggle>: an on/off switch (named so because <Switch> is control flow).
 
-import { createTween, mixColor } from "../animation/index.js";
-import { insert, jsx } from "../jsx-runtime.js";
-import { type Handlers, type Style, UINode, invalidate } from "../render/node.js";
-import { type Accessor, type MaybeAccessor, createEffect, untrack } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "./props.js";
-import { Text } from "./text.js";
+import { createTween, mixColor } from "../../animation/index.js";
+import { insert, jsx } from "../../jsx-runtime.js";
+import { type Handlers, type Style, UINode, invalidate } from "../../render/node.js";
+import { type Accessor, type MaybeAccessor, createEffect, untrack } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { type StyleProps, applyProps, disableable, interaction, ownHandler } from "../props.js";
+import { Text } from "../text/text.js";
 
 const TRACK_W = 36;
 const TRACK_H = 20;

@@ -1,10 +1,10 @@
 // Layout containers: Box, Column, Row, Grid, Scroll, Spacer, Divider and Card.
 
-import { insert } from "../jsx-runtime.js";
-import { UINode } from "../render/node.js";
-import { type MaybeAccessor, createEffect } from "../reactive/signals.js";
-import { theme } from "../theme.js";
-import { type BoxProps, applyProps } from "./props.js";
+import { insert } from "../../jsx-runtime.js";
+import { UINode } from "../../render/node.js";
+import { type MaybeAccessor, createEffect } from "../../reactive/signals.js";
+import { theme } from "../../theme.js";
+import { type BoxProps, applyProps } from "../props.js";
 
 export function Box(props: BoxProps) {
   const node = new UINode("Box");
