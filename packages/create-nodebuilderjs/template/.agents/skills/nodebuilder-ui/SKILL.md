@@ -132,7 +132,13 @@ color). On a control, an `onKeyDown` runs first and `e.stop()` keeps the key fro
     <Text fontFeatures="tnum">1,234.50</Text>
   </Column>;
   ```
-- Colors are hex strings (`"#3584e4"`, `"#00000010"` with alpha) or `"transparent"`.
+- Colors are CSS strings: hex (`"#3584e4"`, `"#00000010"` with alpha), `"transparent"`, or the
+  wide-gamut `color(display-p3 1 0.3 0)`, `oklch(0.7 0.2 145)` (alpha: `oklch(0.7 0.2 145 / 50%)`),
+  `oklab(...)`, `color(srgb ...)`. Hex is sRGB; on a Display P3 surface (Wayland with color
+  management) P3/OKLCH colors show past sRGB, elsewhere they are clipped to sRGB.
+  `outputColorSpace()` says which; `run(app, { colorSpace: "srgb" })` opts out. No `rgb()`/`hsl()`.
+  Images keep their color profile (P3 photos stay P3; Adobe RGB and other ICC profiles are
+  converted). `run(app, { deepColor: true })`: 16-bit window buffer, less banding, more GPU memory.
 - Events on any container: `onClick`, `onPointerDown/Up/Enter/Leave`,
   `onPointerMove`, `onScroll`, `onKeyDown`, `onFocus`, `onBlur`. Pointer events carry
   `x`/`y` (window), `localX`/`localY` (relative to the node), `button` (0 left, 1 middle,
@@ -641,7 +647,8 @@ const stop = animate(0, 300, setX, { duration: 400, easing: easing.linear, onDon
   until the exit ends (use it in `<Show when={p.mounted}>`), `progress` goes 0→1→0 (for
   `opacity`, `translateY`).
 - `easing.linear`, `.easeIn`, `.easeOut`, `.easeInOut`, or any `(t: number) => number`.
-- `mixColor(a, b, t)`: `a` blended toward `b` (t 0..1), as `"#rrggbbaa"`; any hex form works.
+- `mixColor(a, b, t)`: `a` blended toward `b` (t 0..1), as `"#rrggbbaa"` (`color(display-p3 ...)`
+  past sRGB); any color form works.
   Premultiplied like CSS: `mixColor("#1db954", "transparent", 0.5)` is the same green at half alpha.
 - Animate numbers only (`opacity`, `translateX/Y`, `width`, colors via `mixColor`). For a
   custom loop, `requestAnimationFrame((time) => ...)` runs right before the next frame.

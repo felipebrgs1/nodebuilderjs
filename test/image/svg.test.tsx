@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { Column, Icon, UINode, createRoot, createSignal, layout, parseSvg, renderSvg, setTextMeasurer } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
 import { setImageBackend } from "../../src/image/source.js";
+import { setOutputColorSpace } from "../../src/render/color.js";
 import { decodePng } from "../../src/image/png.js";
 import { commandsOf } from "../helpers.js";
 
@@ -227,4 +228,22 @@ test("Icon fill: reactive, re-rasterizes, keeps tinting; a color fill is painted
   commandsOf(node, "image");
   expect(created.length).toBe(4);
   expect(interior(3)[3]).toBe(0);
+});
+
+test("Icon colors painted into the bitmap stay sRGB on a P3 surface (the renderer converts textures)", () => {
+  const created: Uint8Array[] = [];
+  setImageBackend({ create: (_w, _h, rgba) => (created.push(rgba), created.length), destroy: () => {} });
+  setOutputColorSpace("display-p3");
+  try {
+    const { node } = mount(() => (
+      <Column align="start" color="#0000ff">
+        <Icon svg={lucide(PLAY)} size={24} fill="#ff0000" />
+      </Column>
+    ));
+    commandsOf(node, "image");
+    expect(pixel({ width: 24, data: created[0]! }, 10, 12)).toEqual([255, 0, 0, 255]);
+    expect(pixel({ width: 24, data: created[0]! }, 5, 12)).toEqual([0, 0, 255, 255]);
+  } finally {
+    setOutputColorSpace("srgb");
+  }
 });

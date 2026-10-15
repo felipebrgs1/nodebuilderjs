@@ -5,7 +5,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Box, Column, Icon, Text, Window, animate, colorScheme, createSignal, decodeImage, setTheme } from "@nodebuilderjs/core";
+import { Box, Column, Icon, Row, Text, Window, animate, colorScheme, createSignal, decodeImage, outputColorSpace, setTheme } from "@nodebuilderjs/core";
 import { canScreenshot, findByText, mount, savePNG, screenshot } from "@nodebuilderjs/core/testing";
 import { setImageBackend } from "../../src/image/source.js";
 import { drawCommands } from "../helpers.js";
@@ -86,6 +86,38 @@ test.skipIf(!offscreen)("addon: an image created with createImage is drawn", () 
   nat.destroyImage(id);
 });
 
+test.skipIf(!offscreen)("addon: on a Display P3 target, textures (sRGB) are converted and command colors are not", () => {
+  const nat = loadNative();
+  // Opaque red on the left half, half transparent red (premultiplied on upload) on the right.
+  const red = new Uint8Array(4 * 2 * 4).map((_, i) => [255, 0, 0, i % 8 < 4 ? 255 : 128][i % 4]!);
+  const id = nat.createImage(2, 4, red);
+  const b = new CommandBuffer();
+  b.data.set([6, 0, 0, 8, 8, 0, 0, 1, 1, 1, 1, 1, 1, 0, id]);
+  b.length = 15;
+  b.rect(8, 0, 4, 8, "#ff0000");
+  const near = (got: number[], want: number[]) => got.forEach((v, i) => expect(Math.abs(v - want[i]!)).toBeLessThanOrEqual(2));
+  const p3 = nat.renderOffscreen(12, 8, 1, b.commands, b.texts, "display-p3");
+  near(at(p3, 12, 1, 4), [234, 51, 35, 255]); // sRGB red in P3
+  near(at(p3, 12, 6, 4), [234, 51, 35, 128]);
+  expect(at(p3, 12, 10, 4)).toEqual([255, 0, 0, 255]); // paint already encoded it for the target
+  const srgb = nat.renderOffscreen(12, 8, 1, b.commands, b.texts);
+  expect(at(srgb, 12, 1, 4)).toEqual([255, 0, 0, 255]);
+  nat.destroyImage(id);
+});
+
+test.skipIf(!offscreen)("addon: a Display P3 image is converted on an sRGB target and kept on a P3 one", () => {
+  const nat = loadNative();
+  const p3Red = new Uint8Array(4 * 4 * 4).map((_, i) => [234, 51, 35, 255][i % 4]!); // sRGB red, in P3
+  const id = nat.createImage(4, 4, p3Red, "display-p3");
+  const b = new CommandBuffer();
+  b.data.set([6, 0, 0, 8, 8, 0, 0, 1, 1, 1, 1, 1, 1, 0, id]);
+  b.length = 15;
+  const near = (got: number[], want: number[]) => got.forEach((v, i) => expect(Math.abs(v - want[i]!)).toBeLessThanOrEqual(2));
+  near(at(nat.renderOffscreen(8, 8, 1, b.commands, b.texts), 8, 4, 4), [255, 0, 0, 255]);
+  expect(at(nat.renderOffscreen(8, 8, 1, b.commands, b.texts, "display-p3"), 8, 4, 4)).toEqual([234, 51, 35, 255]);
+  nat.destroyImage(id);
+});
+
 test("PNG encoder: round trip through decodeImage keeps every pixel, alpha included", () => {
   const width = 7, height = 5;
   const data = new Uint8Array(width * height * 4).map((_, i) => (i * 37 + (i >> 2)) & 255);
@@ -94,6 +126,19 @@ test("PNG encoder: round trip through decodeImage keeps every pixel, alpha inclu
   const back = decodeImage(png);
   expect([back.width, back.height]).toEqual([width, height]);
   expect(Array.from(back.data)).toEqual(Array.from(data));
+});
+
+test("PNG encoder: a Display P3 bitmap gets cICP and the P3 ICC profile, and decodes back as P3", () => {
+  const data = new Uint8Array(2 * 2 * 4).fill(200);
+  const png = encodePng({ width: 2, height: 2, data, colorSpace: "display-p3" });
+  const text = new TextDecoder("latin1").decode(png);
+  expect(text).toContain("cICP");
+  expect(text).toContain("iCCP");
+  expect(text.indexOf("cICP")).toBeLessThan(text.indexOf("IDAT"));
+  const back = decodeImage(png);
+  expect(back.colorSpace).toBe("display-p3");
+  expect(Array.from(back.data)).toEqual(Array.from(data));
+  expect(new TextDecoder("latin1").decode(encodePng({ width: 2, height: 2, data }))).not.toContain("iCCP");
 });
 
 test("PNG encoder: a flat screenshot compresses, and a bad bitmap is rejected", () => {
@@ -232,7 +277,7 @@ test.skipIf(!offscreen)("toPNG() and savePNG() write a PNG that decodes to the s
 
 /** A native core that only renders offscreen: records each call and returns grey pixels. */
 function offscreenOnly() {
-  const calls: { width: number; height: number; scale: number; texts: string[] }[] = [];
+  const calls: { width: number; height: number; scale: number; texts: string[]; colorSpace?: string }[] = [];
   const unused = () => {
     throw new Error("a screenshot must not open a window");
   };
@@ -242,13 +287,34 @@ function offscreenOnly() {
     measureText: (text: string) => [text.length * 8, 15, 5],
     createImage: () => 1,
     destroyImage: () => {},
-    renderOffscreen(width: number, height: number, scale: number, _commands: Float32Array, texts: string[]) {
-      calls.push({ width, height, scale, texts });
+    renderOffscreen(width: number, height: number, scale: number, _commands: Float32Array, texts: string[], colorSpace?: string) {
+      calls.push({ width, height, scale, texts, colorSpace });
       return new Uint8Array(width * scale * height * scale * 4).fill(128);
     },
   } as unknown as Native;
   return { native, calls };
 }
+
+test.skipIf(!offscreen)("screenshot({ colorSpace: \"display-p3\" }): P3 pixels and a P3 PNG; sRGB by default", () => {
+  const view = () => (
+    <Column align="start">
+      <Row>
+        <Box width={10} height={10} background="#ff0000" />
+        <Box width={10} height={10} background="color(display-p3 1 0 0)" />
+      </Row>
+    </Column>
+  );
+  const p3 = screenshot(view, { width: 20, height: 10, colorSpace: "display-p3" });
+  expect(p3.colorSpace).toBe("display-p3");
+  expect(p3.pixel(5, 5)).toEqual([234, 51, 35, 255]);
+  expect(p3.pixel(15, 5)).toEqual([255, 0, 0, 255]);
+  expect(decodeImage(p3.toPNG()).colorSpace).toBe("display-p3");
+  expect(outputColorSpace()).toBe("srgb"); // put back after the shot
+  const srgb = screenshot(view, { width: 20, height: 10 });
+  expect(srgb.colorSpace).toBe("srgb");
+  expect(srgb.pixel(5, 5)).toEqual([255, 0, 0, 255]);
+  expect(srgb.pixel(15, 5)).toEqual([255, 0, 0, 255]); // past sRGB: clipped
+});
 
 describe("run() under NB_SCREENSHOT", () => {
   const dir = mkdtempSync(join(tmpdir(), "nb-run-shot-"));
@@ -285,6 +351,15 @@ describe("run() under NB_SCREENSHOT", () => {
     await screenshotApp(native, AnimatedApp, { NB_SCREENSHOT: join(dir, "b.png"), NB_SCREENSHOT_WIDTH: "120", NB_SCREENSHOT_HEIGHT: "90", NB_SCREENSHOT_FRAMES: "0" });
     expect(calls[0]).toMatchObject({ width: 120, height: 90, scale: 1 });
     expect(calls[0]!.texts).toContain("w=0 light");
+  });
+
+  test("NB_SCREENSHOT_COLOR_SPACE=display-p3 renders for P3 and tags the PNG", async () => {
+    const { native, calls } = offscreenOnly();
+    const path = join(dir, "p3.png");
+    await screenshotApp(native, AnimatedApp, { NB_SCREENSHOT: path, NB_SCREENSHOT_COLOR_SPACE: "display-p3" });
+    expect(calls[0]!.colorSpace).toBe("display-p3");
+    expect(decodeImage(new Uint8Array(readFileSync(path))).colorSpace).toBe("display-p3");
+    await expect(screenshotApp(native, AnimatedApp, { NB_SCREENSHOT: path, NB_SCREENSHOT_COLOR_SPACE: "rec2020" })).rejects.toThrow(/color space.*rec2020/);
   });
 
   test("a bad option is an error naming it", async () => {

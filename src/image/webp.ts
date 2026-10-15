@@ -4,15 +4,21 @@
 // upsampling, fixed-point YUV->RGB) so pixels match what other tools show.
 
 import type { Bitmap } from "./png.js";
+import type { ColorProfile } from "./icc.js";
 
 export function isWebp(bytes: Uint8Array): boolean {
   return bytes.length >= 12 && fourcc(bytes, 0) === "RIFF" && fourcc(bytes, 8) === "WEBP";
 }
 
-export function decodeWebp(bytes: Uint8Array): Bitmap {
+export function decodeWebp(bytes: Uint8Array): Bitmap & { profile?: ColorProfile } {
   if (!isWebp(bytes)) throw new Error("not a WebP file");
   const end = Math.min(bytes.length, 8 + u32(bytes, 4));
   const list = chunks(bytes, 12, end);
+  const icc = list.find((c) => c.type === "ICCP")?.data;
+  return { ...decodeChunks(list), profile: icc ? { icc } : undefined };
+}
+
+function decodeChunks(list: Chunk[]): Bitmap {
   const first = list[0];
   if (!first) throw new Error("truncated WebP");
   if (first.type === "VP8 " || first.type === "VP8L") return decodeFrame(list);

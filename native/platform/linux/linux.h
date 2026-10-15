@@ -18,6 +18,8 @@ typedef struct {
   void (*end_frame)(void);
   void (*request_frame)(void);
   int (*scale)(void);
+  /** NB_COLOR_* of the open window's surface. */
+  int (*color_space)(void);
   void (*set_cursor)(const char *name);
   void (*set_title)(const char *title);
   void (*set_icon)(const nb_icon_image *images, int count);

@@ -10,9 +10,11 @@ wayland-scanner client-header "$HERE/protocols/xdg-shell.xml" "$GEN/xdg-shell-cl
 wayland-scanner private-code "$HERE/protocols/xdg-shell.xml" "$GEN/xdg-shell-protocol.c"
 wayland-scanner client-header "$HERE/protocols/xdg-toplevel-icon-v1.xml" "$GEN/xdg-toplevel-icon-v1-client-protocol.h"
 wayland-scanner private-code "$HERE/protocols/xdg-toplevel-icon-v1.xml" "$GEN/xdg-toplevel-icon-v1-protocol.c"
+wayland-scanner client-header "$HERE/protocols/color-management-v1.xml" "$GEN/color-management-v1-client-protocol.h"
+wayland-scanner private-code "$HERE/protocols/color-management-v1.xml" "$GEN/color-management-v1-protocol.c"
 
 ${CC:-cc} -O2 -g -std=gnu11 -fPIC -shared -pthread -Wall -Wno-unused-parameter \
   -I"$NAPI_INCLUDE" -I"$CORE_INCLUDE" -I"$HERE" -I"$GEN" $(pkg-config --cflags $PKGS) \
-  $CORE_SOURCES "$HERE/linux.c" "$HERE/wayland.c" "$HERE/x11.c" "$HERE/pump.c" "$HERE/fonts.c" "$HERE/codecs.c" "$HERE/offscreen.c" "$GEN/xdg-shell-protocol.c" "$GEN/xdg-toplevel-icon-v1-protocol.c" \
+  $CORE_SOURCES "$HERE/linux.c" "$HERE/wayland.c" "$HERE/x11.c" "$HERE/pump.c" "$HERE/fonts.c" "$HERE/codecs.c" "$HERE/offscreen.c" "$GEN/xdg-shell-protocol.c" "$GEN/xdg-toplevel-icon-v1-protocol.c" "$GEN/color-management-v1-protocol.c" \
   $(pkg-config --libs $PKGS) -lm -ldl \
   -o "$OUT_DIR/nodebuilder.node"

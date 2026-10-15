@@ -6,6 +6,7 @@
 // 12-bit JPEGs are rare and rejected.
 
 import type { Bitmap } from "./png.js";
+import type { ColorProfile } from "./icc.js";
 
 export function isJpeg(bytes: Uint8Array): boolean {
   return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
@@ -145,7 +146,7 @@ class BitReader {
 
 const extend = (v: number, s: number) => (v < 1 << (s - 1) ? v - (1 << s) + 1 : v);
 
-export function decodeJpeg(bytes: Uint8Array): Bitmap {
+export function decodeJpeg(bytes: Uint8Array): Bitmap & { profile?: ColorProfile } {
   if (!isJpeg(bytes)) throw new Error("not a JPEG file");
   const qt: Uint16Array[] = [];
   const dcTables: Huffman[] = [];
@@ -155,6 +156,8 @@ export function decodeJpeg(bytes: Uint8Array): Bitmap {
   let adobeTransform = -1;
   let jfif = false;
   let orientation = 1;
+  const iccParts: Uint8Array[] = [];
+  let iccTotal = 0;
   let eobrun = 0;
 
   const u16 = (p: number) => (bytes[p]! << 8) | bytes[p + 1]!;
@@ -234,6 +237,15 @@ export function decodeJpeg(bytes: Uint8Array): Bitmap {
         break;
       case 0xe0: // APP0: JFIF
         if (bytes[seg] === 0x4a && bytes[seg + 1] === 0x46 && bytes[seg + 2] === 0x49 && bytes[seg + 3] === 0x46) jfif = true;
+        break;
+      case 0xe2: // APP2: ICC profile, maybe split across segments (1-based sequence numbers)
+        if (end - seg > 14 && String.fromCharCode(...bytes.subarray(seg, seg + 12)) === "ICC_PROFILE\0") {
+          const seq = bytes[seg + 12]!, total = bytes[seg + 13]!;
+          if (seq >= 1 && seq <= total && (!iccTotal || total === iccTotal)) {
+            iccTotal = total;
+            iccParts[seq - 1] = bytes.subarray(seg + 14, end);
+          }
+        }
         break;
       case 0xe1: // APP1: EXIF orientation
         if (String.fromCharCode(...bytes.subarray(seg, seg + 4)) === "Exif") orientation = exifOrientation(bytes, seg + 6, end) ?? orientation;
@@ -452,7 +464,9 @@ export function decodeJpeg(bytes: Uint8Array): Bitmap {
     }
   } else throw new Error(`unsupported JPEG with ${components.length} components`);
 
-  return orient({ width, height, data: out }, orientation);
+  let profile: ColorProfile | undefined;
+  if (iccTotal && iccParts.filter(Boolean).length === iccTotal) profile = { icc: Uint8Array.from(Buffer.concat(iccParts)) };
+  return { ...orient({ width, height, data: out }, orientation), profile };
 }
 
 // ---- color tables (jdcolor.c, 16-bit fixed point) -------------------------------

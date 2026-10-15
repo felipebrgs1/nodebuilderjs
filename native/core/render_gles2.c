@@ -41,6 +41,18 @@ static const char *fragment_src =
     "varying vec3 v_params; varying vec3 v_uv;\n"
     "uniform sampler2D u_atlas; uniform sampler2D u_image; uniform sampler2D u_color_atlas;\n"
     "uniform vec4 u_clip; uniform vec4 u_clip_radii; uniform float u_fb_height;\n"
+    // A texture in another color space than the target's is converted (premultiplied in and
+    // out): `convert` 1 is sRGB -> Display P3, 2 the reverse. Command colors need nothing:
+    // paint.ts encodes them for the target already.
+    "vec4 texel(vec4 t, float convert) {\n"
+    "  if (convert < 0.5 || t.a <= 0.0) return t;\n"
+    "  vec3 c = t.rgb / t.a;\n"
+    "  c = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));\n"
+    "  c = clamp((convert < 1.5 ? mat3(0.8224620, 0.0331942, 0.0170826, 0.1775380, 0.9668058, 0.0723974, 0.0, 0.0, 0.9105199)\n"
+    "                           : mat3(1.2249402, -0.0420570, -0.0196376, -0.2249402, 1.0420570, -0.0786360, 0.0, 0.0, 1.0982736)) * c, 0.0, 1.0);\n"
+    "  c = mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));\n"
+    "  return vec4(c * t.a, t.a);\n"
+    "}\n"
     "float sd_round_box(vec2 p, vec2 b, float r) {\n"
     "  vec2 q = abs(p) - b + vec2(r);\n"
     "  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;\n"
@@ -53,7 +65,7 @@ static const char *fragment_src =
     "  vec4 c;\n"
     "  vec4 pm = v_color;\n"
     "  if (v_params.z > 6.5) {\n"  // color glyph (premultiplied texels): only the alpha applies
-    "    c = texture2D(u_color_atlas, v_uv.xy) * v_color.a;\n"
+    "    c = texel(texture2D(u_color_atlas, v_uv.xy), v_params.y) * v_color.a;\n"
     "  } else if (v_params.z > 5.5) {\n"  // ring sector, centered on +y: half aperture (sin, cos) in v_half
     "    vec2 q = vec2(abs(v_local.x), v_local.y);\n"
     "    float d = length(q) - v_params.x;\n"
@@ -73,7 +85,7 @@ static const char *fragment_src =
     "    c = pm * clamp(0.5 - d, 0.0, 1.0);\n"
     "  } else if (v_params.z > 2.5) {\n"  // image (premultiplied texels), rounded like a rect
     "    float d = sd_round_box(v_local, v_half, v_params.x);\n"
-    "    c = texture2D(u_image, v_uv.xy) * pm * clamp(0.5 - d, 0.0, 1.0);\n"
+    "    c = texel(texture2D(u_image, v_uv.xy), v_params.y) * pm * clamp(0.5 - d, 0.0, 1.0);\n"
     "  } else if (v_params.z > 1.5) {\n"  // shadow, cut out where its box is (v_bcolor.x above it), as in CSS
     "    vec4 radii = vec4(v_params.x, v_uv);\n"
     "    float d = sd_round_box(v_local, v_half, corner(v_local, radii));\n"
@@ -102,6 +114,7 @@ static const char *fragment_src =
 static GLuint program, vbo, atlas_tex, color_atlas_tex;
 static int atlas_tex_size, color_tex_size;  // 0: not allocated in this context yet
 static GLint u_viewport, u_atlas, u_image, u_color_atlas, u_clip, u_clip_radii, u_fb_height;
+static int color_space = NB_COLOR_SRGB;
 static float *verts;
 static size_t vert_count, vert_cap;
 static int fb_w, fb_h;
@@ -377,6 +390,7 @@ static void apply_clip(void) {
 typedef struct {
   int w, h;
   uint8_t *pixels;  // premultiplied RGBA until uploaded, then freed
+  int space;        // NB_COLOR_* of the pixels
   GLuint tex;
   bool live, dead;  // dead: destroyed, texture still to be deleted (needs the context)
 } image;
@@ -384,7 +398,13 @@ static image *images;
 static int image_count;
 static GLuint bound_image;  // texture on unit 1 for the current batch
 
-int nb_image_create(int w, int h, const uint8_t *rgba) {
+/** The shader's `convert` code for a texture in `space` drawn on the current target. */
+static float conversion(int space) {
+  if (space == color_space) return 0;
+  return space == NB_COLOR_SRGB ? 1 : 2;
+}
+
+int nb_image_create(int w, int h, const uint8_t *rgba, int space) {
   if (w <= 0 || h <= 0) return 0;
   int slot = 0;
   while (slot < image_count && (images[slot].live || images[slot].dead)) slot++;
@@ -405,7 +425,7 @@ int nb_image_create(int w, int h, const uint8_t *rgba) {
     px[i * 4 + 2] = (uint8_t)((rgba[i * 4 + 2] * a + 127) / 255);
     px[i * 4 + 3] = (uint8_t)a;
   }
-  images[slot] = (image){.w = w, .h = h, .pixels = px, .live = true};
+  images[slot] = (image){.w = w, .h = h, .pixels = px, .space = space, .live = true};
   return slot + 1;
 }
 
@@ -477,8 +497,12 @@ static void emit_glyph(void *ud, float x0, float y0, float x1, float y1, float u
                        bool color) {
   static const float none[4] = {0, 0, 0, 0};
   glyph_ctx *ctx = ud;
-  push_quad(x0, y0, x1, y1, 0, 0, 0, 0, ctx->color, none, 0, 0, color ? MODE_COLOR_GLYPH : MODE_GLYPH, u0, v0, u1, v1, 0);
+  // Color glyphs are sRGB bitmaps.
+  push_quad(x0, y0, x1, y1, 0, 0, 0, 0, ctx->color, none, 0, color ? conversion(NB_COLOR_SRGB) : 0,
+            color ? MODE_COLOR_GLYPH : MODE_GLYPH, u0, v0, u1, v1, 0);
 }
+
+void nb_render_set_color_space(int space) { color_space = space; }
 
 void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count, const char **texts,
                      size_t text_count) {
@@ -560,9 +584,10 @@ void nb_render_frame(int bw, int bh, float scale, const float *cmd, size_t count
         const float *a = cmd + i;
         i += 14;
         if (!use_image((int)a[13])) break;
+        float convert = conversion(images[(int)a[13] - 1].space);
         float x = a[0] * scale, y = a[1] * scale, w = a[2] * scale, h = a[3] * scale;
         float hw = w / 2, hh = h / 2, r = fminf(a[12] * scale, fminf(hw, hh));
-        push_quad(x, y, x + w, y + h, x + hw, y + hh, hw, hh, a + 8, none, r, 0, MODE_IMAGE, a[4], a[5], a[6],
+        push_quad(x, y, x + w, y + h, x + hw, y + hh, hw, hh, a + 8, none, r, convert, MODE_IMAGE, a[4], a[5], a[6],
                   a[7], 0);
         break;
       }

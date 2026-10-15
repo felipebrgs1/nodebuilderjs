@@ -24,6 +24,7 @@
 
 #include "xdg-shell-client-protocol.h"
 #include "xdg-toplevel-icon-v1-client-protocol.h"
+#include "color-management-v1-client-protocol.h"
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -86,6 +87,14 @@ static struct {
   struct xdg_toplevel_icon_v1 *icon;
   struct wl_buffer *icon_buffers[MAX_ICON_BUFFERS];
   int icon_buffer_count;
+
+  // Color management (wp_color_manager_v1): what the compositor supports, as bitmasks of the
+  // protocol's enum values (all below 32), and the surface's image description.
+  struct wp_color_manager_v1 *color_manager;
+  uint32_t cm_intents, cm_features, cm_tfs, cm_primaries;
+  struct wp_color_management_surface_v1 *color_surface;
+  int color_space;  // NB_COLOR_*
+  bool deep_color;  // the EGL config is 16-bit float RGBA
 
   struct wl_surface *surface;
   struct xdg_surface *xdg_surface;
@@ -540,6 +549,73 @@ static const struct wl_seat_listener seat_listener = {.capabilities = seat_capab
 static void wm_ping(void *d, struct xdg_wm_base *wm, uint32_t serial) { xdg_wm_base_pong(wm, serial); }
 static const struct xdg_wm_base_listener wm_listener = {.ping = wm_ping};
 
+// ---- color management ---------------------------------------------------------
+
+static void cm_bit(uint32_t *mask, uint32_t value) {
+  if (value < 32) *mask |= 1u << value;
+}
+static void cm_intent(void *d, struct wp_color_manager_v1 *m, uint32_t v) { cm_bit(&S.cm_intents, v); }
+static void cm_feature(void *d, struct wp_color_manager_v1 *m, uint32_t v) { cm_bit(&S.cm_features, v); }
+static void cm_tf(void *d, struct wp_color_manager_v1 *m, uint32_t v) { cm_bit(&S.cm_tfs, v); }
+static void cm_primaries(void *d, struct wp_color_manager_v1 *m, uint32_t v) { cm_bit(&S.cm_primaries, v); }
+static void cm_done(void *d, struct wp_color_manager_v1 *m) {}
+
+static const struct wp_color_manager_v1_listener color_manager_listener = {
+    .supported_intent = cm_intent,
+    .supported_feature = cm_feature,
+    .supported_tf_named = cm_tf,
+    .supported_primaries_named = cm_primaries,
+    .done = cm_done,
+};
+
+// 1 ready, -1 failed, 0 still waiting.
+static void desc_failed(void *d, struct wp_image_description_v1 *desc, uint32_t cause, const char *msg) {
+  *(int *)d = -1;
+  if (getenv("NB_DEBUG")) fprintf(stderr, "nodebuilder: P3 image description failed: %s\n", msg);
+}
+static void desc_ready(void *d, struct wp_image_description_v1 *desc, uint32_t identity) { *(int *)d = 1; }
+static void desc_ready2(void *d, struct wp_image_description_v1 *desc, uint32_t hi, uint32_t lo) { *(int *)d = 1; }
+
+static const struct wp_image_description_v1_listener desc_listener = {
+    .failed = desc_failed,
+    .ready = desc_ready,
+    .ready2 = desc_ready2,
+};
+
+#define CM_HAS(mask, value) ((S.mask >> (value)) & 1u)
+
+/**
+ * Tags the surface as Display P3 when asked and the compositor can take it; S.color_space says
+ * what it got. The transfer function is gamma 2.2, which compositors use for untagged (sRGB)
+ * surfaces too, so sRGB colors converted to P3 look exactly as in the other windows.
+ */
+static void setup_color_space(int wanted) {
+  S.color_space = NB_COLOR_SRGB;
+  if (wanted != NB_COLOR_DISPLAY_P3 || !S.color_manager) return;
+  uint32_t tf = CM_HAS(cm_tfs, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22)  ? WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22
+                : CM_HAS(cm_tfs, WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB) ? WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB
+                                                                               : 0;
+  if (!tf || !CM_HAS(cm_features, WP_COLOR_MANAGER_V1_FEATURE_PARAMETRIC) ||
+      !CM_HAS(cm_primaries, WP_COLOR_MANAGER_V1_PRIMARIES_DISPLAY_P3) ||
+      !CM_HAS(cm_intents, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL))
+    return;
+  struct wp_image_description_creator_params_v1 *creator = wp_color_manager_v1_create_parametric_creator(S.color_manager);
+  wp_image_description_creator_params_v1_set_primaries_named(creator, WP_COLOR_MANAGER_V1_PRIMARIES_DISPLAY_P3);
+  wp_image_description_creator_params_v1_set_tf_named(creator, tf);
+  struct wp_image_description_v1 *desc = wp_image_description_creator_params_v1_create(creator);
+  int state = 0;
+  wp_image_description_v1_add_listener(desc, &desc_listener, &state);
+  for (int i = 0; i < 8 && !state; i++)
+    if (wl_display_roundtrip(S.display) < 0) break;
+  if (state == 1) {
+    // Double-buffered: applies with the first commit, before anything is drawn.
+    S.color_surface = wp_color_manager_v1_get_surface(S.color_manager, S.surface);
+    wp_color_management_surface_v1_set_image_description(S.color_surface, desc, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL);
+    S.color_space = NB_COLOR_DISPLAY_P3;
+  }
+  wp_image_description_v1_destroy(desc);
+}
+
 static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char *iface, uint32_t version) {
   if (!strcmp(iface, wl_compositor_interface.name)) {
     // wl_surface v6 (preferred_buffer_scale) only if the installed libwayland knows its events;
@@ -559,6 +635,10 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
     S.data_manager = wl_registry_bind(r, name, &wl_data_device_manager_interface, S.data_manager_version);
   } else if (!strcmp(iface, xdg_toplevel_icon_manager_v1_interface.name)) {
     S.icon_manager = wl_registry_bind(r, name, &xdg_toplevel_icon_manager_v1_interface, 1);
+  } else if (!strcmp(iface, wp_color_manager_v1_interface.name)) {
+    // v1 is enough (named primaries and transfer functions); the supported_* events follow the bind.
+    S.color_manager = wl_registry_bind(r, name, &wp_color_manager_v1_interface, 1);
+    wp_color_manager_v1_add_listener(S.color_manager, &color_manager_listener, NULL);
   }
 }
 
@@ -640,7 +720,26 @@ static const struct wl_callback_listener frame_listener = {.done = frame_done};
 
 // ---- public API -------------------------------------------------------------
 
-static bool init_egl(void) {
+#ifndef EGL_COLOR_COMPONENT_TYPE_EXT
+#define EGL_COLOR_COMPONENT_TYPE_EXT 0x3339
+#define EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT 0x333B
+#endif
+
+/**
+ * A 16-bit float RGBA config (EGL_EXT_pixel_format_float), or false. 10-bit configs are not
+ * used: their 2-bit alpha would band the window's shadow and rounded corners.
+ */
+static bool deep_config(EGLConfig *config) {
+  const char *ext = eglQueryString(S.egl_display, EGL_EXTENSIONS);
+  if (!ext || !strstr(ext, "EGL_EXT_pixel_format_float")) return false;
+  EGLint attrs[] = {EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_COLOR_COMPONENT_TYPE_EXT, EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT,
+                    EGL_RED_SIZE, 16, EGL_GREEN_SIZE, 16, EGL_BLUE_SIZE, 16, EGL_ALPHA_SIZE, 16,
+                    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_NONE};
+  EGLint n = 0;
+  return eglChooseConfig(S.egl_display, attrs, config, 1, &n) && n >= 1;
+}
+
+static bool init_egl(bool deep) {
   S.egl_display = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, S.display, NULL);
   if (S.egl_display == EGL_NO_DISPLAY || !eglInitialize(S.egl_display, NULL, NULL)) return false;
   eglBindAPI(EGL_OPENGL_ES_API);
@@ -649,7 +748,8 @@ static bool init_egl(void) {
                     EGL_ALPHA_SIZE, 8, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_NONE};
   EGLConfig config;
   EGLint n = 0;
-  if (!eglChooseConfig(S.egl_display, attrs, &config, 1, &n) || n < 1) return false;
+  S.deep_color = deep && deep_config(&config);
+  if (!S.deep_color && (!eglChooseConfig(S.egl_display, attrs, &config, 1, &n) || n < 1)) return false;
 
   EGLint ctx_attrs[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
   S.egl_context = eglCreateContext(S.egl_display, config, EGL_NO_CONTEXT, ctx_attrs);
@@ -719,15 +819,19 @@ static bool wl_open(const nb_window_options *options) {
   S.title = strdup(title);
   S.app_id = strdup(app_id);
   set_toplevel_attributes();
+  setup_color_space(options->color_space);
   wl_surface_commit(S.surface);
 
   while (!S.configured)
     if (wl_display_dispatch(S.display) < 0) return false;
 
-  if (!init_egl()) {
+  if (!init_egl(options->deep_color)) {
     fprintf(stderr, "nodebuilder: EGL initialisation failed (0x%x)\n", eglGetError());
     return false;
   }
+  if (getenv("NB_DEBUG"))
+    fprintf(stderr, "nodebuilder: color space %s, %s buffer\n", S.color_space == NB_COLOR_DISPLAY_P3 ? "display-p3" : "srgb",
+            S.deep_color ? "16-bit float" : "8-bit");
   return true;
 }
 
@@ -802,6 +906,8 @@ static void wl_close(void) {
   if (S.frame_cb) wl_callback_destroy(S.frame_cb);
   if (S.toplevel) xdg_toplevel_destroy(S.toplevel);
   if (S.xdg_surface) xdg_surface_destroy(S.xdg_surface);
+  if (S.color_surface) wp_color_management_surface_v1_destroy(S.color_surface);
+  if (S.color_manager) wp_color_manager_v1_destroy(S.color_manager);
   if (S.surface) wl_surface_destroy(S.surface);
   free(S.title);
   free(S.app_id);
@@ -837,6 +943,8 @@ static void wl_flush(void) {
 }
 
 static int wl_scale(void) { return S.scale ? S.scale : 1; }
+
+static int wl_color_space(void) { return S.color_space; }
 
 static void wl_begin_frame(int *bw, int *bh, int *scale) {
   int w = S.width * S.scale, h = S.height * S.scale;
@@ -981,6 +1089,7 @@ const nb_linux_backend nb_wayland_backend = {
     .end_frame = wl_end_frame,
     .request_frame = wl_request_frame,
     .scale = wl_scale,
+    .color_space = wl_color_space,
     .set_cursor = wl_set_cursor,
     .set_title = wl_set_title,
     .set_visible = wl_set_visible,

@@ -463,6 +463,38 @@ border is drawn over the background, as in CSS. Blending in "straight" alpha pro
 artifacts at the corners. The vertex shader premultiplies each vertex color, so anything that
 varies across a shape (gradients, antialiasing coverage) is interpolated in premultiplied space.
 
+**Color spaces.** `run()` asks the addon for a Display P3 surface. On Wayland, `wayland.c` binds
+`wp_color_manager_v1`; when the compositor supports parametric descriptions, the `display_p3`
+primaries, the gamma 2.2 transfer function (sRGB's also works) and the perceptual intent, it builds
+that image description, waits for `ready` and sets it on the surface before the first commit.
+Gamma 2.2 is what compositors assume for untagged surfaces, so an sRGB color converted to P3 looks
+the same as in every other window. `open()` returns the space the surface took (X11: always
+sRGB) and `run()` hands it to `setOutputColorSpace` (`render/color.ts`). From there on
+`parseColor` encodes every command color for that space (hex is sRGB, converted through linear
+light; `color(display-p3 ...)`/`oklch()` past the target are clipped), so the renderer draws
+command colors as they come. Textures are the exception: each image carries its own space
+(`nb_image_create`), the color emoji atlas and SVG icon bitmaps are sRGB, and when a texture's
+space differs from the target's the fragment shader converts each texel (`texel()`: unpremultiply,
+decode, 3×3 matrix, encode, premultiply), told which way by the vertex's free `params.y`, so
+mixing spaces does not split the batch. One-color icons are white bitmaps tinted by the command
+color, so they get P3 tints for free. Blending stays in the encoded values, as browsers do.
+
+Images get their space from the file (`image/icc.ts`): PNG cICP/iCCP, JPEG APP2 (reassembled
+across segments), WebP ICCP, and libheif's nclx or ICC for AVIF/HEIC. CICP codes and ICC
+matrix/TRC profiles that are sRGB or Display P3 (colorants within 0.004 after s15Fixed16
+rounding, sRGB curve) tag the pixels as they are; any other RGB matrix/TRC profile is converted
+to Display P3 on the CPU while decoding (256-entry linearization per channel, one 3×3 matrix
+through XYZ D50, a 4096-entry encode table). Values checked against LittleCMS.
+
+Screenshots render to an sRGB target by default; `colorSpace: "display-p3"` paints and renders
+for P3 and `encodePng` tags the file with cICP and a v4 Display P3 ICC profile that `writeIcc`
+builds (ImageMagick and LittleCMS read it back as Display P3).
+
+`deepColor` asks `wayland.c` for a 16-bit float RGBA config (`EGL_EXT_pixel_format_float`). The
+10-10-10-2 configs are skipped: a 2-bit alpha would band the window's shadow and rounded corners.
+The buffers are GPU memory (process RSS/PSS did not move: dashboard bench, 2026-10-14, 8-bit
+170/111 MB vs float 169/109 MB, fps 107–110 both), twice the 8-bit size, so it is opt-in.
+
 **Gradients.** A `GRADIENT` op is a prefix: it fills the op right after it (RECT, LINE,
 TRIANGLES, ARC; paint.ts sends that op in white, which multiplies the gradient). While it is
 active, `push_vertex` collects each triangle and cuts it along the stop lines

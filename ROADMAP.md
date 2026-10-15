@@ -214,6 +214,11 @@ Depois:
   `createPresence`, `easing`, `mixColor`; `Dialog`, `Select`, `Tooltip` e `Toggle` animados.
   Falta `transition` declarativo nas props de estilo, molas e `scale`/`rotate` (com
   opacidade de grupo, pedem desenhar a subárvore numa textura)
+- ~~Wide-gamut colors~~ **done** (2026-10-14): `color(display-p3 ...)`, `oklch()`, `oklab()`, a
+  Display P3 surface through Wayland color management (`wp_color_manager_v1`) with sRGB
+  fallback, image color profiles (ICC and CICP in PNG, JPEG, WebP, AVIF, HEIC), P3 screenshots
+  (`--color-space display-p3`) and an opt-in 16-bit float buffer (`deepColor`). Left out: HDR
+  (Rec. 2020/PQ) until a use case shows up
 - ~~Tema escuro~~ **feito** (2026-10-12): `setTheme`, `darkTheme`, `colorScheme`. Falta
   seguir a preferência do sistema (portal XDG `org.freedesktop.appearance` por D-Bus, com a
   libdbus via `dlopen` e o fd no `poll()` da thread de bombeamento)

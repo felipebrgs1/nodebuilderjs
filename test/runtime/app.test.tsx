@@ -1,29 +1,36 @@
 // App-level frame loop: run() against a fake native core. Counts what reaches the GPU
 // (render calls) for idle windows, signal changes, animations and pointer moves.
 import { afterEach, describe, expect, test } from "bun:test";
-import { Box, Column, Row, Scroll, Text, UINode, Window, animate, createSignal, setTextMeasurer } from "@nodebuilderjs/core";
+import { Box, Column, Row, Scroll, Text, UINode, Window, animate, createEffect, createSignal, setTextMeasurer } from "@nodebuilderjs/core";
 import type { Child } from "@nodebuilderjs/core";
 import { iconImages } from "../../src/image/icon.js";
 import { setImageBackend } from "../../src/image/source.js";
 import { invalidate, setDisplayScale } from "../../src/render/node.js";
-import { runWith, windowControls, windowState } from "../../src/runtime/app.js";
+import { type RunOptions, runWith, windowControls, windowState } from "../../src/runtime/app.js";
+import { outputColorSpace } from "../../src/render/color.js";
+import { decode } from "../helpers.js";
 import { setFrameClock } from "../../src/runtime/frames.js";
 import type { Native, NativeEvent } from "../../src/runtime/native.js";
 
 const NO_KEYS = { ctrl: false, shift: false, alt: false, super: false };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-function fakeNative() {
+function fakeNative(surface?: "srgb" | "display-p3") {
   let emitEvents: (events: NativeEvent[]) => void = () => {};
   let images = 0;
-  const calls = { render: 0, requestFrame: 0, close: 0, icons: [] as { size: number; rgba: Uint8Array }[][], visible: [] as boolean[], titles: [] as string[] };
+  const calls = { render: 0, requestFrame: 0, close: 0, icons: [] as { size: number; rgba: Uint8Array }[][], visible: [] as boolean[], titles: [] as string[], opened: [] as { colorSpace?: string; deepColor?: boolean }[], commands: new Float32Array(0) };
   const native: Native = {
     open: (options, onEvents) => {
       calls.titles.push(options.title);
+      calls.opened.push(options);
       emitEvents = onEvents;
+      return surface;
     },
     close: () => void calls.close++,
-    render: () => void calls.render++,
+    render: (commands) => {
+      calls.render++;
+      calls.commands = commands.slice();
+    },
     measureText: (text) => [text.length * 8, 15, 5],
     createImage: () => ++images,
     destroyImage: () => {},
@@ -57,14 +64,17 @@ function fakeNative() {
 interface StartOptions {
   env?: Record<string, string | undefined>;
   now?: () => number;
+  run?: RunOptions;
+  /** The color space the fake surface takes (undefined: an addon that predates color spaces). */
+  surface?: "srgb" | "display-p3";
 }
 
 /** Opens `app` on a fake native core; events go through the same path as a real window's. */
 async function start(app: () => Child, options: StartOptions = {}) {
-  const fake = fakeNative();
+  const fake = fakeNative(options.surface);
   const logs: string[] = [];
   const warnings: string[] = [];
-  runWith(fake.native, app, { maxFps: 1000 }, { env: options.env ?? {}, now: options.now, log: (l) => logs.push(l), warn: (w) => warnings.push(w) });
+  runWith(fake.native, app, { maxFps: 1000, ...options.run }, { env: options.env ?? {}, now: options.now, log: (l) => logs.push(l), warn: (w) => warnings.push(w) });
   const send = async (...events: NativeEvent[]) => {
     fake.emit(...events);
     await tick();
@@ -113,6 +123,54 @@ describe("window icon", () => {
     const app = await start(() => <Window title="x" icon="/nonexistent/icon.png" />);
     expect(app.warnings.some((w) => w.includes("/nonexistent/icon.png"))).toBe(true);
     expect(app.calls.icons[0]!.at(-1)!.rgba).toEqual(iconImages().at(-1)!.rgba);
+  });
+});
+
+describe("color space", () => {
+  const redRect = (commands: Float32Array) => decode({ commands, texts: [] } as any).find((c) => c.op === "rect" && c.w === 10) as { color: number[] };
+  const app = () => (
+    <Column align="start">
+      <Box width={10} height={10} background="#ff0000" />
+    </Column>
+  );
+
+  test("asks for a Display P3 surface; on one, paint encodes colors for P3", async () => {
+    const seen: string[] = [];
+    const win = await start(() => {
+      createEffect(() => seen.push(outputColorSpace()));
+      return app();
+    }, { surface: "display-p3" });
+    expect(seen).toEqual(["srgb", "display-p3"]); // components run before the window opens
+    expect(win.calls.opened[0]!.colorSpace).toBe("display-p3");
+    expect(outputColorSpace()).toBe("display-p3");
+    await win.frames(1);
+    expect(redRect(win.calls.commands).color).toEqual([0.917, 0.2, 0.139, 1]);
+    windowControls.close();
+    expect(outputColorSpace()).toBe("srgb"); // back to the default with the window gone
+  });
+
+  test("a surface that stays sRGB (no color management, X11, an older addon) keeps sRGB colors", async () => {
+    for (const surface of ["srgb", undefined] as const) {
+      const win = await start(app, { surface });
+      expect(outputColorSpace()).toBe("srgb");
+      await win.frames(1);
+      expect(redRect(win.calls.commands).color).toEqual([1, 0, 0, 1]);
+      windowControls.close();
+    }
+  });
+
+  test("deepColor (or NB_DEEP_COLOR=1) asks for a 16-bit buffer; off by default", async () => {
+    expect((await start(app)).calls.opened[0]!.deepColor).toBe(false);
+    windowControls.close();
+    expect((await start(app, { run: { deepColor: true } })).calls.opened[0]!.deepColor).toBe(true);
+    windowControls.close();
+    expect((await start(app, { env: { NB_DEEP_COLOR: "1" } })).calls.opened[0]!.deepColor).toBe(true);
+  });
+
+  test("colorSpace: \"srgb\" or NB_COLOR_SPACE=srgb asks for an sRGB surface", async () => {
+    expect((await start(app, { run: { colorSpace: "srgb" } })).calls.opened[0]!.colorSpace).toBe("srgb");
+    windowControls.close();
+    expect((await start(app, { env: { NB_COLOR_SPACE: "srgb" } })).calls.opened[0]!.colorSpace).toBe("srgb");
   });
 });
 

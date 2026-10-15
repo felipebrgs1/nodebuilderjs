@@ -183,6 +183,16 @@ parent's content box, as in CSS (`width="50%"`):
   (`background={() => ({ linear: [theme.accent.base, "transparent"] })}` follows the theme).
   Colors are interpolated in premultiplied space like CSS, so fading to `"transparent"` never
   turns gray. Borders, text and shadows stay solid colors.
+- **Colors** are CSS strings: hex (`"#3584e4"`, `"#00000010"` with alpha), `"transparent"`, and
+  the wide-gamut forms `color(display-p3 1 0.3 0)`, `color(srgb ...)`, `oklch(0.7 0.2 145)` and
+  `oklab(...)` (channels as numbers or percentages, alpha after a slash: `oklch(0.7 0.2 145 /
+  50%)`). Hex is sRGB, as in CSS. The window asks the compositor for a **Display P3 surface**
+  (Wayland color management, `wp_color_manager_v1`), so P3 and OKLCH colors show past sRGB on a
+  wide-gamut display while hex colors look exactly as before; where the compositor cannot (X11,
+  older compositors) those colors are clipped to sRGB. `outputColorSpace()` says which one the
+  window got (reactive); `run(app, { colorSpace: "srgb" })` or `NB_COLOR_SPACE=srgb` keeps sRGB.
+  `run(app, { deepColor: true })` (`NB_DEEP_COLOR=1`) asks for a 16-bit float window buffer:
+  smoother gradients in wide gamut, at twice the GPU memory for the window (off by default).
 - **Overflow warnings (development):** when children need more room than their container
   gives them (after wrapping text and `grow` children have shrunk) and the excess is hidden by
   a `clip` ancestor or the window, `run()` prints it once per node, e.g.
@@ -307,13 +317,19 @@ import photo from "./photo.jpg" with { type: "file" };
 or `fill` (stretches). Without `width`/`height`, the image uses its own size in pixels. The
 `with { type: "file" }` makes `nodebuilder package` embed the file in the executable; `src`
 also accepts a path, a `file:` `URL`, the file's bytes (`Uint8Array`) or already decoded
-pixels (`{ width, height, data }` in RGBA).
+pixels (`{ width, height, data }` in RGBA, plus `colorSpace: "display-p3"` when they are P3).
 
 Formats: **PNG, JPEG and WebP** are decoded in TypeScript (JPEG honors the EXIF
 orientation, and all of them produce the same result, byte for byte, as libpng, libjpeg-turbo
 and libwebp). **AVIF and HEIC** use the system `libheif`, loaded only when needed: without it,
 only those formats fail, and the generated packages suggest it without requiring it. SVG is
 drawn by `<Icon>` (below).
+
+**Color profiles** are honored: an image tagged Display P3 (iPhone photos, P3 PNGs, AVIF with
+P3 CICP) keeps its wide-gamut colors, and other RGB ICC profiles (Adobe RGB, ProPhoto...) are
+converted to Display P3 when decoding; `decodeImage()` says which in `colorSpace`. On a P3
+window the GPU draws sRGB and P3 images as they are; on an sRGB one, P3 images are clipped to
+sRGB. Untagged images are sRGB, as in browsers.
 
 ### Icons
 
@@ -713,8 +729,9 @@ const panel = createPresence(open, { enter: 180, exit: 120 });
   exit, easing })` gives `mounted` (stays `true` until the exit finishes, for use in `<Show>`)
   and `progress` (0 to 1). Durations in ms (default 200; presence 180 in, 120 out), default
   curve `easing.easeOut` (also `linear`, `easeIn`, `easeInOut`, or any `(t) => number`).
-- `mixColor(a, b, t)` blends two colors into `"#rrggbbaa"`, alpha included, in premultiplied
-  space like CSS: `mixColor("#ff0000", "transparent", 0.5)` is red at half alpha, not gray.
+- `mixColor(a, b, t)` blends two colors into `"#rrggbbaa"` (a `color(display-p3 ...)` when the
+  result is past sRGB), alpha included, in premultiplied space like CSS:
+  `mixColor("#ff0000", "transparent", 0.5)` is red at half alpha, not gray.
 - `Dialog`, `Select`, `Tooltip` and `Toggle` already animate. Without a window (in tests) every
   animation finishes immediately; `frames()` from `@nodebuilderjs/core/testing` controls time.
 
@@ -1064,6 +1081,7 @@ server** (EGL surfaceless: works in CI, containers and agent sandboxes):
 ```sh
 nodebuilder screenshot src/main.tsx shot.png                    # the app at its <Window> size
 nodebuilder screenshot src/main.tsx shot@2x.png --scale 2 --theme dark --width 1024 --height 700
+nodebuilder screenshot src/main.tsx shot-p3.png --color-space display-p3   # P3 pixels, a P3-tagged PNG
 ```
 
 The command runs the app with `NB_SCREENSHOT=<out.png>` set, so `run()` lays out, lets
@@ -1236,6 +1254,9 @@ Measured on 2026-10-11. To reproduce, see [ARCHITECTURE.md](ARCHITECTURE.md#meas
   show through each other.
 - Linear gradients only (no radial or conic ones), as backgrounds and Canvas fills; borders,
   text and shadows are solid colors.
+- Wide gamut: Display P3 only (no Rec. 2020 or HDR); X11 windows are sRGB. Image profiles
+  that are not RGB matrix/TRC (LUT-based, CMYK, gray) are ignored, and the colors painted into
+  multicolor icons are sRGB (a one-color icon is tinted on the GPU, so it shows P3).
 - Scrolling without inertia or animation (the wheel and keys jump straight there), without
   auto-scroll when dragging a selection to the edge and without repeat when holding the click
   on the scrollbar track.

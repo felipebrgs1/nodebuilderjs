@@ -1,14 +1,19 @@
 // PNG decoder (no dependencies besides the runtime's zlib): every color type and bit
 // depth, palette/tRNS transparency and Adam7 interlacing. Output is 8-bit RGBA with
-// straight alpha. Gamma/ICC chunks are ignored, like most UI toolkits do.
+// straight alpha. The color profile (cICP, iCCP, sRGB chunks) is returned for decodeImage to
+// apply; gAMA/cHRM alone are ignored, as most UI toolkits do.
 
 import { inflateSync } from "node:zlib";
+import type { ColorSpace } from "../render/color.js";
+import type { ColorProfile } from "./icc.js";
 
 export interface Bitmap {
   width: number;
   height: number;
   /** RGBA, 8 bits per channel, straight (not premultiplied) alpha, rows top to bottom. */
   data: Uint8Array;
+  /** What the pixel values mean: sRGB unless set (decoders set it from the file's color profile). */
+  colorSpace?: ColorSpace;
 }
 
 const SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
@@ -22,13 +27,14 @@ export function isPng(bytes: Uint8Array): boolean {
   return bytes.length >= 8 && SIGNATURE.every((b, i) => bytes[i] === b);
 }
 
-export function decodePng(bytes: Uint8Array): Bitmap {
+export function decodePng(bytes: Uint8Array): Bitmap & { profile?: ColorProfile } {
   if (!isPng(bytes)) throw new Error("not a PNG file");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let width = 0, height = 0, depth = 0, colorType = 0, interlace = 0;
   let palette: Uint8Array | null = null;
   let trns: Uint8Array | null = null;
   const idat: Uint8Array[] = [];
+  const profile: ColorProfile = {};
 
   for (let pos = 8; pos + 8 <= bytes.length; ) {
     const length = view.getUint32(pos);
@@ -44,6 +50,8 @@ export function decodePng(bytes: Uint8Array): Bitmap {
     } else if (type === "PLTE") palette = body;
     else if (type === "tRNS") trns = body;
     else if (type === "IDAT") idat.push(body);
+    else if (type === "cICP" && body.length === 4) profile.cicp = [body[0]!, body[1]!];
+    else if (type === "iCCP") profile.icc = iccpProfile(body);
     else if (type === "IEND") break;
   }
 
@@ -116,7 +124,7 @@ export function decodePng(bytes: Uint8Array): Bitmap {
       }
     }
   }
-  return { width, height, data: out };
+  return { width, height, data: out, profile };
 }
 
 /** Sample `index` of a scanline, for depths 1..16 (sub-byte samples are packed MSB first). */
@@ -145,5 +153,17 @@ function unfilter(filter: number, line: Uint8Array, prev: Uint8Array, bpp: numbe
       return;
     default:
       throw new Error(`invalid PNG filter ${filter}`);
+  }
+}
+
+/** iCCP: name, NUL, compression method (0: zlib), the compressed profile. A broken one is skipped. */
+function iccpProfile(body: Uint8Array): Uint8Array | undefined {
+  const nul = body.indexOf(0);
+  if (nul < 1 || nul > 79 || body[nul + 1] !== 0) return undefined;
+  try {
+    // Real profiles are a few KB (a sampled one, a few hundred): this stops a zip bomb.
+    return new Uint8Array(inflateSync(body.subarray(nul + 2), { maxOutputLength: 4 << 20 }));
+  } catch {
+    return undefined;
   }
 }
