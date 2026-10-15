@@ -4,7 +4,7 @@ import { type FontStyle, type Handlers, REGULAR, UINode, displayScale, invalidat
 import { type TextLine, minContentWidth, wrapText } from "../../render/text-wrap.js";
 import { type MaybeAccessor, createEffect, read } from "../../reactive/signals.js";
 import { clipboard } from "../../runtime/clipboard.js";
-import { theme } from "../../theme.js";
+import { textVariant, theme } from "../../theme.js";
 import { type StyleProps, applyProps, inherited, inheritedText } from "../props.js";
 import { boundaryAt, charAt, charEdges, wordAt } from "./text-selection.js";
 
@@ -32,8 +32,11 @@ export function Text(
     lineHeight?: MaybeAccessor<number>;
     /** Lets the user select it with the mouse and copy it (Ctrl+C). Off by default, so labels and buttons don't select. */
     selectable?: boolean;
+    /** A named set of text styles: `muted`, `caption`, `title` or the app's (defineTextVariants); props given here win. */
+    variant?: string;
   },
 ) {
+  if (props.variant !== undefined) props = { ...textVariant(props.variant), ...props };
   const node = new UINode("Text");
   applyProps(node, props);
   let value = "";

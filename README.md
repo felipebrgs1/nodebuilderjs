@@ -717,12 +717,21 @@ const panel = createPresence(open, { enter: 180, exit: 120 });
 
 - `setTheme("dark" | "light")` or a custom theme (`{ ...darkTheme, accent: { ...darkTheme.accent,
   base: "#9141ac" } }`); `colorScheme()` tells which one is in use. `theme.x = ...` also updates.
-- `createThemeTokens({ light: {...}, dark: {...} })` gives the app's own colors (sidebar, links,
-  code background) one value per scheme, switching with `setTheme` like `theme` does:
-  `const colors = createThemeTokens({ light: { sidebar: "#f3f3f3" }, dark: { sidebar: "#202020" } })`,
-  then `background={() => colors.sidebar}`. A custom theme takes the set of its `scheme`.
-- **Theme colors inside functions:** `color={() => theme.text.secondary}` follows the switch;
-  `color={theme.text.secondary}` keeps the color from that moment. The built-in widgets
+- **Colors by name:** every color prop also takes a theme path, `color="text.secondary"`,
+  `background="accent.base"`, `borderColor="divider"`, like a CSS variable. It is resolved when
+  painting, so it follows `setTheme` with no accessor and no `theme` import.
+- `createThemeTokens({ light: {...}, dark: {...} })` adds the app's own colors (sidebar, links,
+  code background), one value per scheme, usable by name in the same way:
+  `createThemeTokens({ light: { sidebar: "#f3f3f3", graph: { node: "#b3a37c" } }, dark: {...} })`,
+  then `background="sidebar"` or `color="graph.node"` (an app name wins over a theme path of the
+  same name; a token may name another, `link: "accent.base"`). It also returns an object for
+  code (`colors.sidebar`, read inside a function). A custom theme takes the set of its `scheme`.
+  An unknown name paints magenta and warns once.
+- **Text variants:** `<Text variant="muted">` (secondary color), `"caption"` (12 px, secondary)
+  and `"title"` (20 px, bold); `defineTextVariants({ label: { fontSize: 12, bold: true, color:
+  "accent.base" } })` adds the app's own or replaces these. Props on the Text win.
+- **Theme values inside functions:** in code, `color={() => theme.text.secondary}` follows the
+  switch; `color={theme.text.secondary}` keeps the color from that moment. The built-in widgets
   already follow it.
 - `animate(from, to, onUpdate, { duration, easing, onDone })` returns a function that stops it;
   `createTween(source, { duration, easing })` follows a value; `createPresence(when, { enter,

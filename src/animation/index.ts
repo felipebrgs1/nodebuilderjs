@@ -2,7 +2,7 @@
 // Without a window (tests that do not call `frames()`), they jump to the end at once.
 
 import { type Accessor, createEffect, createSignal, onCleanup, untrack } from "../reactive/signals.js";
-import { extendedSrgb, formatColor } from "../render/color.js";
+import { extendedSrgb, formatColor, resolveColor } from "../render/color.js";
 import { mixRgba } from "../render/paint.js";
 import { animating, frameNow, requestAnimationFrame } from "../runtime/frames.js";
 
@@ -96,5 +96,5 @@ export function createPresence(when: Accessor<unknown>, options: PresenceOptions
 /** `a` blended toward `b` by `t` (0..1), as "#rrggbbaa" (`color(display-p3 ...)` past sRGB); premultiplied like CSS, so mixing toward "transparent" fades without graying. */
 export function mixColor(a: string, b: string, t: number): string {
   const magenta = [1, 0, 1, 1];
-  return formatColor(mixRgba(extendedSrgb(a) ?? magenta, extendedSrgb(b) ?? magenta, t));
+  return formatColor(mixRgba(extendedSrgb(resolveColor(a)) ?? magenta, extendedSrgb(resolveColor(b)) ?? magenta, t));
 }

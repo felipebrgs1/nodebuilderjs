@@ -150,9 +150,10 @@ What cannot be tested automatically is documented when closing the task:
     (`registerFont`, `fontFamily` lists, CSS weight/slant matching, synthetic bold/italic,
     features, variations, with the box fonts of `fixtures/fonts/` whose advances are known),
     `rich-text` (spans: fonts, wrapping across spans, baseline, links), `text-selection`,
-    `text-field` (password, borders, focus ring), `text-area` (wrapping, caret across lines,
+    `text-field` (password, borders, focus ring), `text-variants` (`<Text variant>`, `defineTextVariants`), `text-area` (wrapping, caret across lines,
     scrolling to the caret).
-  - `widgets/`: `controls` (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`,
+  - `widgets/`: `tokens` (colors by name: theme paths, `createThemeTokens`, resolved at paint),
+    `controls` (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`,
     `Spinner`), `popups` (`Select`, `Tabs`, `Tooltip`, `Dialog`), `overlay`, `scroll`
     (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
     `handlers` (event props on every widget, chained with the widget's own), `ref` (`ref`,
@@ -212,7 +213,7 @@ src/                   one module per folder; relative imports with `.js`
   jsx-runtime.ts       own JSX runtime; jsx() only creates descriptions (ElementDesc)
   testing.ts           @nodebuilderjs/core/testing: mount, findBy/AllByText, findBy/AllByLabel, click, interact,
                        layoutWarnings, screenshot/savePNG/canScreenshot, use{Fake,Real}TextMetrics
-  theme.ts             lightTheme/darkTheme, `theme` (reactive getters), setTheme, colorScheme
+  theme.ts             lightTheme/darkTheme, `theme` (reactive getters), setTheme, colorScheme, createThemeTokens, text variants
   animation/index.ts   animate, createTween, createPresence, easing, mixColor
   assets.d.ts          `declare module "*.png" | "*.svg"...` (index.ts references it with preserve="true")
   reactive/
@@ -429,6 +430,11 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
 - Color/size defaults come from `theme.ts`, not hard-coded in widgets. Theme colors go
   in an effect (or in painting), never copied into the style at creation, otherwise they do
   not follow `setTheme`; respect the color the app passed (`if (props.background === undefined) ...`).
+- Color strings may be token names (`"text.secondary"`, app names from `createThemeTokens`):
+  `parseColor` resolves them (`resolveColor` in `render/color.ts`, sources added with
+  `addColorTokens`). Code that turns a color into something cached (an icon bitmap key) must
+  resolve it first, or a theme switch keeps the old value. `<Text variant>` merges the variant's
+  styles under the props (`textVariant` in `theme.ts`).
 - Transitions use `createPresence`/`createTween` (`animation/`): without a window they
   finish immediately.
 - Everything new is written in **English**: code comments, identifiers, docs (README,
@@ -763,7 +769,8 @@ packages, all with the version from the root `package.json`:
   Shift+wheel depends on the event's modifiers: on Wayland they only apply while the window
   has keyboard focus.
 - Dark theme does not follow the system (the XDG portal is reachable now with `src/dbus/`, not read yet); a theme color
-  copied as a fixed value (`color={theme.x}`) does not follow the switch. Animations without
+  copied as a fixed value (`color={theme.x}`) does not follow the switch (a name, `color="x"`, does);
+  color tokens are not typed (any string compiles; an unknown name warns once at runtime). Animations without
   `scale`/`rotate` or declarative `transition`.
 - Screenshots need EGL (Mesa surfaceless or an EGL device); a process that took one cannot
   open a window afterwards (and vice versa).

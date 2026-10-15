@@ -13,7 +13,7 @@ export { outputColorSpace, type ColorSpace } from "./render/color.js";
 export { clipboard } from "./runtime/clipboard.js";
 export { registerFont, fontFamilies, type FontOptions, type RegisteredFont } from "./runtime/fonts.js";
 export * from "./widgets/index.js";
-export { theme, lightTheme, darkTheme, setTheme, colorScheme, createThemeTokens, type Theme } from "./theme.js";
+export { theme, lightTheme, darkTheme, setTheme, colorScheme, createThemeTokens, defineTextVariants, type Theme, type TextVariant } from "./theme.js";
 export { animate, createTween, createPresence, easing, mixColor, type AnimateOptions, type Easing, type PresenceOptions } from "./animation/index.js";
 export { decodeImage } from "./image/decode.js";
 export { type Bitmap, type ImageInput } from "./image/source.js";

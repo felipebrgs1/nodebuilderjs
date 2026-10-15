@@ -3,6 +3,8 @@
 // read `theme.text.primary` follow setTheme() and assignments like `theme.accent.base = "#..."`.
 
 import { createSignal } from "./reactive/signals.js";
+import { addColorTokens, atPath } from "./render/color.js";
+import type { StyleProps } from "./widgets/props.js";
 import { invalidate } from "./render/node.js";
 
 export const lightTheme = {
@@ -89,6 +91,9 @@ function view(path: string[]): any {
 /** The current theme. Read it inside functions (`color={() => theme.text.secondary}`) to follow changes. */
 export const theme: Theme = view([]);
 
+// Color props take theme paths by name: `color="text.secondary"`, resolved when painting.
+addColorTokens((name) => atPath(current, name));
+
 /** Switches every widget to `lightTheme`, `darkTheme` or a theme of your own (e.g. `{ ...darkTheme, accent: {...} }`). */
 export function setTheme(next: Theme | "light" | "dark") {
   current = structuredClone(next === "light" ? lightTheme : next === "dark" ? darkTheme : next);
@@ -100,10 +105,13 @@ export const colorScheme = () => theme.scheme;
 
 /**
  * Colors (or any values) of the app's own that follow setTheme like `theme` does: one set per
- * scheme, read through getters, so `background={() => colors.sidebar}` switches with the theme.
- * A custom theme passed to setTheme takes the set of its `scheme`.
+ * scheme. Color props take them by name (`background="sidebar"`, `color="graph.node"`), resolved
+ * when painting, so they switch with the theme without an accessor; an app name wins over a
+ * theme path with the same name. The returned object reads them in code, through getters
+ * (`() => colors.sidebar` follows the theme). A custom theme takes the set of its `scheme`.
  */
 export function createThemeTokens<T extends object>(sets: { light: T; dark: T }): T {
+  addColorTokens((name) => atPath(sets[colorScheme()], name));
   const view = (path: string[]): any => {
     const out: Record<string, unknown> = {};
     let sample: any = sets.light;
@@ -126,4 +134,31 @@ export function createThemeTokens<T extends object>(sets: { light: T; dark: T })
     return out;
   };
   return view([]);
+}
+
+// ---- text variants -----------------------------------------------------------------
+
+/** Text styles a `<Text variant>` takes: any style prop (sizes, weight, color or token name...). */
+export type TextVariant = Partial<StyleProps>;
+
+const variants: Record<string, TextVariant> = {
+  muted: { color: "text.secondary" },
+  caption: { fontSize: 12, color: "text.secondary" },
+  title: { fontSize: 20, fontWeight: 700 },
+};
+
+/**
+ * Adds the app's text variants, or replaces built-in ones (`muted`, `caption`, `title`):
+ * `defineTextVariants({ label: { fontSize: 12, bold: true, color: "accent.base" } })`, then
+ * `<Text variant="label">`. Props given on the Text win over its variant's.
+ */
+export function defineTextVariants(more: Record<string, TextVariant>) {
+  Object.assign(variants, more);
+}
+
+/** The styles of variant `name`; an unknown name warns and gives none. */
+export function textVariant(name: string): TextVariant {
+  const v = variants[name];
+  if (!v) console.warn(`nodebuilder: unknown text variant "${name}" (defineTextVariants adds one)`);
+  return v ?? {};
 }
