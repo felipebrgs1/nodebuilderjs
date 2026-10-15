@@ -18,7 +18,7 @@ style is flat props. SolidJS-style reactivity: **only functions are reactive** (
 | `Grid` | children in rows of equal-width cells (cards, covers, galleries) | `columns`, `gap`, `rowGap` (default `gap`); see "Layout rules" |
 | `Scroll` | scrolling: vertical (default), `horizontal` or `horizontal vertical` (both) | needs `grow={1}` or a size; see "Scrolling" below |
 | `RichText` | one paragraph of styled spans (markdown, links inside a sentence) | `spans` (array or accessor) of strings or `{ text, color, size, bold, weight, italic, family, letterSpacing, underline, background, onClick }`, `lineHeight`, `textAlign`; a span with `onClick` is a link (pointer cursor; other clicks go to the parent) |
-| `Text` | text; wraps at spaces to fit the width | children (`{count}`, `"a"`) or `text={() => ...}`, `wrap` (default `true`), `maxLines` (truncates with "…"), `textAlign`, `lineHeight`, `underline`, `selectable` |
+| `Text` | text; wraps at spaces to fit the width | children (`{count}`, `"a"`) or `text={() => ...}`, `wrap` (default `true`), `maxLines` (truncates with "…"), `textAlign`, `lineHeight`, `underline`, `selectable`, `variant` (`muted`, `caption`, `title` or `defineTextVariants`) |
 | `Image` | PNG, JPEG, WebP, AVIF | see the `nodebuilder-images` skill |
 | `Icon` | SVG icon (Lucide, Phosphor), color inherited like text | `svg`, `size` (20), `color`, `strokeWidth`; skill `nodebuilder-icons` |
 | `Canvas` | free drawing: lines, polygons, arcs, text | `draw={(g) => ...}` + size; skill `nodebuilder-drawing` |
@@ -569,13 +569,23 @@ stripe at `left={0} top={0} bottom={0}` sits on the edge of a padded card.
 - Default colors and sizes in `theme` (`theme.text.secondary`, `theme.accent.base`,
   `theme.danger.base`, `theme.divider`...). Dark theme: `setTheme("dark")` (or `"light"`, or
   `{ ...darkTheme, accent: {...} }`), at any time; `colorScheme()` tells which one is active.
-- **Theme colors always inside a function** (`color={() => theme.text.secondary}`): that way they
-  follow theme changes. `color={theme.text.secondary}` keeps the color of that moment.
+- **Theme colors by name** (preferred): `color="text.secondary"`, `background="accent.base"`,
+  `borderColor="divider"`: any theme path, resolved when painting, so it follows `setTheme`
+  with no accessor and no import. In code, read `theme` inside a function
+  (`color={() => (on() ? theme.accent.base : theme.text.secondary)}`, or the names:
+  `color={() => (on() ? "accent.base" : "text.secondary")}`); `color={theme.text.secondary}`
+  keeps the color of that moment.
 - `title` may be an accessor (`title={() => \`${note()} - Notes\`}`): the title bar and the
   window list follow it.
-- Colors of the app's own (sidebar, links, code background) that follow `setTheme`:
-  `const colors = createThemeTokens({ light: { sidebar: "#f3f3f3" }, dark: { sidebar: "#202020" } })`,
-  then `background={() => colors.sidebar}`.
+- Colors of the app's own (sidebar, links, code background) that follow `setTheme`: call
+  `createThemeTokens({ light: { sidebar: "#f3f3f3" }, dark: { sidebar: "#202020" } })` once (e.g.
+  in `theme.ts`, imported by `main.tsx`), then use them by name anywhere: `background="sidebar"`
+  (nested: `"graph.node"`). The returned object reads them in code (`() => colors.sidebar`).
+  An unknown name paints magenta and warns once.
+- **Text variants** instead of repeating `fontSize` + `color`: `<Text variant="muted">`,
+  `"caption"` (12 px, secondary), `"title"` (20 px, bold); the app's own with
+  `defineTextVariants({ label: { fontSize: 12, bold: true, color: "accent.base" } })`. Props on
+  the Text win. `color`/`fontSize` set on a container are inherited by the texts inside.
 - `windowControls.close()`, `.minimize()`, `.toggleMaximize()`, `.setTitle(t)`, `.hide()`/`.show()`
   (off the screen and the taskbar, the app keeps running); `windowState.width()`, `.height()`,
   `.maximized()`, `.activated()`, `.visible()` are accessors.
@@ -662,7 +672,7 @@ may want to copy (ids, links, paths, error messages, results) gets `selectable`:
 
 ```tsx
 <Text selectable>{order.id}</Text>
-<Text selectable color={theme.danger.base}>{error}</Text>
+<Text selectable color="danger.base">{error}</Text>
 ```
 
 With `selectable`: dragging selects, double-click takes the word, triple-click the line,

@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { type Bitmap, type ImageSource, acquireImage, releaseImage } from "../../image/source.js";
 import { edges } from "../../render/layout.js";
 import { type Color, type Handlers, UINode, displayScale, invalidate } from "../../render/node.js";
-import { colorIn } from "../../render/color.js";
+import { colorIn, resolveColor } from "../../render/color.js";
 import { type MaybeAccessor, createEffect, onCleanup, read } from "../../reactive/signals.js";
 import { type IconNode, type Rgba, type Svg, parseSvg, renderSvg } from "../../svg/index.js";
 import { theme } from "../../theme.js";
@@ -92,7 +92,8 @@ export function Icon(props: StyleProps & Handlers & { svg: MaybeAccessor<IconInp
     const scale = displayScale();
     const pw = Math.max(1, Math.round(w * scale)), ph = Math.max(1, Math.round(h * scale));
     const x = Math.round((n.x + pl) * scale) / scale, y = Math.round((n.y + pt) * scale) / scale;
-    const color = inherited(n, "color") ?? theme.text.primary;
+    // Resolved, so a token's new value after setTheme makes a new key (and bitmap).
+    const color = resolveColor(inherited(n, "color") ?? theme.text.primary);
     const current = svg;
     let id = svgIds.get(current);
     if (!id) svgIds.set(current, (id = nextSvgId++));

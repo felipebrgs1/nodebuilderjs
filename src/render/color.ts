@@ -25,6 +25,54 @@ export function setOutputColorSpace(next: ColorSpace) {
   setSpace(next);
 }
 
+// ---- tokens --------------------------------------------------------------------
+
+/** Looks a token name up ("sidebar", "text.secondary"); undefined when it does not know it. */
+export type TokenSource = (name: string) => unknown;
+
+const sources: TokenSource[] = [];
+const warned = new Set<string>();
+
+/** Adds a source of color names; the last added is asked first (app tokens before the theme). */
+export function addColorTokens(source: TokenSource) {
+  sources.unshift(source);
+}
+
+/** True for what CSS itself reads as a color (hex, functions, named), never looked up as a token. */
+function isCss(c: string): boolean {
+  return c.startsWith("#") || c.includes("(") || c in named;
+}
+
+/**
+ * The CSS color `c` stands for: itself when it is CSS, else the token's current value (a token
+ * may name another one). An unknown name stays as is (paints magenta) and warns once.
+ */
+export function resolveColor(c: string): string {
+  for (let depth = 0; depth < 8 && !isCss(c); depth++) {
+    let value: unknown;
+    for (const source of sources) if (typeof (value = source(c)) === "string") break;
+    if (typeof value !== "string") {
+      if (!warned.has(c)) {
+        warned.add(c);
+        console.warn(`nodebuilder: unknown color "${c}": not a CSS color, a theme path ("text.secondary") or a createThemeTokens name`);
+      }
+      return c;
+    }
+    c = value;
+  }
+  return c;
+}
+
+/** The value at a dotted path of `object` ("text.secondary"), or undefined. */
+export function atPath(object: unknown, path: string): unknown {
+  let o: any = object;
+  for (const key of path.split(".")) {
+    if (o == null || typeof o !== "object" || !Object.hasOwn(o, key)) return undefined;
+    o = o[key];
+  }
+  return o;
+}
+
 /** `css` in `space`, clipped to it (0..1); magenta when malformed. Cached. */
 export function colorIn(css: string, space: ColorSpace = output): Rgba {
   const cache = caches[space];

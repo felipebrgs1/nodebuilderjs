@@ -219,6 +219,9 @@ Depois:
   fallback, image color profiles (ICC and CICP in PNG, JPEG, WebP, AVIF, HEIC), P3 screenshots
   (`--color-space display-p3`) and an opt-in 16-bit float buffer (`deepColor`). Left out: HDR
   (Rec. 2020/PQ) until a use case shows up
+- ~~Theme colors by name and text variants~~ **done** (2026-10-14): `color="text.secondary"`,
+  `background="sidebar"` (app tokens from `createThemeTokens`), resolved when painting, and
+  `<Text variant="caption">` with `defineTextVariants`. Still to do: typed token names
 - ~~Tema escuro~~ **feito** (2026-10-12): `setTheme`, `darkTheme`, `colorScheme`. Falta
   seguir a preferência do sistema (portal XDG `org.freedesktop.appearance` por D-Bus, com a
   libdbus via `dlopen` e o fd no `poll()` da thread de bombeamento)

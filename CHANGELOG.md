@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- **Colors by name:** any color prop takes a theme path (`color="text.secondary"`,
+  `background="accent.base"`) or a name from `createThemeTokens` (`background="sidebar"`),
+  like a CSS variable: resolved when painting, so it follows `setTheme` without an accessor
+  or a `theme` import. Tokens may name other tokens; an unknown name warns once.
+- **Text variants:** `<Text variant="muted" | "caption" | "title">`, and the app's own with
+  `defineTextVariants`; props on the Text win.
 - **Wide-gamut color (Display P3).** Colors accept `color(display-p3 ...)`, `color(srgb ...)`,
   `oklch()` and `oklab()` besides hex. The window asks the compositor for a Display P3 surface
   (Wayland `wp_color_manager_v1`), so those colors show past sRGB on wide-gamut displays; hex

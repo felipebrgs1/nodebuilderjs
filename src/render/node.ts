@@ -5,6 +5,10 @@ import type { ImageSource } from "../image/source.js";
 import { onMount } from "../reactive/signals.js";
 import type { CanvasGradient, LinearGradient } from "./gradient.js";
 
+/**
+ * A CSS color (hex, `color(display-p3 ...)`, `oklch()`, `transparent`...) or a token name: a
+ * theme path ("text.secondary") or a createThemeTokens name, resolved when painting.
+ */
 export type Color = string;
 /** What fills a shape: a solid color or a gradient along a line (Canvas's `g.linearGradient()`). */
 export type Paint = Color | CanvasGradient;

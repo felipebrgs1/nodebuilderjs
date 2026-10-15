@@ -126,6 +126,16 @@ Widgets do not copy theme colors into the style at creation: they put them in an
 only when the app did not pass its own color. The cost is one function call per read; when
 painting 1000 texts, within the noise (measured on 2026-10-12).
 
+Apps can skip the effect altogether: a color prop may be a token name (`"text.secondary"`,
+`"sidebar"`). The style keeps the name; `parseColor` resolves it at paint time through
+`resolveColor` (`render/color.ts`), which asks the registered sources, app tokens from
+`createThemeTokens` first and then the theme (paths into the current theme object), and follows
+a token that names another. CSS colors (hex, functions, the named ones) are never looked up.
+`setTheme` already invalidates everything, so the next paint picks the new values. The check is
+a few string tests per color; `bun run bench` MODE=all N=2000 painted in 0.15–0.16 ms/frame
+before and after (2026-10-14). `<Text variant>` is a static merge of a named style set under
+the Text's own props.
+
 `runtime/frames.ts` is the frame clock: the `requestAnimationFrame` queue, run by `run()`
 before each layout, and `frameNow()`. `animation/` (`animate`, `createTween`,
 `createPresence`) uses this clock; an animation starts counting at the call, not at the first
