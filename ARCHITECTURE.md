@@ -165,7 +165,7 @@ changing and the app is stuck redrawing; outside production (`NODE_ENV`), `run()
 with the top of that stack.
 
 `run()` is `runWith(loadNative(), ...)`; `runWith` takes the native core and hooks (`env`,
-`now`, `log`, `warn`) so `test/app.test.tsx` drives the whole loop with a fake core: it
+`now`, `log`, `warn`) so `test/runtime/app.test.tsx` drives the whole loop with a fake core: it
 counts `render` calls while sending `configure`, `frame` and pointer events.
 
 ## Layout
@@ -668,7 +668,7 @@ under the pointer and hands any other click to the nearest ancestor with an `onC
 
 ### Text editing
 
-`TextField` and `TextArea` share `widgets/text-edit.ts`. The value belongs to the app (`value`
+`TextField` and `TextArea` share `widgets/text/text-edit.ts`. The value belongs to the app (`value`
 + `onInput`); an `EditSession` keeps what lives around it: the selection (`anchor`/`focus`, in
 code points), an undo stack of `{ value, anchor, focus }` snapshots (consecutive typing or
 deleting pushes one; a caret move, a space or a paste starts a new step) and the last value it
@@ -718,7 +718,7 @@ sends the configure. In JS, hiding clears `configured`, so nothing renders until
 the pump): `wire.ts` marshals values by signature and frames messages (writes little endian,
 reads both), `connection.ts` does the EXTERNAL auth, `Hello`, calls with replies, signal matches
 and exported objects (methods, read-only properties with `PropertiesChanged`, introspection).
-Tests run against `test/fake-bus.ts`, a bus in the test process on a temp unix socket.
+Tests run against `test/desktop/fake-bus.ts`, a bus in the test process on a temp unix socket.
 
 `src/tray/` serves a StatusNotifierItem at `/StatusNotifierItem` and its menu
 (`com.canonical.dbusmenu`) at `/MenuBar`, under the name `org.kde.StatusNotifierItem-<pid>-<n>`,
@@ -853,8 +853,8 @@ and never embedded: every Linux desktop already has them.
 ## Measuring performance
 
 ```sh
-NB_STATS=1 bun examples/bench.tsx        # N=1000 MODE=one|all|static
-NB_STATS=1 bun examples/dashboard.tsx    # TAB=overview|table|logs|settings ROWS=500 CYCLE=30
+NB_STATS=1 bun examples/bench/bench.tsx        # N=1000 MODE=one|all|static
+NB_STATS=1 bun examples/bench/dashboard.tsx    # TAB=overview|table|logs|settings ROWS=500 CYCLE=30
 ```
 
 `NB_STATS=1` prints every second: fps, time per frame (state, layout, paint, native), why the
@@ -875,7 +875,7 @@ The comparisons use the same scene built in plain HTML and JavaScript, running i
 3):
 
 ```sh
-scripts/compare.sh "nodebuilder" 3 5 -- bun examples/dashboard.tsx
+scripts/compare.sh "nodebuilder" 3 5 -- bun examples/bench/dashboard.tsx
 SCENE=dashboard scripts/compare.sh "electron" 3 5 -- \
   compare/electron/node_modules/.bin/electron --ozone-platform=wayland compare/electron
 (cd compare/tauri && cargo build --release)
