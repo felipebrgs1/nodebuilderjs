@@ -77,6 +77,19 @@ let visibilityRequest: (visible: boolean) => void = () => {};
  */
 export const windowState = { width, height, maximized, activated, transparent, visible };
 
+let windowFrame = true;
+
+/**
+ * false where the app does not own a window frame: in a browser the page is the window (the tab
+ * shows the title, the browser closes it), so `<Window>` draws no title bar, border or corners and
+ * `<WindowControls>` no buttons. Set before the app is mounted (web boot()).
+ */
+export function setWindowFrame(framed: boolean) {
+  windowFrame = framed;
+}
+
+export const hasWindowFrame = () => windowFrame;
+
 export const windowControls = {
   close: () => closeRequest(),
   minimize: () => native?.minimize(),

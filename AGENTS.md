@@ -17,6 +17,8 @@ well, so as much of the framework as possible lives in TS, and the C stays small
 | `ARCHITECTURE.md` | how it works inside and how to measure performance |
 | `ROADMAP.md` | priorities and what has been done (still in Portuguese) |
 | `FONTS.md` | the fonts roadmap: what is done and everything left to make fonts complete |
+| `WEB.md` | the web target roadmap (`nodebuilder web`): what is done and what is left |
+| `WEB2.md` | design of the DOM renderer for the web (UINode tree -> HTML + CSS), the alternative to the canvas |
 | `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps, and inside core for `nodebuilder agents update` (only the block between the `nodebuilder:begin/end` markers of `AGENTS.md` is the framework's) |
 
 ## Non-negotiable rules
@@ -58,6 +60,8 @@ bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]
 bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --color-space display-p3 --wait-frames N
                             --props <json> --export <name>]
                             # PNG of the app without a window or display server (EGL offscreen)
+bun cli/nodebuilder.ts web <app.tsx> [--serve --port 3000 --out dist/web --minify]
+                            # the app as a web page (canvas + WebGL), see ARCHITECTURE "The web"
 bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
                             # icon imports for an app (validated in its node_modules); `icons list [filter]`
 bun cli/nodebuilder.ts agents update [--dry-run] [--force]
@@ -173,6 +177,11 @@ What cannot be tested automatically is documented when closing the task:
     `diagnostics()` and one spawn), `agents` (`agents update` on temp apps: stale, edited,
     renamed docs, AGENTS.md markers), `check-snippets`.
   - `charts/`: scales and each chart type.
+  - `web/`: `renderer` (the command buffer against a fake device and text painter), `keys`,
+    `decode` (browser-decoded bytes, the on-demand TS decoders),
+    `inflate` (against node:zlib), `shims` (`cssFont`, the in-memory fs). The build is in
+    `cli/web`. A real browser is not part of `bun test`: check pages with headless Chromium
+    (screenshots and input through the DevTools protocol).
 
   A new subject gets a new file in its area's folder; when `core` grows, split it.
 - Fixtures live in `test/fixtures/<format>/` (`png/` with the `.raw` expected pixels, `jpeg/`,
@@ -276,6 +285,16 @@ src/                   one module per folder; relative imports with `.js`
     stroke.ts          stroke -> polygons (caps, joins, miter)
     raster.ts          scanline rasterization with AA (nonzero/evenodd)
     triangulate.ts     ear clipping of simple polygons (null if self-intersecting)
+  web/                 the Native interface in a browser (`nodebuilder web`)
+    boot.ts            fetches the app's files, installs the web native (useNative) before the app runs
+    native.ts          canvas, DOM events, clipboard, fonts (FontFace); renderer.ts (command buffer ->
+                       vertices, render_gles2.c in TS) + gl.ts (WebGL device, Canvas2D text atlas)
+    text.ts keys.ts    CSS fonts and measuring; DOM keys -> xkb names
+    images.ts          the browser decodes the app's images ahead of time (sync decodeImage finds them)
+    decode.ts icon.ts  the build swaps them for image/decode.ts (TS decoders: an on-demand chunk) and
+                       image/icon.ts (no window icon on a page)
+    inflate.ts         zlib inflate in TS (PNG through the TS decoders)
+    shims/             node:fs (in memory), zlib, url, path, net, module for the browser build
   charts/              @nodebuilderjs/core/charts: Recharts-style charts, on top of <Canvas>
     scale.ts           axis ticks (d3's algorithm)
     components.ts      configuration children (Line, XAxis...): render nothing
@@ -311,7 +330,8 @@ examples/        apps/ (counter, todo), showcase/ (images, icons, drawing, chart
                  scroll, widgets, tray), bench/ (bench, dashboard) + assets/ (shared)
 cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
                  (+ screenshot-entry.ts: renders an exported component for `--props`/`--export`),
-                 icons.ts (`icons add/list`: writes an app's icon imports), doctor.ts (checks
+                 icons.ts (`icons add/list`: writes an app's icon imports), web.ts
+                 (`web`: browser build + dev server), doctor.ts (checks
                  over injected probes; `systemProbes()` is the real machine), agents.ts
                  (`agents update`) + agents-history.json (generated: released doc hashes)
   package/       common.ts (SYSTEM_LIBS: soname -> deb/pacman package, for packaging and doctor),

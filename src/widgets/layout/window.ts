@@ -1,6 +1,6 @@
 import type { IconInput } from "../../image/icon.js";
 import { type Child, insert } from "../../jsx-runtime.js";
-import { windowControls, windowOptionsKey, windowState } from "../../runtime/app.js";
+import { hasWindowFrame, windowControls, windowOptionsKey, windowState } from "../../runtime/app.js";
 import { type Handlers, type Style, UINode, measureText } from "../../render/node.js";
 import { type MaybeAccessor, createEffect } from "../../reactive/signals.js";
 import { theme } from "../../theme.js";
@@ -34,10 +34,11 @@ function WindowButton(props: { kind: "minimize" | "maximize" | "close"; onClick:
   return node;
 }
 
-/** Minimize, maximize/restore and close buttons, for a custom title bar (`<Window decorations={false}>`). */
+/** Minimize, maximize/restore and close buttons, for a custom title bar (`<Window decorations={false}>`). None on the web. */
 export function WindowControls(props: StyleProps & Handlers = {}) {
   const node = Row({ align: "center", gap: 10, ...props });
   node.label = "WindowControls";
+  if (!hasWindowFrame()) return node;
   node.setSlot(node.addSlot(), [
     WindowButton({ kind: "minimize", onClick: windowControls.minimize }),
     WindowButton({ kind: "maximize", onClick: windowControls.toggleMaximize }),
@@ -72,17 +73,19 @@ export function Window(
       return next;
     });
   }
+  // No frame (the web): the page is the window, with no title bar, border or corners.
+  const framed = hasWindowFrame();
   Object.assign(node.style, {
-    direction: "column", borderWidth: 1, clip: true,
-    padding: 1, // keep children (e.g. the titlebar divider) off the border
+    direction: "column", borderWidth: framed ? 1 : 0, clip: true,
+    padding: framed ? 1 : 0, // keep children (e.g. the titlebar divider) off the border
   } satisfies Style);
   if (props.background === undefined) createEffect(() => node.set("background", theme.window.background));
   if (props.borderColor === undefined) createEffect(() => node.set("borderColor", theme.window.border));
-  createEffect(() => node.set("radius", windowState.maximized() || !windowState.transparent() ? 0 : theme.window.radius));
+  createEffect(() => node.set("radius", !framed || windowState.maximized() || !windowState.transparent() ? 0 : theme.window.radius));
 
   const content = Column({ grow: 1, minHeight: 0 });
   insert(content, props.children);
-  node.setSlot(node.addSlot(), props.decorations === false ? [content] : [Titlebar(props.title), Divider(), content]);
+  node.setSlot(node.addSlot(), props.decorations === false || !framed ? [content] : [Titlebar(props.title), Divider(), content]);
   // width/height are the window's initial size, not a style.
   const { width: _w, height: _h, ...style } = props;
   applyProps(node, style);

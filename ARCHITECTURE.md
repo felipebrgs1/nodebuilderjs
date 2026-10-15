@@ -850,6 +850,43 @@ FreeType, HarfBuzz and libc. A new OS is a `native/platform/<os>/` folder with t
 implementation of this contract and a `build.sh`. On Windows and macOS the planned path is
 ANGLE (GLES on top of Direct3D/Metal) or a new `render_<api>.c` with the same interface.
 
+## The web (`src/web/`, `nodebuilder web`)
+
+The browser is one more implementation of the `Native` interface (`src/runtime/native.ts`);
+nothing above it changes. `boot()` installs it with `useNative()` before the app is imported,
+and calls `setWindowFrame(false)`: the page is the window, so `<Window>` builds no title bar,
+border or corners and `<WindowControls>` no buttons (`hasWindowFrame()` in `runtime/app.ts`).
+
+- **Rendering:** `web/renderer.ts` is `render_gles2.c` in TypeScript: the same vertex
+  format, batching, clip stack and gradient cutting, against a `RenderDevice` that
+  `web/gl.ts` implements with WebGL and the same GLSL (GLES2 shaders run unchanged in WebGL 1).
+  The split keeps the command interpretation testable without a browser.
+- **Text:** Canvas2D measures (`fontBoundingBox*`, so line heights match the font) and
+  rasterizes whole runs, in their color, into an RGBA atlas drawn as color glyphs. Runs are
+  cached by text, font, size, spacing and color; a full atlas is flushed and started again.
+  The browser shapes, falls back and draws emoji.
+- **Events:** DOM pointer, wheel and key events become `NativeEvent`s (`web/keys.ts` maps
+  `KeyboardEvent.key` to the xkb names). `configure` comes from a `ResizeObserver` and
+  `devicePixelRatio`, which may be fractional. After each render, a `requestAnimationFrame`
+  plays the compositor's frame callback.
+- **Node built-ins:** the build maps `node:*` to `web/shims/` (an import without a shim is a
+  build error); `process` and `setImmediate` are inlined in `index.html`, before any module.
+  `node:fs` reads from memory: the build lists the app's files in `assets.json` and `boot()`
+  fetches them first, so synchronous reads (images, icons, fonts) keep working.
+- **Images:** `boot()` has the browser decode every imported image (`createImageBitmap`,
+  which applies the file's color profile); `image/decode.ts` is swapped for `web/decode.ts`,
+  which returns those. Other bytes (made or fetched at runtime) load the TypeScript decoders,
+  a chunk fetched on demand: until it arrives `decodeImage` throws an error carrying `retry`
+  (a promise), and the image source decodes again when it settles (`image/source.ts`).
+  `image/icon.ts` is swapped for `web/icon.ts`: a page has no window icon to rasterize.
+- **Build:** `cli/web.ts` bundles a virtual entry (`await boot(); await import(app)`) with
+  `Bun.build({ target: "browser", conditions: ["bun"], splitting: true })`: `app.js` and the
+  shared `nodebuilder-*.js` start the page, the app's own chunk is preloaded while `boot()`
+  fetches the files, and the decoders chunk only comes when something needs it. Tree-shaking
+  leaves out whatever the app does not reach (an app without images has no decoders at all).
+  The addon's `.node` requires stay external and are never called. The `todo` example starts
+  with 41 KB of gzipped script.
+
 ## Loading the native core
 
 `src/runtime/native.ts` looks for the addon in this order:

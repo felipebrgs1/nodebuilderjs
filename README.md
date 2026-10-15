@@ -1139,6 +1139,25 @@ Generates in `dist/` an **AppImage**, a **`.deb`**, an **`.rpm`** and a **`.tar.
 a single executable (Bun + your app + native core), a menu entry and an icon. Works on
 Ubuntu 22.04+, Debian 12+, Fedora, RHEL 9+ and derivatives.
 
+### Web (experimental)
+
+```sh
+bunx nodebuilder web src/app.tsx --serve   # http://localhost:3000, rebuilds on change
+```
+
+Builds the same app, unchanged, as a web page in `dist/web` (`index.html`, `app.js` and the
+files it imports with `{ type: "file" }`). It draws into a `<canvas>` with WebGL, so it looks
+the same as on the desktop, except that the page is the window: `<Window>` draws no title bar or
+border (its `title` goes to the browser tab) and `<WindowControls />` draws nothing. Text is measured and drawn by the browser, though, so line
+breaks can land a few pixels apart. What does not exist on the web yet:
+
+- OpenType features and variations (`fontFeatures`, `fontVariations`);
+- `registerFont` without a `family`, and reading files the app did not import;
+- the window controls, tray and D-Bus, `screenshot()`;
+- IME, accessibility and the browser's own text selection and find.
+
+What is left is in [WEB.md](WEB.md).
+
 ## Benchmarks
 
 The same two scenes built with five technologies, measured in the same session:

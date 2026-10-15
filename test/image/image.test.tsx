@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Column, Image, Show, UINode, createRoot, createSignal, decodeImage, layout, setTextMeasurer } from "@nodebuilderjs/core";
 import { insert } from "@nodebuilderjs/core/jsx-runtime";
 import { setImageBackend } from "../../src/image/source.js";
-import { loadNative } from "../../src/runtime/native.js";
+import { type Native, loadNative } from "../../src/runtime/native.js";
 import { commandsOf } from "../helpers.js";
 
 setTextMeasurer((text) => ({ width: text.length * 8, ascent: 15, descent: 5 }));
@@ -148,5 +148,37 @@ test("a missing image draws nothing and does not throw", () => {
     expect(warnings[0]).toMatch(/could not load .*does-not-exist\.png/);
   } finally {
     console.warn = warn;
+  }
+});
+
+test("an image whose decoder is still loading (error.retry) is decoded again once it is ready, without a warning", async () => {
+  const { useNative } = await import("../../src/runtime/native.js");
+  // HEIF bytes go to the native decoder: here, one that is still loading (like the web's TS decoders).
+  const avif = new Uint8Array([0, 0, 0, 16, ...new TextEncoder().encode("ftypavif"), 0, 0, 0, 0]);
+  let ready = false;
+  let loaded!: () => void;
+  const loading = new Promise<void>((r) => (loaded = r));
+  useNative({
+    decodeImage() {
+      if (!ready) throw Object.assign(new Error("decoders loading"), { retry: loading });
+      return { width: 2, height: 1, data: new Uint8Array(8).fill(255) };
+    },
+  } as unknown as Native);
+  const warn = console.warn;
+  const warnings: string[] = [];
+  console.warn = (msg: string) => warnings.push(msg);
+  try {
+    const { node } = mount(() => <Column align="start"><Image src={avif} /></Column>);
+    expect(commandsOf(node, "image")).toEqual([]);
+    ready = true;
+    loaded();
+    await loading;
+    await Promise.resolve();
+    layout(node, 400, 300);
+    expect(commandsOf(node, "image").map((c) => [c.w, c.h])).toEqual([[2, 1]]);
+    expect(warnings).toEqual([]);
+  } finally {
+    console.warn = warn;
+    useNative(null);
   }
 });

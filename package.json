@@ -71,6 +71,7 @@
     "typecheck": "tsc --noEmit -p .",
     "check:snippets": "bun scripts/check-snippets.ts",
     "test": "bun test",
+    "web": "bun cli/nodebuilder.ts web",
     "counter": "bun examples/apps/counter.tsx",
     "todo": "bun examples/apps/todo.tsx",
     "images": "bun examples/showcase/images.tsx",

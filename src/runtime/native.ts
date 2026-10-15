@@ -127,6 +127,11 @@ function candidates(target: string): (() => Native)[] {
 const isNotFound = (err: unknown) =>
   (err as { code?: string })?.code === "MODULE_NOT_FOUND" || /Cannot find (module|package)/.test(String((err as Error)?.message));
 
+/** Installs a native core other than the addon (the web one; null: the addon again); loadNative() returns it from then on. */
+export function useNative(core: Native | null) {
+  native = core;
+}
+
 export function loadNative(): Native {
   if (native) return native;
   const target = `${process.platform}-${process.arch}`;
