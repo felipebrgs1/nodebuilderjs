@@ -65,9 +65,9 @@ O objetivo é que tudo que depende de SO saia do `core/` sem mudar nenhum pixel.
 ### Verificação (TDD)
 
 - **Testes primeiro:**
-  - `primary` mapeado conforme a plataforma: `test/input`, com host falso.
-  - Layout e pintura a 1,25 e 1,5, com retângulos caindo em pixel inteiro: `test/core` e
-    `test/draw`.
+  - `primary` mapped per platform: `test/runtime/input`, with a fake host.
+  - Layout and painting at 1.25 and 1.5, with rectangles landing on whole pixels:
+    `test/layout/core` and `test/paint/draw`.
 - **Sem regressão visual:** captura de counter, todo, icons e charts antes e depois. O
   `magick compare -metric AE` precisa dar **0**.
 - **Desempenho:** `bench:dashboard` com `NB_STATS=1`, antes e depois na mesma sessão. O

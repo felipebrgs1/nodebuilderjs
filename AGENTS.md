@@ -47,7 +47,7 @@ bun install                 # development deps
 bun run build:native        # builds native/build/<platform>-<arch>/nodebuilder.node
 bun run typecheck           # tsc 7 --noEmit (~0.1 s)
 bun test                    # all tests, no window (~0.1 s)
-bun test test/svg.test.tsx  # one file; -t "pattern" filters by test name
+bun test test/image/svg.test.tsx  # one file; -t "pattern" filters by test name
 bun run check:snippets      # typechecks the ts/tsx snippets of README.md and the template docs
 bun run counter | todo | images | icons | drawing | charts | overlays | text | scroll | widgets | tray   # examples
 bun run dev                 # todo with --watch
@@ -110,10 +110,10 @@ from internal details, so that refactoring does not break tests for no reason.
 | Errors (`ErrorBoundary`, `catchError`) | a component or effect that throws; check the `fallback`, that the scope was disposed (the effect no longer runs, `onCleanup` ran) and that, without a boundary, the error reaches the caller and the queue keeps going |
 | Widgets and layout | mount with `mount` (`@nodebuilderjs/core/testing`) or `insert` into a root `UINode`, run `layout()` and check `x`/`y`/`width`/`height` or `debugTree()`. Fake metrics: 8 px per character, 20 px line (`useRealTextMetrics()` for the installed fonts, `skipIf(!canUseRealTextMetrics())`) |
 | Painting and command buffer | `drawCommands(node)` / `decode(buffer)` from `test/helpers.ts` return named commands (`{ op: "line", x0, ... }`). A new draw primitive starts here |
-| Frame loop (when frames render) | `runWith(fakeNative, app, { maxFps: 1000 }, hooks)` from `runtime/app.ts` (see `test/app.test.tsx`): the fake records `render`/`requestFrame` and the test sends `configure`/`frame`/pointer events through `open`'s callback, then awaits a `setImmediate` tick. `hooks` inject `env`, `now`, `log`, `warn`. Close with `windowControls.close()` and reset the globals `run()` sets (text measurer, image backend, frame clock) |
+| Frame loop (when frames render) | `runWith(fakeNative, app, { maxFps: 1000 }, hooks)` from `runtime/app.ts` (see `test/runtime/app.test.tsx`): the fake records `render`/`requestFrame` and the test sends `configure`/`frame`/pointer events through `open`'s callback, then awaits a `setImmediate` tick. `hooks` inject `env`, `now`, `log`, `warn`. Close with `windowControls.close()` and reset the globals `run()` sets (text measurer, image backend, frame clock) |
 | Events (mouse, keyboard, focus) | `interact(root)` from `@nodebuilderjs/core/testing`, or `createInput(root, host)` from `runtime/input.ts` with a fake host that records move/resize/cursor and controls the clock |
 | Images and textures | `setImageBackend({ create, destroy })` records texture creation and release |
-| Decoders and rasterizers | "golden" tests: the reference output (libjpeg-turbo, libwebp, librsvg, ImageMagick) lives in `test/fixtures/`, generated once; compare byte for byte or with an explicit tolerance. Then fuzzing with flipped bytes and truncated files: every error is a format message (never a TypeError), and absurd dimensions are rejected before allocating (2^28 pixel limit) |
+| Decoders and rasterizers | "golden" tests: the reference output (libjpeg-turbo, libwebp, librsvg, ImageMagick) lives in `test/fixtures/<format>/`, generated once; compare byte for byte or with an explicit tolerance. Then fuzzing with flipped bytes and truncated files: every error is a format message (never a TypeError), and absurd dimensions are rejected before allocating (2^28 pixel limit) |
 | Addon (what runs without a window) | call the native function through `loadNative()` in a test; use `test.skipIf` when it depends on something optional in the system (e.g. libheif) |
 | Pixels (the C drawing: shaders, corners, AA, text, images) | `renderOffscreen()` in the addon or `screenshot(root)` from testing, behind `test.skipIf(!canScreenshot())`; assert colors at chosen points (fonts and drivers vary), not whole images |
 
@@ -134,38 +134,52 @@ What cannot be tested automatically is documented when closing the task:
 
 ### Test organization
 
-- One file per subject: `core` (reactivity, tree, layout, culling), `grid` (`Grid`, `aspectRatio`), `wrap` (`wrap` rows/columns), `margin`, `app` (`run()` with a
-  fake native: idle renders nothing, frame reasons, `NB_TRACE`, frame loop and overflow
-  warnings), `overflow` (overflow detection, `layoutWarnings()`), `control-flow`
-  (`Show`, `Switch`/`Match`, `Index`, nesting without recreating components),
-  `error-boundary` (errors, effect queue), `context`, `ref`
-  (`ref`, programmatic focus and scrolling, `onResize`), `overlay`, `style` (`opacity`, `translate`),
-  `text` (line wrapping, alignment, `maxLines`, multi-line selection), `font-fallback`
-  (fallback fonts and color emoji with real fonts, `skipIf` they are missing), `font-style`
-  (weights, italics and letter spacing with real fonts and pixels), `fonts` (`registerFont`,
-  `fontFamily` lists, CSS weight/slant matching, synthetic bold/italic, features, variations,
-  with the box fonts of `fixtures/fonts/` whose advances are known), `controls`
-  (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`, `Spinner`), `popups`
-  (`Select`, `Tabs`, `Tooltip`, `Dialog`), `theme` (`setTheme`, widgets following the switch),
-  `animation` (`animate`, tween, presence, widget transitions with `frames()`), `scroll`
-  (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
-  `input` (events, keys with nothing focused, `focusable`), `text-field` (password, borders, focus
-  ring), `handlers` (event props on every widget, chained with the widget's own), `percent`
-  (percentage sizes), `screenshot` (offscreen addon, PNG encoder, `screenshot()`, `NB_SCREENSHOT`),
-  `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake `node_modules`),
-  `doctor` (each check on fake probes, the ELF and `ldd` readers, `diagnostics()` and one spawn),
-  `agents` (`agents update` on temp apps: stale, edited, renamed docs, AGENTS.md markers),
-  `text-area` (wrapping, caret across lines, scrolling to the caret), `rich-text` (spans: fonts,
-  wrapping across spans, baseline, links), `clipboard`, `window-icon` (`iconImages`: sizes, fitting, the default; `run()` covers the
-  prop and `hide`/`show` in `app`), `dbus` (wire format, connection against `fake-bus.ts`),
-  `tray` (`createTray` against `fake-bus.ts`), `text-selection`, `testing` (public helpers), `gradient` (backgrounds, Canvas,
-  pixels), `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `geometry`
-  (triangulation), `draw` (primitives and `shapes.ts`), `canvas` and `charts/`. A new subject gets a new file; when `core` grows, split it.
+- One file per subject, grouped in one folder per area (`test/<area>/<subject>.test.ts[x]`;
+  shared helpers stay in `test/`):
+  - `reactive/`: `control-flow` (`Show`, `Switch`/`Match`, `Index`, nesting without
+    recreating components), `error-boundary` (errors, effect queue), `context`.
+  - `layout/`: `core` (reactivity, tree, layout, culling), `grid` (`Grid`, `aspectRatio`),
+    `wrap` (`wrap` rows/columns), `margin`, `percent` (percentage sizes), `overflow` (overflow
+    detection, `layoutWarnings()`).
+  - `paint/`: `draw` (primitives and `shapes.ts`), `geometry` (triangulation), `gradient`
+    (backgrounds, Canvas, pixels), `canvas`, `style` (`opacity`, `translate`).
+  - `text/`: `text` (line wrapping, alignment, `maxLines`, multi-line selection),
+    `font-fallback` (fallback fonts and color emoji with real fonts, `skipIf` they are missing),
+    `font-style` (weights, italics and letter spacing with real fonts and pixels), `fonts`
+    (`registerFont`, `fontFamily` lists, CSS weight/slant matching, synthetic bold/italic,
+    features, variations, with the box fonts of `fixtures/fonts/` whose advances are known),
+    `rich-text` (spans: fonts, wrapping across spans, baseline, links), `text-selection`,
+    `text-field` (password, borders, focus ring), `text-area` (wrapping, caret across lines,
+    scrolling to the caret).
+  - `widgets/`: `controls` (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`,
+    `Spinner`), `popups` (`Select`, `Tabs`, `Tooltip`, `Dialog`), `overlay`, `scroll`
+    (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
+    `handlers` (event props on every widget, chained with the widget's own), `ref` (`ref`,
+    programmatic focus and scrolling, `onResize`), `theme` (`setTheme`, widgets following the
+    switch), `animation` (`animate`, tween, presence, widget transitions with `frames()`).
+  - `runtime/`: `app` (`run()` with a fake native: idle renders nothing, frame reasons,
+    `NB_TRACE`, frame loop and overflow warnings), `input` (events, keys with nothing focused,
+    `focusable`), `clipboard`, `screenshot` (offscreen addon, PNG encoder, `screenshot()`,
+    `NB_SCREENSHOT`), `testing` (public helpers).
+  - `image/`: `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `window-icon` (`iconImages`: sizes,
+    fitting, the default; `run()` covers the prop and `hide`/`show` in `runtime/app`).
+  - `desktop/`: `dbus` (wire format, connection against `fake-bus.ts`), `tray` (`createTray`
+    against `fake-bus.ts`).
+  - `cli/`: `cli` (the `nodebuilder` command, spawned; `addIcons` called directly on a fake
+    `node_modules`), `doctor` (each check on fake probes, the ELF and `ldd` readers,
+    `diagnostics()` and one spawn), `agents` (`agents update` on temp apps: stale, edited,
+    renamed docs, AGENTS.md markers), `check-snippets`.
+  - `charts/`: scales and each chart type.
+
+  A new subject gets a new file in its area's folder; when `core` grows, split it.
+- Fixtures live in `test/fixtures/<format>/` (`png/` with the `.raw` expected pixels, `jpeg/`,
+  `webp/`, `svg/`, `heif/`, `fonts/`); a test reads them relative to its own folder
+  (`../fixtures/...`).
 - Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
   ~0.5 s (most of it: the EGL context of `screenshot` and the spawns of `cli`); a test that
   needs more than a few ms must have a reason.
 - Small fixtures (a few KB). Record where they came from (tool and version, as in
-  `svg-LICENSES.md`) and the license of third-party files.
+  `svg/svg-LICENSES.md`) and the license of third-party files.
 - Code snippets in skills, the template's AGENTS.md or the README are tested too:
   `bun run check:snippets` typechecks every fenced `ts`/`tsx` block that has an `import` (one
   tsc run, kept out of `bun test`; `check-snippets.test.ts` covers only the extraction). A
@@ -222,18 +236,19 @@ src/                   one module per folder; relative imports with `.js`
     clipboard.ts       clipboard (text): in memory without a window, native with run(); read via event
     fonts.ts           registerFont (app font files -> addon), fontFamilies
     screenshot.ts      captureTree: real metrics + native images, layout, paint, renderOffscreen
-  widgets/             one file per widget; index.ts re-exports
+  widgets/             one file per widget, one folder per kind; index.ts re-exports
     props.ts           StyleProps, STYLE_KEYS, HANDLER_KEYS, applyProps (+ hoverStyle/pressStyle), inherited, interaction, createInteraction
-    containers.ts      Box, Column, Row, Grid, Scroll, Spacer, Divider, Card
-    text.ts image.ts icon.ts canvas.ts button.ts checkbox.ts text-field.ts window.ts
-    toggle.ts radio.ts slider.ts progress.ts   controls (Toggle, RadioGroup, Slider, ProgressBar/Spinner)
-    select.ts tabs.ts tooltip.ts dialog.ts     on top of Overlay (Tabs opens nothing, but uses roving.ts)
     roving.ts          group with a single Tab stop and arrow keys (RadioGroup, Tabs)
-    overlay.ts         <Overlay>: layer above the window (marker in the tree + root.layers)
-    text-selection.ts  character positions, word under the click (Text selectable; TextField, TextArea)
-    text-edit.ts       EditSession (selection, undo/redo), editKey (keys every text input shares), editable (border, focus ring, caret blink, selection props)
-    rich-text.ts       RichText: spans with their own font/color/background/underline/onClick, wrapped across spans, shared baseline
-    text-area.ts       TextArea: multi-line (wrapText with breakWords), caret across lines, scrolls to the caret
+    layout/            containers.ts (Box, Column, Row, Grid, Scroll, Spacer, Divider, Card), window.ts
+    controls/          button.ts checkbox.ts toggle.ts radio.ts slider.ts progress.ts (ProgressBar/Spinner)
+    popups/            overlay.ts (<Overlay>: layer above the window, marker in the tree + root.layers);
+                       select.ts tabs.ts tooltip.ts dialog.ts on top of it (Tabs opens nothing, but uses roving.ts)
+    media/             image.ts icon.ts canvas.ts
+    text/              text.ts, text-field.ts
+      text-selection.ts  character positions, word under the click (Text selectable; TextField, TextArea)
+      text-edit.ts       EditSession (selection, undo/redo), editKey (keys every text input shares), editable (border, focus ring, caret blink, selection props)
+      rich-text.ts       RichText: spans with their own font/color/background/underline/onClick, wrapped across spans, shared baseline
+      text-area.ts       TextArea: multi-line (wrapText with breakWords), caret across lines, scrolls to the caret
   image/
     source.ts          image sources: cache by path, usage count, GPU handle
     decode.ts          decodeImage: picks the decoder by the file signature
@@ -281,11 +296,14 @@ native/
     build.sh            backend build (called by scripts/build-native.sh)
     protocols/          xdg-shell.xml, xdg-toplevel-icon-v1.xml (vendored; wayland-protocols is not installed)
   build/<platform>-<arch>/  output (names from process.platform/arch: linux-x64, ...)
-test/            one file per module (bun:test; bunfig.toml limits bun test to test/)
+test/            one folder per area, one file per subject (bun:test; bunfig.toml limits bun test to test/)
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> named commands
-  charts/        tests for src/charts (scales and each chart type)
-  fixtures/      reference inputs and outputs (.raw, .pnm from djpeg, PNG from librsvg...)
-examples/        counter, todo, images, icons, drawing, charts, overlays, text, scroll, widgets, tray, bench, dashboard (.tsx) + assets/
+  reactive/ layout/ paint/ text/ widgets/ runtime/ image/ cli/ charts/
+  desktop/       dbus, tray + fake-bus.ts (a D-Bus daemon in the test process)
+  fixtures/      reference inputs and outputs by format: png/ (+ .raw), jpeg/ (.pnm from djpeg),
+                 webp/, svg/ (PNG from librsvg), heif/, fonts/
+examples/        apps/ (counter, todo), showcase/ (images, icons, drawing, charts, overlays, text,
+                 scroll, widgets, tray), bench/ (bench, dashboard) + assets/ (shared)
 cli/             `nodebuilder` command (package bin): nodebuilder.ts, package.ts, screenshot.ts
                  (+ screenshot-entry.ts: renders an exported component for `--props`/`--export`),
                  icons.ts (`icons add/list`: writes an app's icon imports), doctor.ts (checks
@@ -348,7 +366,9 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   `./charts`. A new entry point also goes into the `paths` of `tsconfig.json`, before the
   wildcard.
 - Widgets are **functions** that create `UINode`s; there is no widget base class.
-- **New widget:** its own file in `src/widgets/`, exported from `widgets/index.ts`.
+- **New widget:** its own file in the folder of its kind under `src/widgets/` (`layout/`,
+  `controls/`, `popups/`, `media/`, `text/`), exported from `widgets/index.ts`; helpers
+  shared across kinds (`props.ts`, `roving.ts`) stay at the root.
   Code reusable by other modules (geometry, decoding) lives in the subject's module,
   outside `widgets/`.
 - Style props are flat (`padding`, `gap`, `background`...), typed as `StyleProps`
@@ -787,7 +807,7 @@ packages, all with the version from the root `package.json`:
   at the fps cap forever while idle (this happened with the scrollbar highlight). To find
   who asks for frames, run with `NB_TRACE=frames` (look for `[in frame]`); in dev, `run()`
   warns once after 30 frames in a row that request themselves with nothing else changing.
-  `test/app.test.tsx` pins "an idle window renders once".
+  `test/runtime/app.test.tsx` pins "an idle window renders once".
 
 ### Native
 - libwayland headers < 1.22 lack the v6 fields of `wl_surface_listener`, and an old

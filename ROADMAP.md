@@ -83,8 +83,8 @@ em TypeScript.
 
 ## 1. Desempenho
 
-Cada item tem uma meta medida com as mesmas cenas (`examples/bench.tsx` e
-`examples/dashboard.tsx`) e o mesmo método do README. Detalhes técnicos dos gargalos no
+Cada item tem uma meta medida com as mesmas cenas (`examples/bench/bench.tsx` e
+`examples/bench/dashboard.tsx`) e o mesmo método do README. Detalhes técnicos dos gargalos no
 [AGENTS.md](AGENTS.md#performance).
 
 1. ~~**Culling:**~~ **feito.** Layout, pintura e clique ignoram o que está fora da área
