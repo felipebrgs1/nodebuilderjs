@@ -121,13 +121,16 @@ enum {
   NB_OP_GRADIENT = 10,
 };
 
-// Images: RGBA8 with straight alpha, copied on create. The GL texture is made at the
-// next frame that draws it (there may be no context yet) and freed at the next frame
-// after destroy (the context must be current). Ids are > 0; 0 means failure.
-int nb_image_create(int width, int height, const uint8_t *rgba);
+// Images: RGBA8 with straight alpha, copied on create, in color space `space` (NB_COLOR_*: the
+// renderer converts them to the target's). The GL texture is made at the next frame that
+// draws it (there may be no context yet) and freed at the next frame after destroy (the
+// context must be current). Ids are > 0; 0 means failure.
+int nb_image_create(int width, int height, const uint8_t *rgba, int space);
 void nb_image_destroy(int id);
 
 bool nb_render_init(void);
+/** The target's color space (NB_COLOR_*): textures in the other one are converted when drawn. */
+void nb_render_set_color_space(int space);
 /** Reads the bound framebuffer (w x h) into `out` as RGBA8, rows top to bottom, straight alpha. */
 void nb_render_read_pixels(int w, int h, uint8_t *out);
 void nb_render_frame(int buffer_w, int buffer_h, float scale, const float *cmds, size_t count,

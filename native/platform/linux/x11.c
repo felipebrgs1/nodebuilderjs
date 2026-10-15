@@ -580,6 +580,10 @@ static void x_end_frame(void) {
 static void x_request_frame(void) { arm_frame_timer(); }
 static int x_scale(void) { return X.scale ? X.scale : 1; }
 
+// X11 has no color management: the window is sRGB, whatever was asked, and 8 bits per channel
+// (`deep_color` is ignored: without a color space to fill, more bits buy almost nothing).
+static int x_color_space(void) { return NB_COLOR_SRGB; }
+
 static void x_set_cursor(const char *name) {
   if (!X.dpy || !strcmp(name, X.cursor_name)) return;
   snprintf(X.cursor_name, sizeof X.cursor_name, "%s", name);
@@ -718,6 +722,7 @@ const nb_linux_backend nb_x11_backend = {
     .end_frame = x_end_frame,
     .request_frame = x_request_frame,
     .scale = x_scale,
+    .color_space = x_color_space,
     .set_cursor = x_set_cursor,
     .set_title = x_set_title,
     .set_icon = x_set_icon,

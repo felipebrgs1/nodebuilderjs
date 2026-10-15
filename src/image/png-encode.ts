@@ -3,6 +3,7 @@
 // along rows (flat fills) and down columns (vertical edges), and both make long zero runs.
 
 import { deflateSync } from "node:zlib";
+import { displayP3Profile } from "./icc.js";
 import type { Bitmap } from "./png.js";
 
 const SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
@@ -33,7 +34,17 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
   return out;
 }
 
-/** Encodes RGBA pixels (straight alpha, rows top to bottom) as a PNG file. */
+/** cICP (Display P3 primaries, sRGB transfer, RGB, full range) and iCCP for older readers. */
+function p3Chunks(): Uint8Array[] {
+  const name = [..."Display P3"].map((c) => c.charCodeAt(0));
+  const iccp = Uint8Array.from([...name, 0, 0, ...deflateSync(displayP3Profile())]);
+  return [chunk("cICP", Uint8Array.from([12, 13, 0, 1])), chunk("iCCP", iccp)];
+}
+
+/**
+ * Encodes RGBA pixels (straight alpha, rows top to bottom) as a PNG file; a Display P3 bitmap
+ * is tagged as such (untagged PNGs are sRGB).
+ */
 export function encodePng(bitmap: Bitmap): Uint8Array {
   const { width, height, data } = bitmap;
   if (!(width > 0 && height > 0) || data.length < width * height * 4) throw new Error("encodePng: data must hold width*height*4 bytes");
@@ -63,7 +74,8 @@ export function encodePng(bitmap: Bitmap): Uint8Array {
   view.setUint32(0, width);
   view.setUint32(4, height);
   header.set([8, 6, 0, 0, 0], 8); // 8 bits, RGBA, deflate, adaptive filtering, no interlace
-  const parts = [new Uint8Array(SIGNATURE), chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", new Uint8Array(0))];
+  const profile = bitmap.colorSpace === "display-p3" ? p3Chunks() : [];
+  const parts = [new Uint8Array(SIGNATURE), chunk("IHDR", header), ...profile, chunk("IDAT", deflateSync(raw)), chunk("IEND", new Uint8Array(0))];
   const png = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let offset = 0;
   for (const p of parts) {

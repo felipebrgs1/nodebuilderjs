@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { type Bitmap, type ImageSource, acquireImage, releaseImage } from "../../image/source.js";
 import { edges } from "../../render/layout.js";
 import { type Color, type Handlers, UINode, displayScale, invalidate } from "../../render/node.js";
-import { parseColor } from "../../render/paint.js";
+import { colorIn } from "../../render/color.js";
 import { type MaybeAccessor, createEffect, onCleanup, read } from "../../reactive/signals.js";
 import { type IconNode, type Rgba, type Svg, parseSvg, renderSvg } from "../../svg/index.js";
 import { theme } from "../../theme.js";
@@ -96,13 +96,14 @@ export function Icon(props: StyleProps & Handlers & { svg: MaybeAccessor<IconInp
     const current = svg;
     let id = svgIds.get(current);
     if (!id) svgIds.set(current, (id = nextSvgId++));
-    // A fill color is painted in, so the icon is no longer drawn in white and tinted.
+    // A fill color is painted in, so the icon is no longer drawn in white and tinted. The bitmap
+    // is sRGB like every texture (the renderer converts it on a P3 surface).
     const monochrome = current.monochrome && typeof fill !== "string";
     const key = `${id}|${pw}x${ph}|${strokeWidth ?? ""}|${fill}${monochrome ? "" : `|${color}`}`;
     if (key !== sourceKey) {
-      const fillPaint = fill === true ? "current" : fill ? (parseColor(fill) as Rgba) : undefined;
+      const fillPaint = fill === true ? "current" : fill ? (colorIn(fill, "srgb") as Rgba) : undefined;
       const bitmap = iconBitmap(key, () =>
-        renderSvg(current, pw, ph, { color: monochrome ? undefined : (parseColor(color) as Rgba), strokeWidth, fill: fillPaint }),
+        renderSvg(current, pw, ph, { color: monochrome ? undefined : (colorIn(color, "srgb") as Rgba), strokeWidth, fill: fillPaint }),
       );
       const next = acquireImage(bitmap);
       if (source) releaseImage(source);

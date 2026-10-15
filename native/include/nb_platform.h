@@ -12,10 +12,15 @@
 
 // ---- window -----------------------------------------------------------------
 
+/** Color spaces a surface can be in: what its pixel values mean. */
+enum { NB_COLOR_SRGB = 0, NB_COLOR_DISPLAY_P3 = 1 };
+
 typedef struct {
   const char *title;
   const char *app_id;
   int width, height;  // logical px
+  int color_space;    // NB_COLOR_*: asked for; nb_platform_color_space() says what the surface got
+  bool deep_color;    // a 16-bit float buffer when the driver has one (less banding; twice the memory)
 } nb_window_options;
 
 // Resize edges (bitmask), matching what src/runtime/app.ts sends.
@@ -32,6 +37,11 @@ void nb_platform_end_frame(void);
 /** Asks for an NB_EV_FRAME at the next vblank without presenting anything. */
 void nb_platform_request_frame(void);
 int nb_platform_scale(void);
+/**
+ * The color space of the window's surface (NB_COLOR_*), decided by nb_platform_open: the one asked
+ * for when the compositor can take it, NB_COLOR_SRGB otherwise.
+ */
+int nb_platform_color_space(void);
 
 void nb_platform_set_cursor(const char *name);  // freedesktop cursor names ("default", "pointer", "text", "n-resize"...)
 void nb_platform_set_title(const char *title);
@@ -118,13 +128,21 @@ void nb_platform_font_families(void (*fn)(const char *family, void *ud), void *u
 
 // ---- image codecs -----------------------------------------------------------
 
+/** A decoded image's color profile: an ICC profile (malloc'd, the caller frees it) and/or a CICP code. */
+typedef struct {
+  uint8_t *icc;
+  size_t icc_size;
+  int cicp_primaries, cicp_transfer;  // ITU-T H.273; 0: none
+} nb_image_profile;
+
 /**
  * Decodes formats the TypeScript side can't (AVIF, HEIC) with the OS's codecs. Works
- * without a window. On success: true and *rgba = malloc'd RGBA8 with straight alpha
- * (the caller frees it). On failure: false and a message in `error`.
+ * without a window. On success: true, *rgba = malloc'd RGBA8 with straight alpha (the caller
+ * frees it) and the file's color profile in *profile (zeroed when it has none). On failure:
+ * false and a message in `error`.
  */
 bool nb_platform_decode_image(const uint8_t *data, size_t size, int *width, int *height, uint8_t **rgba,
-                              char *error, size_t error_size);
+                              nb_image_profile *profile, char *error, size_t error_size);
 
 // ---- diagnostics (`nodebuilder doctor`) ---------------------------------------
 

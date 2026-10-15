@@ -38,6 +38,11 @@ test.skipIf(!canScreenshot())("screenshot: runs the app without a window and wri
   const px = (x: number, y: number) => Array.from(png.data.subarray((y * 120 + x) * 4, (y * 120 + x) * 4 + 4));
   expect(px(10, 10)).toEqual([255, 0, 0, 255]);
   expect(px(10, 60)).toEqual([255, 255, 255, 255]);
+  // --color-space display-p3: sRGB red in P3 numbers, and a PNG tagged P3.
+  expect(nodebuilder("screenshot", "app.ts", "p3.png", "--width", "60", "--height", "40", "--color-space", "display-p3").code).toBe(0);
+  const p3 = decodeImage(new Uint8Array(readFileSync(join(dir, "p3.png"))));
+  expect(p3.colorSpace).toBe("display-p3");
+  expect(Array.from(p3.data.subarray((10 * 60 + 10) * 4, (10 * 60 + 10) * 4 + 4))).toEqual([234, 51, 35, 255]);
 });
 
 test.skipIf(!canScreenshot())("screenshot --props: renders the entry's exported component with those props", () => {

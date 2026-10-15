@@ -55,7 +55,7 @@ bun run bench               # stress test with NB_STATS=1 (env: N=1000 MODE=one|
 bun run bench:dashboard     # realistic app (env: TAB=overview|table|logs|settings ROWS=500
                             #   LIVE=0 CYCLE=<frames per tab switch>)
 bun run package <app.tsx> --name x --title X [--targets appimage,deb,rpm,tar]
-bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --wait-frames N
+bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 2 --theme dark --color-space display-p3 --wait-frames N
                             --props <json> --export <name>]
                             # PNG of the app without a window or display server (EGL offscreen)
 bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
@@ -142,7 +142,8 @@ What cannot be tested automatically is documented when closing the task:
     `wrap` (`wrap` rows/columns), `margin`, `percent` (percentage sizes), `overflow` (overflow
     detection, `layoutWarnings()`).
   - `paint/`: `draw` (primitives and `shapes.ts`), `geometry` (triangulation), `gradient`
-    (backgrounds, Canvas, pixels), `canvas`, `style` (`opacity`, `translate`).
+    (backgrounds, Canvas, pixels), `canvas`, `style` (`opacity`, `translate`), `color` (CSS
+    color forms, sRGB/P3 conversion, the output space in paint, `mixColor`).
   - `text/`: `text` (line wrapping, alignment, `maxLines`, multi-line selection),
     `font-fallback` (fallback fonts and color emoji with real fonts, `skipIf` they are missing),
     `font-style` (weights, italics and letter spacing with real fonts and pixels), `fonts`
@@ -161,7 +162,8 @@ What cannot be tested automatically is documented when closing the task:
     `NB_TRACE`, frame loop and overflow warnings), `input` (events, keys with nothing focused,
     `focusable`), `clipboard`, `screenshot` (offscreen addon, PNG encoder, `screenshot()`,
     `NB_SCREENSHOT`), `testing` (public helpers).
-  - `image/`: `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `window-icon` (`iconImages`: sizes,
+  - `image/`: `image`, `jpeg`, `webp`, `svg` (+ `<Icon>`), `icc` (color profiles of every format,
+    conversion to P3 against LittleCMS values, ICC writer), `window-icon` (`iconImages`: sizes,
     fitting, the default; `run()` covers the prop and `hide`/`show` in `runtime/app`).
   - `desktop/`: `dbus` (wire format, connection against `fake-bus.ts`), `tray` (`createTray`
     against `fake-bus.ts`).
@@ -173,7 +175,7 @@ What cannot be tested automatically is documented when closing the task:
 
   A new subject gets a new file in its area's folder; when `core` grows, split it.
 - Fixtures live in `test/fixtures/<format>/` (`png/` with the `.raw` expected pixels, `jpeg/`,
-  `webp/`, `svg/`, `heif/`, `fonts/`); a test reads them relative to its own folder
+  `webp/`, `svg/`, `heif/`, `fonts/`, `icc/`); a test reads them relative to its own folder
   (`../fixtures/...`).
 - Fast, deterministic tests: no network, no clock, no window. The whole suite runs in
   ~0.5 s (most of it: the EGL context of `screenshot` and the spawns of `cli`); a test that
@@ -224,6 +226,7 @@ src/                   one module per folder; relative imports with `.js`
     layout.ts          simplified flexbox (+ wrap) + grid (equal columns) + aspectRatio + culling
     overflow.ts        overflow warnings: children cut off by a clip or the window (layoutWarnings, run() in dev)
     paint.ts           tree -> CommandBuffer (Float32Array) + parseColor
+    color.ts           CSS colors (hex, color(display-p3|srgb), oklch, oklab) -> RGBA in the output space (sRGB or Display P3)
     shapes.ts          polyline (LINE segments) and fillPolygon (triangulation + AA fringe)
     gradient.ts        linear gradients: stop offsets (CSS rules), the CSS gradient line of a box
     scrollbar.ts       clamped scroll position and scrollbar geometry (painting and input)
@@ -255,7 +258,8 @@ src/                   one module per folder; relative imports with `.js`
     png.ts             PNG (all color types, tRNS, Adam7) via node:zlib
     jpeg.ts            baseline/progressive JPEG, CMYK/YCCK, EXIF; identical to libjpeg-turbo
     webp.ts            WebP VP8 (lossy), VP8L, alpha, first animation frame; identical to libwebp
-    png-encode.ts      PNG encoder (RGBA, Sub/Up filters, node:zlib) for screenshots
+    png-encode.ts      PNG encoder (RGBA, Sub/Up filters, node:zlib, P3 tagging) for screenshots
+    icc.ts             color profiles: ICC matrix/TRC and CICP -> sRGB/P3 tag or conversion to P3; ICC writer
     icon.ts            app icons: SVG/raster -> square sizes (window and tray icons; DEFAULT_ICON_SVG)
   dbus/                D-Bus client in TS over node:net (no libdbus)
     wire.ts            marshalling by signature, message framing (MessageReader)
@@ -294,7 +298,7 @@ native/
     codecs.c            AVIF/HEIC via libheif (dlopen; own declarations, no header)
     offscreen.c         EGL context with no display server (surfaceless/device) + FBO, for screenshots
     build.sh            backend build (called by scripts/build-native.sh)
-    protocols/          xdg-shell.xml, xdg-toplevel-icon-v1.xml (vendored; wayland-protocols is not installed)
+    protocols/          xdg-shell.xml, xdg-toplevel-icon-v1.xml, color-management-v1.xml (vendored; wayland-protocols is not installed)
   build/<platform>-<arch>/  output (names from process.platform/arch: linux-x64, ...)
 test/            one folder per area, one file per subject (bun:test; bunfig.toml limits bun test to test/)
   helpers.ts     decode()/drawCommands()/commandsOf(): command buffer -> named commands
@@ -498,6 +502,16 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
   there is a compositor (`_NET_WM_CM_Sn`); without a compositor, `transparent=false` and the
   `Window` uses radius 0. X11 has no frame callback: pacing comes from a timerfd at the
   XRandR rate.
+- **Color spaces:** command colors arrive already encoded for the target (`parseColor` uses the
+  output space `run()` set from `open()`'s answer, `nb_platform_color_space()`); textures carry
+  their own space (`nb_image_create(..., space)`; color emoji and icon bitmaps are sRGB) and the
+  shader converts those that differ from the target (`nb_render_set_color_space`). A new texture
+  source must say its space; a new color that paint sends goes through `parseColor`. On Wayland
+  the surface gets a P3 image description (`wp_color_manager_v1`) only when the compositor
+  supports every piece; X11 is always sRGB and 8-bit. `deep_color` picks a 16-bit float EGL
+  config on Wayland, never 10-10-10-2 (2-bit alpha). `nb_platform_decode_image` also returns the
+  file's profile (`nb_image_profile`: ICC bytes or CICP); libheif's nclx struct is read only
+  through its stable leading fields.
 - Renderer in **premultiplied alpha** (`GL_ONE, GL_ONE_MINUS_SRC_ALPHA`). The border is
   composited *over* the background (CSS semantics). Blending in "straight" alpha produces
   dark artifacts in the corners (bug already fixed; do not regress). Image textures are
@@ -737,6 +751,10 @@ packages, all with the version from the root `package.json`:
   time). An `Image` with different corner radii is drawn inside a rounded clip.
 - Gradients: linear only (backgrounds and Canvas fills); no radial/conic; borders, text and
   shadows are solid.
+- Wide gamut: Display P3 only (no Rec. 2020 or HDR); P3 colors are clipped to sRGB on X11,
+  without Wayland color management and in default (sRGB) screenshots; LUT-based, CMYK and gray
+  ICC profiles are ignored (the image stays sRGB); multicolor icon bitmaps are rasterized in sRGB;
+  `deepColor` is Wayland only.
 - `<ErrorBoundary>` does not cover the event handler's own code (only the effects its
   writes trigger); `<Switch>` does not accept a function child that returns `<Match>`
   (the `Match`es must be in the JSX, so they can be read without running anything).
@@ -808,6 +826,8 @@ packages, all with the version from the root `package.json`:
   who asks for frames, run with `NB_TRACE=frames` (look for `[in frame]`); in dev, `run()`
   warns once after 30 frames in a row that request themselves with nothing else changing.
   `test/runtime/app.test.tsx` pins "an idle window renders once".
+- `run()` sets the output color space from `open()`; a test that changes it
+  (`setOutputColorSpace`) resets it to "srgb" afterwards, or every later color comes out in P3.
 
 ### Native
 - libwayland headers < 1.22 lack the v6 fields of `wl_surface_listener`, and an old

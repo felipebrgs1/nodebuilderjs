@@ -188,7 +188,21 @@ static void free_strings(char **strings, uint32_t count) {
   free(strings);
 }
 
-// open({ title, appId, width, height }, onEvents)
+static int color_space_of(napi_env env, napi_value v) {
+  char name[16] = "";
+  napi_valuetype t;
+  if (napi_typeof(env, v, &t) == napi_ok && t == napi_string) napi_get_value_string_utf8(env, v, name, sizeof name, NULL);
+  return !strcmp(name, "display-p3") ? NB_COLOR_DISPLAY_P3 : NB_COLOR_SRGB;
+}
+
+static napi_value color_space_name(napi_env env, int space) {
+  napi_value out;
+  napi_create_string_utf8(env, space == NB_COLOR_DISPLAY_P3 ? "display-p3" : "srgb", NAPI_AUTO_LENGTH, &out);
+  return out;
+}
+
+// open({ title, appId, width, height, colorSpace?, deepColor? }, onEvents) -> the surface's color
+// space ("display-p3" when asked for and the compositor takes it, else "srgb")
 static napi_value js_open(napi_env env, napi_callback_info info) {
   if (g_open) {
     napi_throw_error(env, NULL, "window already open");
@@ -212,13 +226,18 @@ static napi_value js_open(napi_env env, napi_callback_info info) {
   CHECK(napi_get_value_int32(env, v, &w));
   CHECK(napi_get_named_property(env, argv[0], "height", &v));
   CHECK(napi_get_value_int32(env, v, &h));
+  CHECK(napi_get_named_property(env, argv[0], "colorSpace", &v));
+  int wanted = color_space_of(env, v);
+  bool deep = false;
+  CHECK(napi_get_named_property(env, argv[0], "deepColor", &v));
+  napi_get_value_bool(env, v, &deep);  // undefined: false
 
   if (!nb_text_init()) {
     napi_throw_error(env, NULL, "text engine initialisation failed");
     return NULL;
   }
   nb_window_options options = {.title = title ? title : "nodebuilder", .app_id = app_id ? app_id : "nodebuilder",
-                               .width = w, .height = h};
+                               .width = w, .height = h, .color_space = wanted, .deep_color = deep};
   bool ok = nb_platform_open(&options);
   free(title);
   free(app_id);
@@ -240,7 +259,9 @@ static napi_value js_open(napi_env env, napi_callback_info info) {
     return NULL;
   }
   request_delivery();  // the initial configure arrived while opening
-  return NULL;
+  int space = nb_platform_color_space();
+  nb_render_set_color_space(space);
+  return color_space_name(env, space);
 }
 
 static napi_value js_close(napi_env env, napi_callback_info info) {
@@ -284,11 +305,12 @@ static napi_value js_render(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
-// renderOffscreen(width, height, scale, commands: Float32Array, texts: string[]) -> Uint8Array
+// renderOffscreen(width, height, scale, commands: Float32Array, texts: string[], colorSpace?) -> Uint8Array
 // (width*scale x height*scale, RGBA8, straight alpha, rows top to bottom). No window needed.
+// `colorSpace` ("srgb" by default) is the one the commands' colors are encoded in; textures follow it.
 static napi_value js_render_offscreen(napi_env env, napi_callback_info info) {
-  size_t argc = 5;
-  napi_value argv[5];
+  size_t argc = 6;
+  napi_value argv[6];
   CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
   double w, h, scale;
   CHECK(napi_get_value_double(env, argv[0], &w));
@@ -326,6 +348,7 @@ static napi_value js_render_offscreen(napi_env env, napi_callback_info info) {
   uint32_t text_count;
   char **texts = get_strings(env, argv[4], &text_count);
   if (!texts) return NULL;
+  nb_render_set_color_space(argc >= 6 ? color_space_of(env, argv[5]) : NB_COLOR_SRGB);
   nb_render_frame(bw, bh, (float)scale, data, length, (const char **)texts, text_count);
   free_strings(texts, text_count);
 
@@ -481,9 +504,10 @@ static napi_value js_font_stats(napi_env env, napi_callback_info info) {
 }
 
 // createImage(width, height, rgba: Uint8Array) -> id (> 0). Works before the window opens.
+// createImage(width, height, rgba: Uint8Array, colorSpace?) -> id
 static napi_value js_create_image(napi_env env, napi_callback_info info) {
-  size_t argc = 3;
-  napi_value argv[3];
+  size_t argc = 4;
+  napi_value argv[4];
   CHECK(napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
   int32_t w, h;
   CHECK(napi_get_value_int32(env, argv[0], &w));
@@ -497,7 +521,7 @@ static napi_value js_create_image(napi_env env, napi_callback_info info) {
     return NULL;
   }
   napi_value out;
-  napi_create_int32(env, nb_image_create(w, h, data), &out);
+  napi_create_int32(env, nb_image_create(w, h, data, color_space_of(env, argv[3])), &out);
   return out;
 }
 
@@ -517,8 +541,9 @@ static napi_value js_decode_image(napi_env env, napi_callback_info info) {
   }
   int w = 0, h = 0;
   uint8_t *rgba = NULL;
+  nb_image_profile profile;
   char error[256] = "";
-  if (!nb_platform_decode_image(data, length, &w, &h, &rgba, error, sizeof error)) {
+  if (!nb_platform_decode_image(data, length, &w, &h, &rgba, &profile, error, sizeof error)) {
     napi_throw_error(env, NULL, error);
     return NULL;
   }
@@ -528,12 +553,33 @@ static napi_value js_decode_image(napi_env env, napi_callback_info info) {
   napi_status status = napi_create_arraybuffer(env, size, &dst, &buffer);
   if (status == napi_ok) memcpy(dst, rgba, size);
   free(rgba);
+  if (status != napi_ok) free(profile.icc);
   CHECK(status);
   CHECK(napi_create_typedarray(env, napi_uint8_array, size, buffer, 0, &pixels));
   CHECK(napi_create_object(env, &out));
   set_num(env, out, "width", w);
   set_num(env, out, "height", h);
   CHECK(napi_set_named_property(env, out, "data", pixels));
+  if (profile.icc) {
+    void *icc;
+    napi_value icc_buffer, icc_array;
+    status = napi_create_arraybuffer(env, profile.icc_size, &icc, &icc_buffer);
+    if (status == napi_ok) memcpy(icc, profile.icc, profile.icc_size);
+    free(profile.icc);
+    CHECK(status);
+    CHECK(napi_create_typedarray(env, napi_uint8_array, profile.icc_size, icc_buffer, 0, &icc_array));
+    CHECK(napi_set_named_property(env, out, "icc", icc_array));
+  }
+  if (profile.cicp_primaries) {
+    napi_value cicp;
+    CHECK(napi_create_array_with_length(env, 2, &cicp));
+    napi_value v;
+    napi_create_int32(env, profile.cicp_primaries, &v);
+    napi_set_element(env, cicp, 0, v);
+    napi_create_int32(env, profile.cicp_transfer, &v);
+    napi_set_element(env, cicp, 1, v);
+    CHECK(napi_set_named_property(env, out, "cicp", cicp));
+  }
   return out;
 }
 
