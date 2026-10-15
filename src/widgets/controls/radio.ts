@@ -24,6 +24,7 @@ export function RadioGroup<T>(
   },
 ) {
   const group = new UINode("RadioGroup");
+  group.role = "radiogroup";
   Object.assign(group.style, { direction: "column", gap: 8 } satisfies Style);
   applyProps(group, props);
   const groupDisabled = () => !!read(props.disabled ?? false);
@@ -42,6 +43,8 @@ export function RadioGroup<T>(
     insert(row, jsx(Text, { text: option.label }));
 
     const selected = () => Object.is(props.value(), option.value);
+    row.role = "radio";
+    row.states = () => ({ checked: selected() });
     createEffect(() => {
       const on = selected();
       circle.set("background", on ? (state.hovered() ? theme.accent.hover : theme.accent.base) : theme.field.background);

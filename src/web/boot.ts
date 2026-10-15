@@ -1,33 +1,25 @@
 // Starts an app in the browser: Node shims, the app's files in memory (images decoded by the
-// browser ahead of time), the web native core.
+// browser ahead of time), and the web native core, which renders the tree as elements and CSS.
 // `nodebuilder web` builds an entry that awaits boot() and then imports the app.
 
 import "./globals.js";
 import { setWindowFrame } from "../runtime/app.js";
 import { useNative } from "../runtime/native.js";
-import { browserDecoded, predecode } from "./images.js";
+import { setNativeText } from "../runtime/platform.js";
+import { loadAssets } from "./page.js";
 import { createWebNative } from "./native.js";
-import { fileKey, files } from "./shims/fs.js";
 
-/** Fetches the files listed in `assets.json` (written by `nodebuilder web`) and installs the native core on the page's canvas. */
+/** Fetches the app's files (`assets.json`, written by `nodebuilder web`) and installs the DOM native core on the page's root element. */
 export async function boot(manifest = "./assets.json") {
-  const list: string[] = await fetch(manifest).then((r) => (r.ok ? r.json() : []), () => []);
-  await Promise.all(
-    list.map(async (path) => {
-      const res = await fetch(path);
-      if (!res.ok) return;
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      files.set(fileKey(path), bytes);
-      if (browserDecoded(path)) await predecode(bytes);
-    }),
-  );
-  let canvas = document.querySelector<HTMLCanvasElement>("canvas#nodebuilder");
-  if (!canvas) {
-    canvas = document.createElement("canvas");
-    canvas.id = "nodebuilder";
-    Object.assign(canvas.style, { position: "fixed", inset: "0", width: "100%", height: "100%" });
-    document.body.append(canvas);
+  await loadAssets(manifest);
+  let root = document.getElementById("nodebuilder");
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "nodebuilder";
+    Object.assign(root.style, { position: "fixed", inset: "0" });
+    document.body.append(root);
   }
-  useNative(createWebNative(canvas));
+  useNative(createWebNative(root));
   setWindowFrame(false); // the browser's tab and window are the frame
+  setNativeText(true); // <input>, <textarea> and DOM selection
 }

@@ -1,5 +1,6 @@
 // `nodebuilder web <app.tsx>`: the app as a web page. The framework runs unchanged in the browser
-// with the web native core (src/web/): a <canvas>, WebGL and Canvas2D text. Node built-ins are
+// with the web native core (src/web/), which renders the tree as elements and CSS (src/dom/).
+// Node built-ins are
 // replaced by the shims in src/web/shims/; the app's files are listed in assets.json, which the
 // page fetches before starting the app so that synchronous reads keep working.
 
@@ -61,11 +62,11 @@ const page = (title: string, preload: string[]) => `<!doctype html>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; }
   @media (prefers-color-scheme: dark) { html, body { background: #111; } }
-  canvas#nodebuilder { display: block; width: 100vw; height: 100vh; }
+  #nodebuilder { position: fixed; inset: 0; }
 </style>
 </head>
 <body>
-<canvas id="nodebuilder" tabindex="0"></canvas>
+<div id="nodebuilder"></div>
 <script>${globals()}</script>
 ${preload.map((p) => `<link rel="modulepreload" href="${p}">`).join("\n")}
 <script type="module" src="./app.js"></script>

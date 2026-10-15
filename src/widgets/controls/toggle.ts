@@ -21,6 +21,8 @@ export function Toggle(
   },
 ) {
   const row = new UINode("Toggle");
+  row.role = "switch";
+  row.states = () => ({ checked: props.checked() });
   Object.assign(row.style, { direction: "row", align: "center", gap: 10 } satisfies Style);
   applyProps(row, props);
   const disabled = disableable(row, props);

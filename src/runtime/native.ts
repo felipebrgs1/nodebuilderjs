@@ -3,14 +3,21 @@
 import { createRequire } from "node:module";
 import type { ImageBackend } from "../image/source.js";
 import type { ColorSpace } from "../render/color.js";
-import { type TextMeasurer, fontId, fontSpec, metricsGeneration } from "../render/node.js";
+import { type TextMeasurer, type UINode, fontId, fontSpec, metricsGeneration } from "../render/node.js";
 
 export { fontId };
 
 /** Modifier keys held during an input event, as the addon reports them. */
 export type NativeModifiers = { ctrl: boolean; shift: boolean; alt: boolean; super: boolean };
 
-export type NativeKeyEvent = { type: "keydown" | "keyup"; key: string; text: string; repeat: boolean } & NativeModifiers;
+export type NativeKeyEvent = {
+  type: "keydown" | "keyup";
+  key: string;
+  text: string;
+  repeat: boolean;
+  /** Set by run() on a keydown: the app took the key (a native core in a browser then cancels the default action). */
+  handled?: boolean;
+} & NativeModifiers;
 
 export type NativeEvent =
   | { type: "configure"; width: number; height: number; scale: number; maximized: boolean; activated: boolean; transparent: boolean }
@@ -32,6 +39,14 @@ export interface Native {
   ): ColorSpace | void;
   close(): void;
   render(commands: Float32Array, texts: string[]): void;
+  /**
+   * Instead of layout() and render(): the core shows the tree itself (the DOM renderer lays it
+   * out with CSS) and writes every node's box (x, y, width, height, scroll and content sizes) and
+   * the root's overlay layers, which input hit-tests. The frame callback follows, as for render().
+   */
+  renderTree?(root: UINode): void;
+  /** With renderTree: the node under a window point, as the core laid it out (input asks it instead of walking the boxes). */
+  hitTest?(x: number, y: number): UINode | null;
   /**
    * Logical px. `font` is a font id (`fontId(weight, italic)`); `scale` (default: the window's) is the
    * device scale the text is hinted for; `letterSpacing` (logical px) goes after every character;

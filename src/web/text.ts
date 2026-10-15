@@ -1,5 +1,5 @@
-// Text in the browser: Canvas2D measures and rasterizes, with the browser's shaping, font
-// fallback and color emoji, instead of FreeType + HarfBuzz.
+// Text in the browser: Canvas2D measures (and draws, in painted nodes), with the browser's
+// shaping, font fallback and color emoji, instead of FreeType + HarfBuzz.
 
 const GENERIC = new Set(["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded", "emoji", "math", "fangsong"]);
 const DEFAULT_FAMILY = "system-ui, sans-serif";
@@ -18,7 +18,7 @@ export function cssFont(font: number, spec: string, px: number): string {
 
 type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
-export function context2d(): Context2D {
+function context2d(): Context2D {
   const ctx = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(1, 1).getContext("2d") : document.createElement("canvas").getContext("2d");
   if (!ctx) throw new Error("nodebuilder: no 2D canvas context for text");
   return ctx;

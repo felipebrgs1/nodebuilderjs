@@ -850,42 +850,72 @@ FreeType, HarfBuzz and libc. A new OS is a `native/platform/<os>/` folder with t
 implementation of this contract and a `build.sh`. On Windows and macOS the planned path is
 ANGLE (GLES on top of Direct3D/Metal) or a new `render_<api>.c` with the same interface.
 
-## The web (`src/web/`, `nodebuilder web`)
+## The web (`src/web/`, `src/dom/`, `nodebuilder web`)
 
-The browser is one more implementation of the `Native` interface (`src/runtime/native.ts`);
-nothing above it changes. `boot()` installs it with `useNative()` before the app is imported,
-and calls `setWindowFrame(false)`: the page is the window, so `<Window>` builds no title bar,
-border or corners and `<WindowControls>` no buttons (`hasWindowFrame()` in `runtime/app.ts`).
+The browser is one more implementation of the `Native` interface (`src/web/native.ts`), with
+one more method: `renderTree(root)`, which `run()` calls instead of `layout()`, `paintTree()`
+and `render()`, so the `UINode` tree becomes elements styled with CSS and the browser lays them
+out (status and measurements in `WEB.md`). Everything above the tree (reactivity, widgets,
+theme, input) is unchanged. `boot()` (`web/boot.ts`) installs it with `useNative()` before the
+app is imported, calls `setWindowFrame(false)` (the page is the window, so `<Window>` builds no
+title bar, border or corners and `<WindowControls>` no buttons) and `setNativeText(true)`
+(`runtime/platform.ts`: the browser edits and selects text).
 
-- **Rendering:** `web/renderer.ts` is `render_gles2.c` in TypeScript: the same vertex
-  format, batching, clip stack and gradient cutting, against a `RenderDevice` that
-  `web/gl.ts` implements with WebGL and the same GLSL (GLES2 shaders run unchanged in WebGL 1).
-  The split keeps the command interpretation testable without a browser.
-- **Text:** Canvas2D measures (`fontBoundingBox*`, so line heights match the font) and
-  rasterizes whole runs, in their color, into an RGBA atlas drawn as color glyphs. Runs are
-  cached by text, font, size, spacing and color; a full atlas is flushed and started again.
-  The browser shapes, falls back and draws emoji.
-- **Events:** DOM pointer, wheel and key events become `NativeEvent`s (`web/keys.ts` maps
-  `KeyboardEvent.key` to the xkb names). `configure` comes from a `ResizeObserver` and
-  `devicePixelRatio`, which may be fractional. After each render, a `requestAnimationFrame`
-  plays the compositor's frame callback.
+- **Sync** (`dom/sync.ts`): one element per node, created once (`<For>` moves elements, never
+  recreates them). Each frame walks the tree and writes only what differs from what it wrote
+  last: CSS per element (`dom/style.ts` maps `Style` to declarations; a typed table makes a new
+  `Style` key a compile error there), attributes (`tabindex`, `aria-*` from `role`/`states`),
+  children (compared with the last list before touching the DOM).
+- **Layout semantics:** our layout follows CSS, with a few rules CSS needs spelled out:
+  the border is an inset `box-shadow` (it takes no room, as in `paint.ts`), a fixed size along
+  the parent's axis and the siblings of a growing child get `flex-shrink: 0`, what holds a
+  scroller may shrink below its content (`min-width/height: 0`), and a `Scroll` that grows
+  along its axis gets `flex-basis: 0` (otherwise the browser lays out its whole content on
+  every change to find the flex basis: 10 ms per text change in a 500-row table, 0.5 ms with it).
+- **Boxes, lazily:** `x`, `y`, `width`, `height`, scroll and content sizes become getters on
+  each node that ask its element (`getBoundingClientRect`), once per frame and only when read
+  (overlays, `onResize`, refs, painters, pointer positions). Reading them during the writes
+  would lay the page out mid-frame, so the writes only use last frame's boxes. Hit testing
+  asks the browser (`elementFromPoint`, `Native.hitTest`); a covering non-modal overlay has
+  `pointer-events: none` so the pointer goes through its empty space.
+- **Adapters:** a `<Text>` (`node.text()`) is DOM text with its line height from the font, as
+  `text.ts` computes it; a text field (`node.field`) is an `<input>`/`<textarea>` over the
+  content box its sizer gives it, its `input` events going to `field.input` (the app's
+  `onInput`); with native text, `editKey` only submits and stops the keys the browser edits
+  with. Any other node with `measure` gets a hidden sizer of its measured size (at the width it
+  got, when it wraps); one with `paint` gets a `<canvas>` (8 px larger than its box on every
+  side, for focus rings and thumbs) drawn by the Canvas2D `Painter` (`dom/painter.ts`; images
+  are canvases, tinted once per color).
+- **Overlays:** `root.layers` go in the root element after the tree, absolutely placed: a
+  covering layer by its `inset`, an anchored one with `layerPosition()` (the same function
+  `layout.ts` uses) once the anchor's box is known; the text style they would inherit where the
+  `<Overlay>` is declared is written on them.
+- **Events:** page events become `NativeEvent`s, so `createInput` keeps hover, press, focus,
+  Tab, keys and dismissal exactly as on the desktop. The browser keeps its defaults where it
+  does better (text in fields, selection, scrolling: `InputHost.platformScrollbars`), and a
+  key's default is cancelled only when the app took it (`NativeKeyEvent.handled`, from
+  `input.keyDown()`). Focus goes both ways: the input system's focus is given to the element,
+  and a `focusin` the browser caused (a click in a field, a screen reader) is given to it.
+- **Text measured by us:** what still measures text in TypeScript (painted nodes, sizers,
+  overlays' natural widths) uses Canvas2D (`web/text.ts`: `fontBoundingBox*`, so line heights
+  match the font), with the browser's shaping, fallback and emoji.
 - **Node built-ins:** the build maps `node:*` to `web/shims/` (an import without a shim is a
   build error); `process` and `setImmediate` are inlined in `index.html`, before any module.
   `node:fs` reads from memory: the build lists the app's files in `assets.json` and `boot()`
-  fetches them first, so synchronous reads (images, icons, fonts) keep working.
+  fetches them first (`web/page.ts`), so synchronous reads (images, icons, fonts) keep working.
 - **Images:** `boot()` has the browser decode every imported image (`createImageBitmap`,
   which applies the file's color profile); `image/decode.ts` is swapped for `web/decode.ts`,
   which returns those. Other bytes (made or fetched at runtime) load the TypeScript decoders,
   a chunk fetched on demand: until it arrives `decodeImage` throws an error carrying `retry`
   (a promise), and the image source decodes again when it settles (`image/source.ts`).
   `image/icon.ts` is swapped for `web/icon.ts`: a page has no window icon to rasterize.
+  `createImage` makes a canvas the painter draws from.
 - **Build:** `cli/web.ts` bundles a virtual entry (`await boot(); await import(app)`) with
   `Bun.build({ target: "browser", conditions: ["bun"], splitting: true })`: `app.js` and the
   shared `nodebuilder-*.js` start the page, the app's own chunk is preloaded while `boot()`
   fetches the files, and the decoders chunk only comes when something needs it. Tree-shaking
-  leaves out whatever the app does not reach (an app without images has no decoders at all).
-  The addon's `.node` requires stay external and are never called. The `todo` example starts
-  with 41 KB of gzipped script.
+  leaves out whatever the app does not reach. The addon's `.node` requires stay external and
+  are never called.
 
 ## Loading the native core
 

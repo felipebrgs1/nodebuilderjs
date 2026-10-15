@@ -20,6 +20,7 @@ export function Tabs<T>(
   },
 ) {
   const bar = new UINode("Tabs");
+  bar.role = "tablist";
   Object.assign(bar.style, { direction: "row", gap: 4 } satisfies Style);
   applyProps(bar, props);
   bar.paint = (p, n) => p.rect(n.x, n.y + n.height - 1, n.width, 1, theme.divider);
@@ -31,6 +32,8 @@ export function Tabs<T>(
     const disabled = disableable(node, { disabled: () => barDisabled() || !!tab.disabled });
     const state = interaction(node);
     const selected = () => Object.is(props.value(), tab.value);
+    node.role = "tab";
+    node.states = () => ({ selected: selected() });
     node.paint = (p, n) => {
       if (selected()) p.rect(n.x, n.y + n.height - UNDERLINE, n.width, UNDERLINE, theme.accent.base, 1);
     };

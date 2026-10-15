@@ -65,6 +65,9 @@ datas. Sugestões e discussão em [issues](https://github.com/felipebrgs1/nodebu
   layout, focus in a `ref` with no microtask, `findByText(..., { in })`, `findByValue`,
   per-corner `radius`, `<Grid minColumnWidth>`, percentage sizes, `Overlay`/`Dialog` `inset`,
   `nodebuilder screenshot --props/--export`
+- Web target (2026-10-15, experimental): `nodebuilder web` builds the app as a page of
+  elements and CSS laid out by the browser, with ARIA roles and states, native text inputs,
+  selection and scrolling (`WEB.md`); widgets gained platform-neutral `role`/`states`
 
 ## Onde estamos (benchmarks de 2026-10-11)
 

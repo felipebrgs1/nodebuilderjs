@@ -40,7 +40,7 @@ export type BoxProps = StyleProps & Handlers & {
   children?: Child;
 };
 
-const STYLE_KEYS: (keyof Style)[] = [
+export const STYLE_KEYS: (keyof Style)[] = [
   "direction", "gap", "padding", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow",
   "align", "justify", "position", "left", "top", "clip", "background", "radius", "borderWidth", "borderColor",
   "shadow", "color", "fontSize", "bold", "underline", "cursor", "opacity", "translateX", "translateY",
@@ -290,6 +290,7 @@ export function disableable(node: UINode, props: { disabled?: MaybeAccessor<bool
   const disabled = () => !!read(props.disabled ?? false);
   createEffect(() => {
     const off = disabled();
+    node.disabled = off;
     node.focusable = !off;
     if (props.opacity === undefined) node.set("opacity", off ? theme.disabledOpacity : 1);
     node.set("cursor", off ? "default" : cursor);

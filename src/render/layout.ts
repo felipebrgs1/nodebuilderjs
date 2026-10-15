@@ -6,7 +6,7 @@
 // two steps: the natural (max-content) size of every node, cached per layout, and
 // `heightAt(node, width)`, which only does real work in subtrees that contain them.
 
-import { type Edges, type Region, type Size, type UINode, invalidationCount, overlayLayers, revealRequests, scrolls } from "./node.js";
+import { type Edges, type OverlayOptions, type Region, type Size, type UINode, invalidationCount, overlayLayers, revealRequests, scrolls } from "./node.js";
 import { scrollRange } from "./scrollbar.js";
 import { checkOverflow, reportResizeLoop, resetOverflow } from "./overflow.js";
 import { batch } from "../reactive/signals.js";
@@ -132,7 +132,7 @@ function scrollToShow(node: UINode, region?: Region): boolean {
   return moved;
 }
 
-function rootOf(node: UINode): UINode {
+export function rootOf(node: UINode): UINode {
   let n = node;
   while (n.parent) n = n.parent;
   return n;
@@ -151,6 +151,17 @@ function placeLayer(layer: UINode, width: number, height: number, view: Rect): b
 
   const w = o.matchWidth ? a.width : intrinsic(layer).width;
   const h = heightAt(layer, w);
+  const { x, y } = layerPosition(o, a, w, h, width, height);
+  place(layer, x, y, w, h, view);
+  return true;
+}
+
+/**
+ * Where an anchored layer of size w x h goes in a width x height window: on the preferred side
+ * of the anchor box `a` (the opposite one when only that fits), aligned with its start (or its
+ * end when only that fits), kept inside the window. The DOM renderer places layers with it too.
+ */
+export function layerPosition(o: OverlayOptions, a: { x: number; y: number; width: number; height: number }, w: number, h: number, width: number, height: number): { x: number; y: number } {
   const gap = o.offset;
   const below = a.y + a.height + gap, above = a.y - gap - h;
   const after = a.x + a.width + gap, before = a.x - gap - w;
@@ -165,12 +176,11 @@ function placeLayer(layer: UINode, width: number, height: number, view: Rect): b
     case "right": x = after + w > width && before >= 0 ? before : after; break;
     case "left": x = before < 0 && after + w <= width ? after : before; break;
   }
-  place(layer, clamp(x, 0, Math.max(0, width - w)), clamp(y, 0, Math.max(0, height - h)), w, h, view);
-  return true;
+  return { x: clamp(x, 0, Math.max(0, width - w)), y: clamp(y, 0, Math.max(0, height - h)) };
 }
 
 /** The box an anchored layer is placed next to: its anchor's, or a zero-size box at its point. Null when the anchor is gone or culled. */
-function anchorBox(layer: UINode): { x: number; y: number; width: number; height: number } | null {
+export function anchorBox(layer: UINode): { x: number; y: number; width: number; height: number } | null {
   const o = layer.overlay!;
   if (o.at) {
     const p = o.at();

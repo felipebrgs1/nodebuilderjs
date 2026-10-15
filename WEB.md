@@ -1,149 +1,176 @@
 # Web roadmap
 
-Goal: the same app, unchanged, runs as a web page that looks and behaves as on the desktop:
-same pixels (WebGL draws the same command buffer with the same shader), same layout and
-input, on desktop and mobile browsers, with no third-party runtime code and a small bundle.
-How it works today is in `ARCHITECTURE.md` ("The web"); this file is what is left. The
-alternative, rendering the tree as HTML and CSS (which removes most of P0 and P1 below), is
-designed in `WEB2.md`.
+Goal: the same app, unchanged, runs as a web page. `nodebuilder web` renders the `UINode` tree
+as real DOM elements styled with CSS, the way react-native-web renders React Native: the
+widgets and the apps do not change, and the browser does what it is good at (accessibility,
+text input, selection, find, translation, scrolling, zoom). How it works is in
+`ARCHITECTURE.md` ("The web"); this file is what was decided, what was measured and what is
+left.
 
 Status keys: **done**, **P0** (blocks shipping a real app), **P1** (needed to call the web
-target complete), **P2** (expected by some apps), **P3** (nice to have). Each item says where
-the work goes and how it is tested (see the TDD rules in `AGENTS.md`).
+target complete), **P2** (expected by some apps), **P3** (nice to have). Every item follows the
+TDD rules in `AGENTS.md`; pages themselves are checked in headless Chromium.
 
-## Done (2026-10-15, spike on `feat/web-spike`)
+## Next steps, in order
+
+1. **Dirty tracking** (P0): walk only the nodes that changed instead of the whole tree every
+   frame; the cost left in long lists (8 ms per frame in a 500-row table).
+2. **Real browsers and a screen reader** (P0): Firefox, Safari (macOS, iOS), Chrome on Android
+   and on a real GPU, browser zoom; Orca or NVDA reading `todo` and `widgets`.
+3. **Responsive examples:** `widgets` stacks its cards on a phone (`<Row wrap>` + base width,
+   content in a `Scroll`); do the same for the other examples, which still assume a desktop
+   window, and say how in the template's docs (a page can be 360 px wide).
+4. **Missing adapters** (P1): `RichText` as text with `<a href>` links, `Image` as `<img alt>`,
+   `Icon` as inline `<svg>`, headings from text variants.
+5. **Our measurer agrees with the browser** (P1): measure with a DOM span (features,
+   variations) so widgets that measure themselves match the page's text.
+6. **Developer experience** (P1): `--serve` rebuilds when the framework changes too (today only
+   the app's folder is watched) and reloads the page; a CI job that builds the examples and
+   checks them in `chrome-headless-shell` (screenshots, input, accessibility tree, layout
+   parity); the web target in the template's `AGENTS.md` and skills.
+7. **Bundle** (P1): keep `layout.ts` and `paint.ts` out of the web build.
+8. **Font loading, IME and touch checks** (P1), then P2 (prerendering, system dark theme,
+   embedding) as apps ask for them.
+
+## Why the DOM (and not a canvas, and not Solid)
+
+- **Not a canvas.** The first spike drew the desktop's command buffer with WebGL: same pixels,
+  but everything a browser gives a page for free (screen readers, IME, autofill, touch
+  scrolling, text selection, find) would have to be rebuilt on top as a hidden DOM, and WebGL
+  brings context loss and a text atlas. It was removed (2026-10-15).
+- **Not Solid DOM components.** That would be a second widget library. Swapping one level
+  lower, at the `UINode` tree, keeps every widget working on both targets.
+- **It fits** because our primitives are already CSS: the layout follows CSS semantics on
+  purpose (flexbox, `min-size: auto`, margins outside the box, `absolute` from the padding box,
+  percentages), boxes have background, border, radius and shadow, and text is text.
+- **The cost:** close, not identical. The browser lays out and breaks lines, so the page looks
+  like the desktop app, not pixel for pixel; text fields edit with the browser's selection,
+  undo and shortcuts, not `EditSession`'s.
+
+## Done (2026-10-15)
 
 - `nodebuilder web <app.tsx> [--serve --minify --out --title --port]` (`cli/web.ts`):
   `Bun.build` for the browser with a virtual entry (`await boot(); await import(app)`),
   `node:*` mapped to `src/web/shims/` (an import without a shim is a build error), splitting
-  (`app.js` + shared `nodebuilder-*.js`, the app's chunk preloaded), `index.html`,
-  `assets.json`. The `todo` example starts with 41 KB of gzipped script.
-- The `Native` interface in the browser (`src/web/native.ts`), installed by `boot()` with
-  `useNative()`: canvas sized by a `ResizeObserver` and `devicePixelRatio`, pointer, wheel and
-  key events (`web/keys.ts`: DOM keys to xkb names), clipboard (paste event, `readText`
-  fallback), cursors, the tab title, a `requestAnimationFrame` as the frame callback.
-- Renderer: `render_gles2.c` in TypeScript (`web/renderer.ts`: same vertex format, batching,
-  clip stack, gradient cutting) against a WebGL device (`web/gl.ts`, same GLSL).
-- Text: Canvas2D measures and rasterizes whole runs into an RGBA atlas (browser shaping,
-  fallback and color emoji).
-- Files: the app's imported files fetched before it starts (`node:fs` reads from memory).
-- Images: every imported image decoded by the browser ahead of time (color profile applied);
-  bytes made at runtime load the TypeScript decoders, a chunk fetched on demand, and the image
-  source decodes again when it arrives (`error.retry` in `image/source.ts`). AVIF and HEIC
-  wherever the browser supports them. No window icon on a page (`web/icon.ts`).
+  (`app.js` + shared `nodebuilder-*.js`, the app's chunk preloaded), `index.html` with a
+  `<div id="nodebuilder">`, `assets.json`.
+- The `Native` interface in the browser (`src/web/native.ts`) with `renderTree(root)` and
+  `hitTest(x, y)` instead of draw commands; `run()` calls them instead of layout, paint and
+  render. Page events become the desktop's `NativeEvent`s, so the input system (hover, press,
+  focus, Tab, roving focus, overlay dismissal, modal scopes) is the desktop's.
+- The DOM renderer (`src/dom/`): one element per node, CSS and attributes diffed per frame,
+  `<For>` moves elements; boxes read back lazily; `<Text>` as DOM text, `TextField`/`TextArea`
+  as `<input>`/`<textarea>`; nodes that draw themselves into a `<canvas>` (Canvas2D painter);
+  overlays placed with the desktop's `layerPosition()`.
+- Semantics: widgets set platform-neutral `role` and `states` (button, checkbox, switch, radio,
+  slider, progressbar, tab, combobox, listbox, option, dialog), written as ARIA.
+- The browser's context menu (inspect, copy) everywhere except where the app has
+  `onContextMenu` (`hasContextMenu` in `runtime/input.ts`).
+- Text the browser handles (`setNativeText`): fields only submit on Return and stop the keys the
+  browser edits with; `<Text selectable>` uses the browser's selection and copy.
+- Files: the app's imported files are fetched before it starts (`node:fs` reads from memory);
+  imported images are decoded by the browser ahead of time, other bytes load the TypeScript
+  decoders on demand. No window icon on a page.
 - The page is the window (`setWindowFrame(false)`): `<Window>` draws no title bar, border or
-  corners, and `<WindowControls>` draws nothing.
-- Checked in headless Chromium (SwiftShader), with screenshots and input driven through the
-  DevTools protocol: every showcase example, typing with accents and emoji, clicks,
-  Select/Dialog overlays, wheel scrolling on both axes, DPR 2.
+  corners, its `title` goes to the tab, `<WindowControls>` draws nothing.
+
+### Decisions
+
+- **Who lays out: CSS**, with boxes read back lazily (a getter per node that asks its element,
+  once per frame and only when something reads it), so overlays, refs, `onResize` and painters
+  work unchanged. Hit testing is the browser's (`elementFromPoint`).
+- **Events go through our input system**, not per-element handlers. The browser keeps its
+  defaults only where it does better (fields, selection, scrolling) or where the app did not
+  take the key (`NativeKeyEvent.handled`).
+- **Our look, ARIA semantics** on our own boxes; native `<button>`/`<input type=checkbox>` were
+  not needed.
+- **CSS rules that keep our layout's semantics:** the border is an inset `box-shadow` (it takes
+  no room), a fixed size along the parent's axis and the siblings of a growing child do not
+  shrink, what holds a scroller may shrink below its content, and a `Scroll` that grows along
+  its axis gets `flex-basis: 0` (it differs from the desktop only next to other growing
+  children, with less content than room).
+
+### Measured (headless Chromium, chrome-headless-shell 1243)
+
+**Layout parity** (our `layout()` run in the page against the browser's boxes, overlay
+scrollbars, nodes on screen): `scroll`, `images`, `charts`, `drawing` 100 % within 1 px;
+`todo` 96 %, `icons` 97 %, `widgets` 91 % within 1 px and 100 % within 4 px. `text` 9 %: there
+our measurer is wrong (Canvas2D applies no `font-feature-settings`), the browser's text is
+right. With classic scrollbars (Linux Chrome) a scrolling page is narrower by the scrollbar.
+
+**Semantics:** the accessibility tree of `todo` and `overlays` has the text box named by its
+placeholder, buttons, checkboxes with `checked`, and the texts.
+
+**Bundle:** `todo`, minified: 43.7 KB of gzipped script (`run()` still imports `layout.ts` and
+`paint.ts`).
+
+**Frame time** (`bench:dashboard`, 1280x800, live data, inside `renderTree`):
+
+| Tab | Elements | First version | Now |
+|---|---|---|---|
+| overview | 300 | 2.8 ms | 2.1 ms |
+| table (500 rows) | 9,150 | 24.5 ms (34 fps) | 8.3 ms (60 fps) |
+| logs | 3,400 | 15.5 ms | 11.6 ms |
+| settings | 220 | 1.6 ms | 1.3 ms |
+
+The first version read every box back each frame (6,079 `getBoundingClientRect` per table
+frame) and let the browser lay out a growing `Scroll`'s whole content for its flex basis (10 ms
+per text change; 0.5 ms with `flex-basis: 0`). What is left in `table` is our own walk of the
+9,150 nodes each frame.
 
 ## P0: before shipping a real app
 
-- **WebGL context loss.** Browsers drop the context (mobile, background tabs, GPU resets);
-  today the canvas stays blank. Handle `webglcontextlost` (`preventDefault`, stop rendering)
-  and `webglcontextrestored` (recreate program, buffers, atlas; images keep their pixels or
-  are decoded again, so `createImage` must keep the bytes or the source must re-upload).
-  Test: `WEBGL_lose_context` in the browser e2e.
-- **Real browsers.** Only headless Chromium on SwiftShader has been tried. Check Chrome and
-  Firefox on a real GPU, Safari (macOS and iOS), Chrome on Android; fractional DPR (1.25,
-  1.5). Write down what differs.
-- **Browser zoom.** Ctrl + / Ctrl − change `devicePixelRatio`; `open()` listens to one
-  `matchMedia` for the initial ratio only. Listen again after each change.
-- **Performance, measured.** Nothing has been measured. Run `bench:dashboard` (table, logs) in
-  a real browser and compare with the desktop (fps, ms per frame by phase). Suspects:
-  - each new text run does `getImageData` + `texSubImage2D` (scrolling a long table rasterizes
-    every new row);
-  - a full atlas is cleared at once, so a screen with more text than fits re-rasterizes
-    every frame (evict least recently used shelves instead, or grow to a second page);
-  - runs are cached per color: one string in several colors takes several entries.
-  No optimization without before and after numbers (`AGENTS.md`, "Performance").
+- **Dirty tracking.** Walk only what changed: `UINode.set`/`setSlot` and widget content mark the
+  node and its ancestors; nodes that repaint every frame (canvases) kept apart. The walk is the
+  cost left in long lists, and the same marks would help the desktop's "full layout every frame".
+- **Real browsers.** Firefox and Safari (macOS and iOS), Chrome on a real GPU and on Android;
+  fractional DPR and browser zoom. Write down what differs.
+- **A screen reader.** Orca or NVDA reading `todo` and `widgets`; fix names and states that
+  come out wrong.
 
 ## P1: needed to call the web target complete
 
-### Input
-
-- **IME and the virtual keyboard.** A hidden `<textarea>` placed at the caret of the focused
-  text input receives `compositionstart/update/end` and `input`, so CJK input, dead keys and
-  the mobile keyboard work (a canvas never opens a keyboard). Check dead keys on a real ABNT2
-  and US-international layout (`keydown` with `key === "Dead"` is ignored today).
-- **Touch.** Pointer events already arrive, but dragging does not scroll a `Scroll` and there
-  is no inertia. Drag to scroll (with a threshold so taps still click), fling, and no
-  hover state stuck after a tap.
-- **Browser shortcuts.** Decide which keys the app gets and which the browser keeps
-  (`browserShortcut()` in `web/native.ts`: reload, zoom, dev tools today).
-
-### Accessibility
-
-- **A semantics tree.** Without it screen readers see an empty canvas. Mirror the UI tree into
-  hidden DOM elements with ARIA roles, names (`ariaLabel`, text), states (checked, disabled,
-  expanded) and positions, kept in sync after `layout()`; focus follows the framework's focus.
-  This is the largest item. It also gives the browser's find (Ctrl+F), translation and
-  part of SEO. The same tree is what AT-SPI on Linux needs, so design it once.
-
-### Text
-
-- **Fidelity.** Metrics come from Canvas2D, not HarfBuzz, so line breaks can land a few pixels
-  apart from the desktop. Measure the difference on the `text` example; `fontBoundingBox*`
-  ascent and descent are used today.
-- **Font loading.** Registered fonts load asynchronously: the app first shows the fallback font,
-  then lays out again (FOUT). `boot()` should await `document.fonts.ready` for fonts the app
-  registers at startup.
-- **`registerFont` without `family`.** Read the family from the font's `name` table (TTF/OTF);
-  WOFF2 would need decompression, so require `family` there.
-- **Runs wider than the atlas** (4096 px) are cut off: split long runs.
-
-### Developer experience
-
-- **Live reload** in `--serve` (server-sent events, the page reloads after a rebuild), then
-  hot reload of the app's chunk.
-- **Template:** a `web` script in `create-nodebuilderjs`, and the web target and its limits in
-  the template's `AGENTS.md` and skills.
-- **Cache busting:** `app.js` has no hash; name it by hash and let `index.html` point to it.
-- **CI:** a browser e2e job. Download `chrome-headless-shell` in CI, build the examples and run
-  the DevTools protocol scripts (screenshots, input), comparing pixels with the native
-  `nodebuilder screenshot` at chosen points, like the pixel tests do.
+- **Adapters still missing:** `RichText` as `<p>` + `<span>`s with `<a href>` links (today a
+  canvas: not selectable, not read), `Image` as `<img alt>`, `Icon` as inline `<svg>`, headings
+  from text variants.
+- **Our measurer on the web:** features and variations (measure with a DOM span instead of
+  Canvas2D, cached), so widgets that measure themselves (`RichText`, `TextArea`, Canvas text)
+  agree with the browser's text.
+- **IME and touch, checked:** CJK input and dead keys in a field, a mobile keyboard, touch
+  scrolling inside `Scroll`, no hover left after a tap.
+- **Font loading.** Registered fonts load asynchronously (the fallback shows first); `boot()`
+  should await `document.fonts.ready` for fonts registered at startup. `registerFont` without
+  `family` needs the family from the font's `name` table.
+- **Bundle:** keep `layout.ts` and `paint.ts` out of the web build.
+- **Developer experience:** live reload in `--serve`, a `web` script and the web target in the
+  template's `AGENTS.md` and skills, `app.js` named by hash, a CI job that builds the examples
+  and checks them in `chrome-headless-shell` (screenshots, input, the accessibility tree, the
+  layout parity report).
 
 ## P2: expected by some apps
 
-- **Display P3.** WebGL is fixed to sRGB; Chrome and Safari take
-  `drawingBufferColorSpace = "display-p3"`, and `open()` would return it.
-- **Dark theme from the system:** `prefers-color-scheme` (easy here, unlike the desktop).
-- **`fontFeatures` and `fontVariations`:** only partly possible (`FontFace` descriptors,
-  `fontVariantCaps`, `fontStretch` on the context).
-- **Images without blocking start:** `boot()` fetches and decodes every imported image before
-  the app runs. Large apps need a progress indicator, or images loaded on first use.
-- **Embedding:** mount into an element of an existing page instead of the whole page. Several
-  apps per page need the module-level state (theme, frame clock, image backend) per instance.
-- **Native browser features:** text selection with the browser's own handles, password
-  autofill, right-click menus over text.
-- **Files the app did not import:** `fetch` + `File` input instead of `fs`; document that
+- **Prerendering** for search engines and link previews without JS: run the app once at build
+  time against a small server-side DOM writer (our own) and put the first screen's HTML in
+  `index.html`; the app adopts those elements when it starts.
+- **Dark theme from the system:** `prefers-color-scheme`.
+- **Images without blocking start:** `boot()` decodes every imported image before the app runs;
+  large apps need a progress indicator, or images loaded on first use.
+- **Embedding:** mount into an element of an existing page. Several apps per page need the
+  module-level state (theme, frame clock, image backend) per instance.
+- **Files the app did not import:** `fetch` and a `File` input instead of `fs`; document that
   `readFileSync` only reads imported files.
 
 ## P3: nice to have
 
-- **One renderer for both targets:** compile `native/core/` (with FreeType and HarfBuzz) to
-  WASM, so text matches the desktop exactly; costs a few hundred KB of WASM.
-- **WebGPU** device behind the same `RenderDevice` interface.
-- **Offscreen screenshots in the browser** (`screenshot()` with an `OffscreenCanvas`).
+- **Offscreen screenshots in the browser** (`screenshot()`).
 - **Favicon** from the `<Window icon>`.
 
-## Maintenance rules (while the spike becomes the real thing)
+## Maintenance rules
 
-- The command buffer format now lives in four places: `native/include/nb.h`,
-  `src/render/paint.ts`, `native/core/render_gles2.c` and `src/web/renderer.ts` (plus its
-  shader copy in `web/gl.ts`). A new op or shader change goes into all of them, with a test
-  in `test/web/renderer.test.ts`.
+- A new `Style` key gets a CSS mapping in `src/dom/style.ts` (the typed table fails to compile
+  without it); a test checks every `STYLE_KEYS` key.
+- A widget with a meaning for assistive technology sets `role` and `states`; one that lays out
+  text itself describes it (`node.text()`, `node.field`) and respects `hasNativeText()`.
 - `cli/web.ts` swaps `image/decode.ts` and `image/icon.ts` for their `src/web/` versions
   (`WEB_MODULES`). A module that gets a web version says so in its header comment.
 - A new `node:*` import in `src/` needs a shim in `src/web/shims/`, or the web build fails.
-
-## Order of work
-
-1. P0: context loss, real browsers and zoom, then measure and fix performance.
-2. Input: IME and touch.
-3. Accessibility tree (shared design with AT-SPI).
-4. Text fidelity and font loading; live reload, template, cache busting, CI e2e.
-5. P2 as apps ask for them.
-
-Rough size: P0 and live reload, one to two weeks (enough for internal desktop-browser apps);
-everything through P1, months, most of it the accessibility tree and IME.

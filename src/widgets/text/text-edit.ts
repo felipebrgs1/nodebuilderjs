@@ -6,6 +6,7 @@
 import { type Color, type Handlers, type KeyEvent, type Style, type UINode } from "../../render/node.js";
 import { type Accessor, type MaybeAccessor, createEffect, createSignal, onCleanup, read, untrack } from "../../reactive/signals.js";
 import { clipboard } from "../../runtime/clipboard.js";
+import { hasNativeText } from "../../runtime/platform.js";
 import { theme } from "../../theme.js";
 import { type InteractionState, type StyleProps, applyProps, disableable, interaction } from "../props.js";
 import { wordAt } from "./text-selection.js";
@@ -208,6 +209,7 @@ export interface EditKeyOptions {
 
 /** Handles an editing key; false when it is not one (the key goes on to the parents). */
 export function editKey(s: EditSession, e: KeyEvent, o: EditKeyOptions): boolean {
+  if (hasNativeText()) return platformEditKey(e, o);
   const key = e.key;
   const n = s.chars.length;
   const [a, b] = s.range();
@@ -295,6 +297,26 @@ export function editKey(s: EditSession, e: KeyEvent, o: EditKeyOptions): boolean
     return true;
   }
   return false;
+}
+
+const CTRL_EDIT_KEYS = new Set(["a", "c", "x", "v", "z", "y", "Insert", "BackSpace", "Delete", "Left", "Right", "Home", "End"]);
+const EDIT_KEYS = new Set(["BackSpace", "Delete", "Left", "Right", "Home", "End"]);
+const LINE_KEYS = new Set(["Up", "Down", "Page_Up", "Page_Down"]);
+
+/**
+ * editKey when the platform edits the field (the DOM renderer's <input>): Return submits, and
+ * the keys the platform edits with stop at the field (true) without doing anything here.
+ */
+function platformEditKey(e: KeyEvent, o: EditKeyOptions): boolean {
+  if (e.key === "Return") {
+    if (o.multiline && !e.ctrl) return true;
+    o.onSubmit?.();
+    return true;
+  }
+  if (e.ctrl && !e.alt) return CTRL_EDIT_KEYS.has(e.key);
+  if (e.shift && (e.key === "Insert" || e.key === "Delete")) return true;
+  if (EDIT_KEYS.has(e.key) || (o.multiline && LINE_KEYS.has(e.key))) return true;
+  return !!e.text && !e.alt;
 }
 
 /** Pastes the clipboard over the selection (when it arrives: reading is asynchronous). */

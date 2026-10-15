@@ -22,6 +22,8 @@ export function Slider(
   const max = props.max ?? 100;
   const step = props.step ?? 1;
   const node = new UINode("Slider");
+  node.role = "slider";
+  node.states = () => ({ value: props.value(), min, max });
   Object.assign(node.style, { height: 20, minWidth: 80, width: 200 } satisfies Style);
   const { rest, fill, track } = ownColors(props, () => theme.accent.base, () => theme.control.pressed);
   applyProps(node, rest);

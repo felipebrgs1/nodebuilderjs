@@ -22,6 +22,8 @@ function everyFrame(frame: (time: number) => void) {
 /** `value` from 0 to 1; without it, a segment keeps sliding (work of unknown length). */
 export function ProgressBar(props: StyleProps & Handlers & { value?: MaybeAccessor<number> }) {
   const node = new UINode("ProgressBar");
+  node.role = "progressbar";
+  node.states = () => (props.value === undefined ? {} : { value: Math.round(Math.max(0, Math.min(1, read(props.value))) * 100), min: 0, max: 100 });
   Object.assign(node.style, { height: 6, minWidth: 40 } satisfies Style);
   const { rest, fill, track } = ownColors(props, () => theme.accent.base, () => theme.control.pressed);
   applyProps(node, rest);
@@ -48,6 +50,7 @@ export function ProgressBar(props: StyleProps & Handlers & { value?: MaybeAccess
 export function Spinner(props: StyleProps & Handlers & { size?: number; color?: string }) {
   const size = props.size ?? 20;
   const node = new UINode("Spinner");
+  node.role = "progressbar";
   Object.assign(node.style, { width: size, height: size } satisfies Style);
   applyProps(node, props);
   let angle = 0;

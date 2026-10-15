@@ -17,8 +17,7 @@ well, so as much of the framework as possible lives in TS, and the C stays small
 | `ARCHITECTURE.md` | how it works inside and how to measure performance |
 | `ROADMAP.md` | priorities and what has been done (still in Portuguese) |
 | `FONTS.md` | the fonts roadmap: what is done and everything left to make fonts complete |
-| `WEB.md` | the web target roadmap (`nodebuilder web`): what is done and what is left |
-| `WEB2.md` | design of the DOM renderer for the web (UINode tree -> HTML + CSS), the alternative to the canvas |
+| `WEB.md` | the web target (`nodebuilder web`: the UINode tree as HTML + CSS): decisions, measurements, what is left |
 | `packages/create-nodebuilderjs/template/` | `AGENTS.md` and skills (`.agents/skills/`) shipped to generated apps, and inside core for `nodebuilder agents update` (only the block between the `nodebuilder:begin/end` markers of `AGENTS.md` is the framework's) |
 
 ## Non-negotiable rules
@@ -61,7 +60,7 @@ bun cli/nodebuilder.ts screenshot <app.tsx> <out.png> [--width --height --scale 
                             --props <json> --export <name>]
                             # PNG of the app without a window or display server (EGL offscreen)
 bun cli/nodebuilder.ts web <app.tsx> [--serve --port 3000 --out dist/web --minify]
-                            # the app as a web page (canvas + WebGL), see ARCHITECTURE "The web"
+                            # the app as a web page (elements + CSS), see ARCHITECTURE "The web"
 bun cli/nodebuilder.ts icons add <names...> [--from lucide-static|@phosphor-icons/core] [--out src/icons.ts]
                             # icon imports for an app (validated in its node_modules); `icons list [filter]`
 bun cli/nodebuilder.ts agents update [--dry-run] [--force]
@@ -160,7 +159,8 @@ What cannot be tested automatically is documented when closing the task:
     `controls` (`disabled`, `Toggle`, `RadioGroup`, `Slider`, `ProgressBar`,
     `Spinner`), `popups` (`Select`, `Tabs`, `Tooltip`, `Dialog`), `overlay`, `scroll`
     (horizontal and both axes, bars, wheel, keyboard, minimums of whoever contains a `Scroll`),
-    `handlers` (event props on every widget, chained with the widget's own), `ref` (`ref`,
+    `handlers` (event props on every widget, chained with the widget's own), `semantics`
+    (`role` and `states` of each widget), `ref` (`ref`,
     programmatic focus and scrolling, `onResize`), `theme` (`setTheme`, widgets following the
     switch), `animation` (`animate`, tween, presence, widget transitions with `frames()`).
   - `runtime/`: `app` (`run()` with a fake native: idle renders nothing, frame reasons,
@@ -177,7 +177,13 @@ What cannot be tested automatically is documented when closing the task:
     `diagnostics()` and one spawn), `agents` (`agents update` on temp apps: stale, edited,
     renamed docs, AGENTS.md markers), `check-snippets`.
   - `charts/`: scales and each chart type.
-  - `web/`: `renderer` (the command buffer against a fake device and text painter), `keys`,
+  - `dom/`: the DOM renderer against `fake-dom.ts` (a minimal document: elements, inline style
+    counting writes, focus, boxes a test sets): `style` (every `Style` key to CSS), `sync`
+    (elements, diffing, lazy boxes, text and fields, overlays, canvases, focus, ARIA), `painter`
+    (the Canvas2D painter against a recording context), `native-text` (widgets when the
+    platform edits and selects text). Pages themselves: headless Chromium (screenshots, input,
+    the accessibility tree, layout parity: our `layout()` against the browser's boxes).
+  - `web/`: `keys`, `window` (no window frame on a page),
     `decode` (browser-decoded bytes, the on-demand TS decoders),
     `inflate` (against node:zlib), `shims` (`cssFont`, the in-memory fs). The build is in
     `cli/web`. A real browser is not part of `bun test`: check pages with headless Chromium
@@ -246,6 +252,7 @@ src/                   one module per folder; relative imports with `.js`
     input.ts           events -> UI: hit test, hover, cursor, focus, clicks, capture, scrolling, keyboard
     native.ts          loads native/build/<platform>-<arch>/nodebuilder.node (literal requires)
     frames.ts          frame clock: requestAnimationFrame queue, frameNow, animating()
+    platform.ts        what the platform does itself: setNativeText (the browser edits and selects text)
     clipboard.ts       clipboard (text): in memory without a window, native with run(); read via event
     fonts.ts           registerFont (app font files -> addon), fontFamilies
     screenshot.ts      captureTree: real metrics + native images, layout, paint, renderOffscreen
@@ -286,15 +293,20 @@ src/                   one module per folder; relative imports with `.js`
     raster.ts          scanline rasterization with AA (nonzero/evenodd)
     triangulate.ts     ear clipping of simple polygons (null if self-intersecting)
   web/                 the Native interface in a browser (`nodebuilder web`)
-    boot.ts            fetches the app's files, installs the web native (useNative) before the app runs
-    native.ts          canvas, DOM events, clipboard, fonts (FontFace); renderer.ts (command buffer ->
-                       vertices, render_gles2.c in TS) + gl.ts (WebGL device, Canvas2D text atlas)
-    text.ts keys.ts    CSS fonts and measuring; DOM keys -> xkb names
+    boot.ts            fetches the app's files, installs the web native (useNative, setNativeText) before the app runs
+    native.ts          the Native with renderTree/hitTest (dom/): page events -> NativeEvents, images as canvases
+    page.ts            assets.json, clipboard, registerFont (FontFace), browser shortcuts
+    text.ts keys.ts    CSS fonts and Canvas2D measuring; DOM keys -> xkb names
     images.ts          the browser decodes the app's images ahead of time (sync decodeImage finds them)
     decode.ts icon.ts  the build swaps them for image/decode.ts (TS decoders: an on-demand chunk) and
                        image/icon.ts (no window icon on a page)
     inflate.ts         zlib inflate in TS (PNG through the TS decoders)
     shims/             node:fs (in memory), zlib, url, path, net, module for the browser build
+  dom/                 the DOM renderer the web native uses (WEB.md)
+    sync.ts            UINode tree -> elements: CSS/attribute diffs, lazy boxes, Text/field adapters,
+                       sizers (measure), canvases (paint), overlays, focus; BASE_CSS
+    style.ts           Style -> CSS declarations (a typed table: a new Style key must be mapped)
+    painter.ts         the Painter on Canvas2D, for nodes that draw themselves
   charts/              @nodebuilderjs/core/charts: Recharts-style charts, on top of <Canvas>
     scale.ts           axis ticks (d3's algorithm)
     components.ts      configuration children (Line, XAxis...): render nothing
@@ -407,6 +419,15 @@ signal changes -> effect updates UINode.set(...) / setSlot(...) -> invalidate()
 - A widget that opens something on top returns `[node, <Show><Overlay>]` (the `Overlay` stays
   outside the node, so the list's events do not bubble up through the trigger); the trigger
   keeps focus and handles keys while it is open.
+- A widget with a meaning for assistive technology sets `node.role` and, if it has state,
+  `node.states` (`checked`, `selected`, `expanded`, `modal`, `value`/`min`/`max`); `disableable`
+  sets `node.disabled`. Platform neutral: the DOM renderer writes them as ARIA, a desktop
+  accessibility bridge would read the same (`test/widgets/semantics`).
+- Widgets that lay out text themselves describe it for renderers that do their own
+  (`node.text()` on `<Text>`, `node.field` on text fields, with `input` for typed values); with
+  `hasNativeText()` (`runtime/platform.ts`) they leave editing and selection to the platform.
+- A new `Style` key also gets a CSS mapping in `dom/style.ts` (the typed table fails to compile
+  without it).
 - A new control accepts `disabled` via `disableable(node, props)` (`widgets/props.ts`): it
   fades, leaves focus and the Tab order and changes the cursor; the control's handlers check
   the returned accessor. Keys the control uses (arrows in `Slider`) call `e.stop()`,

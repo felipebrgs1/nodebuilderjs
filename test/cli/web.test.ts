@@ -81,3 +81,20 @@ test("a Node module with no web version is a build error naming it", async () =>
   const result = await buildWeb(join(dir, "bad.ts"), { out: join(dir, "bad") });
   expect(result.errors.join("\n")).toContain("node:child_process");
 });
+
+test("the page is a root element the tree renders into, with no canvas or WebGL", async () => {
+  writeFileSync(
+    join(dir, "dom.ts"),
+    `import { jsx } from ${JSON.stringify(join(repo, "src/jsx-runtime.ts"))};
+     import { Text, Window, run } from ${JSON.stringify(join(repo, "src/index.ts"))};
+     run(() => jsx(Window, { title: "DOM", children: jsx(Text, { text: "hi" }) }));`,
+  );
+  const out = join(dir, "dom");
+  expect((await buildWeb(join(dir, "dom.ts"), { out })).errors).toEqual([]);
+  const html = readFileSync(join(out, "index.html"), "utf8");
+  expect(html).toContain(`<div id="nodebuilder"></div>`);
+  expect(html).not.toContain("<canvas");
+  const js = allScripts(out);
+  expect(js).toContain("renderTree");
+  expect(js).not.toContain("getContext(\"webgl\"");
+});
